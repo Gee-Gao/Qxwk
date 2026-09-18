@@ -23,6 +23,7 @@
   --text-dark: #333;
   --radius: 16px;
   --radius-sm: 10px;
+  --screen-pad: 16px; /* .screen 内边距，sticky 分类栏需要用它抵消 */
 }
 
 body {
@@ -49,7 +50,7 @@ body {
 .screen {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--screen-pad);
   padding-bottom: 80px;
   display: none;
 }
@@ -750,6 +751,48 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 统计页分类切换：卡片越加越多，按分类分屏展示，避免无限下拉 */
+.stats-tabs {
+  position: sticky;
+  /* 抵消 .screen 的上内边距，滚动时才能贴住顶部，不留缝隙让卡片透出来 */
+  top: calc(-1 * var(--screen-pad));
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  padding: 8px 0 12px;
+  background: var(--bg);
+}
+.stats-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 4px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.stats-tab:hover { border-color: #3a3a3a; color: var(--text); }
+.stats-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+.stats-panel { display: none; }
+.stats-panel.active {
+  display: block;
+  animation: statsPanelIn .22s ease;
+}
+@keyframes statsPanelIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
 /* 生命消耗大盘 */
 .life-card {
   background: linear-gradient(160deg, #1f1f1f, #141414);
@@ -878,9 +921,9 @@ body {
 
 /* 移动端适配：窄屏下日期/数字输入并排会挤，改为单列 */
 @media (max-width: 380px) {
+  :root { --screen-pad: 12px; }
   .cost-fields { grid-template-columns: 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
-  .screen { padding: 12px; padding-bottom: 80px; }
   .timer-display { font-size: 48px; letter-spacing: 1px; }
   .consumption-card { padding: 12px; }
   /* 金额位数多时 28px 会顶出卡片，窄屏缩小并收紧内边距 */
@@ -929,7 +972,7 @@ body {
         <div class="label">本月已赚</div>
         <div class="value" id="homeMonthEarned">¥0.00</div>
         <div class="sub" id="homeMonthDays">已工作 0 天 / 22 天</div>
-        <div class="link" onclick="switchScreen('stats')">查看更多数据 →</div>
+        <div class="link" onclick="selectStatsTab('data'); switchScreen('stats')">查看更多数据 →</div>
       </div>
     </div>
   </div>
@@ -958,106 +1001,117 @@ body {
     </div>
     <div class="section-title">一些不必严肃的统计</div>
 
-    <div class="life-card">
-      <h3>生命消耗大盘</h3>
-      <div class="desc">从入职那天起，你的生命就在按小时计价</div>
-      <div class="field-group">
-        <label>入职日期</label>
-        <input type="date" id="hireDateInput" onchange="setHireDate(this.value)">
-      </div>
-      <div id="lifePanel"></div>
+    <div class="stats-tabs" id="statsTabs">
+      <button type="button" class="stats-tab active" data-cat="data" onclick="selectStatsTab('data')">看一看</button>
+      <button type="button" class="stats-tab" data-cat="calc" onclick="selectStatsTab('calc')">算一算</button>
     </div>
 
-    <div class="calc-card">
-      <h3>反向计算器</h3>
-      <div class="desc">摸鱼是在赚，熬班是在花 —— 自己挑个方向算</div>
-      <div class="seg-control" id="calcMode">
-        <button type="button" class="seg-btn active" data-mode="slack" onclick="selectCalcMode('slack')">摸鱼能白拿多少</button>
-        <button type="button" class="seg-btn" data-mode="goal" onclick="selectCalcMode('goal')">赚到目标要熬多久</button>
-      </div>
-      <div class="field-group">
-        <label id="calcInputLabel">想摸鱼多少小时</label>
-        <input type="number" id="calcInput" value="1" min="0" step="0.5" placeholder="1" oninput="updateCalculator()">
-      </div>
-      <div class="cost-result">
-        <div class="rate" id="calcResultValue">¥0.00</div>
-        <div class="rate-label" id="calcResultLabel">白拿工资</div>
-        <div class="usage" id="calcResultNote"></div>
-      </div>
-    </div>
-
-    <div class="paid-leave-card" id="paidLeaveCard">
-      <h3>带薪离席</h3>
-      <div class="desc">离开工位的时间，也是带薪的时间</div>
-      <div class="paid-leave-timer" id="paidLeaveTimer">00:00:00</div>
-      <div class="paid-leave-earned" id="paidLeaveEarned">¥0.00</div>
-      <div class="paid-leave-count" id="paidLeaveCount">已记录 0 次</div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="paidLeaveResetBtn" onclick="resetPaidLeave()">重置</button>
-        <button class="btn btn-dark" id="paidLeaveBtn" onclick="togglePaidLeave()">开始计时</button>
-      </div>
-    </div>
-
-    <div class="cost-card">
-      <h3>设备使用成本</h3>
-      <div class="desc">按购买时间自动折算每小时成本，可添加多台</div>
-      <div id="deviceList"></div>
-      <div class="add-device" onclick="addDevice()">+ 添加设备</div>
-    </div>
-
-    <div class="trajectory-card">
-      <h3>年度工资轨迹</h3>
-      <div class="desc">今年你已通过上班换来了多少</div>
-      <div class="trajectory-stats">
-        <div class="trajectory-stat">
-          <div class="val" id="annualEarned">¥0</div>
-          <div class="lbl">年度已赚</div>
-        </div>
-        <div class="trajectory-stat">
-          <div class="val" id="annualDays">0天</div>
-          <div class="lbl">已过工作日</div>
-        </div>
-        <div class="trajectory-stat">
-          <div class="val" id="annualRemain">¥0</div>
-          <div class="lbl">剩余预计</div>
+    <!-- 看一看 -->
+    <div class="stats-panel active" data-cat="data">
+      <div class="stats-card">
+        <h3>本月概览</h3>
+        <div class="big-val" id="monthEarned">¥0.00</div>
+        <div class="sub-val" id="monthDays">已工作 0 天 / 22 天</div>
+        <div style="margin-top:16px">
+          <div class="stats-bar-row">
+            <span class="lbl">已赚</span>
+            <div class="bar"><div class="bar-fill" id="monthEarnedBar" style="width:0%"></div></div>
+            <span class="val" id="monthEarnedVal">¥0</span>
+          </div>
+          <div class="stats-bar-row">
+            <span class="lbl">进度</span>
+            <div class="bar"><div class="bar-fill" id="monthProgress" style="width:0%"></div></div>
+            <span class="val" id="monthProgressVal">0%</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="stats-card">
-      <h3>本月概览</h3>
-      <div class="big-val" id="monthEarned">¥0.00</div>
-      <div class="sub-val" id="monthDays">已工作 0 天 / 22 天</div>
-      <div style="margin-top:16px">
+      <div class="trajectory-card">
+        <h3>年度工资轨迹</h3>
+        <div class="desc">今年你已通过上班换来了多少</div>
+        <div class="trajectory-stats">
+          <div class="trajectory-stat">
+            <div class="val" id="annualEarned">¥0</div>
+            <div class="lbl">年度已赚</div>
+          </div>
+          <div class="trajectory-stat">
+            <div class="val" id="annualDays">0天</div>
+            <div class="lbl">已过工作日</div>
+          </div>
+          <div class="trajectory-stat">
+            <div class="val" id="annualRemain">¥0</div>
+            <div class="lbl">剩余预计</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-card">
+        <h3>购买力换算</h3>
         <div class="stats-bar-row">
-          <span class="lbl">已赚</span>
-          <div class="bar"><div class="bar-fill" id="monthEarnedBar" style="width:0%"></div></div>
-          <span class="val" id="monthEarnedVal">¥0</span>
+          <span class="lbl">咖啡</span>
+          <div class="bar"><div class="bar-fill" id="powerCoffee" style="width:0%"></div></div>
+          <span class="val" id="powerCoffeeVal">0杯</span>
         </div>
         <div class="stats-bar-row">
-          <span class="lbl">进度</span>
-          <div class="bar"><div class="bar-fill" id="monthProgress" style="width:0%"></div></div>
-          <span class="val" id="monthProgressVal">0%</span>
+          <span class="lbl">午饭</span>
+          <div class="bar"><div class="bar-fill" id="powerLunch" style="width:0%"></div></div>
+          <span class="val" id="powerLunchVal">0顿</span>
+        </div>
+        <div class="stats-bar-row">
+          <span class="lbl">电影</span>
+          <div class="bar"><div class="bar-fill" id="powerMovie" style="width:0%"></div></div>
+          <span class="val" id="powerMovieVal">0张</span>
         </div>
       </div>
     </div>
 
-    <div class="stats-card">
-      <h3>购买力换算</h3>
-      <div class="stats-bar-row">
-        <span class="lbl">咖啡</span>
-        <div class="bar"><div class="bar-fill" id="powerCoffee" style="width:0%"></div></div>
-        <span class="val" id="powerCoffeeVal">0杯</span>
+    <!-- 算一算 -->
+    <div class="stats-panel" data-cat="calc">
+      <div class="life-card">
+        <h3>生命消耗大盘</h3>
+        <div class="desc">从入职那天起，你的生命就在按小时计价</div>
+        <div class="field-group">
+          <label>入职日期</label>
+          <input type="date" id="hireDateInput" onchange="setHireDate(this.value)">
+        </div>
+        <div id="lifePanel"></div>
       </div>
-      <div class="stats-bar-row">
-        <span class="lbl">午饭</span>
-        <div class="bar"><div class="bar-fill" id="powerLunch" style="width:0%"></div></div>
-        <span class="val" id="powerLunchVal">0顿</span>
+
+      <div class="calc-card">
+        <h3>反向计算器</h3>
+        <div class="desc">摸鱼是在赚，熬班是在花 —— 自己挑个方向算</div>
+        <div class="seg-control" id="calcMode">
+          <button type="button" class="seg-btn active" data-mode="slack" onclick="selectCalcMode('slack')">摸鱼能白拿多少</button>
+          <button type="button" class="seg-btn" data-mode="goal" onclick="selectCalcMode('goal')">赚到目标要熬多久</button>
+        </div>
+        <div class="field-group">
+          <label id="calcInputLabel">想摸鱼多少小时</label>
+          <input type="number" id="calcInput" value="1" min="0" step="0.5" placeholder="1" oninput="updateCalculator()">
+        </div>
+        <div class="cost-result">
+          <div class="rate" id="calcResultValue">¥0.00</div>
+          <div class="rate-label" id="calcResultLabel">白拿工资</div>
+          <div class="usage" id="calcResultNote"></div>
+        </div>
       </div>
-      <div class="stats-bar-row">
-        <span class="lbl">电影</span>
-        <div class="bar"><div class="bar-fill" id="powerMovie" style="width:0%"></div></div>
-        <span class="val" id="powerMovieVal">0张</span>
+
+      <div class="paid-leave-card" id="paidLeaveCard">
+        <h3>带薪离席</h3>
+        <div class="desc">离开工位的时间，也是带薪的时间</div>
+        <div class="paid-leave-timer" id="paidLeaveTimer">00:00:00</div>
+        <div class="paid-leave-earned" id="paidLeaveEarned">¥0.00</div>
+        <div class="paid-leave-count" id="paidLeaveCount">已记录 0 次</div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="paidLeaveResetBtn" onclick="resetPaidLeave()">重置</button>
+          <button class="btn btn-dark" id="paidLeaveBtn" onclick="togglePaidLeave()">开始计时</button>
+        </div>
+      </div>
+
+      <div class="cost-card">
+        <h3>设备使用成本</h3>
+        <div class="desc">按购买时间自动折算每小时成本，可添加多台</div>
+        <div id="deviceList"></div>
+        <div class="add-device" onclick="addDevice()">+ 添加设备</div>
       </div>
     </div>
   </div>
@@ -2158,6 +2212,22 @@ function closeAddModal() {
   editingItemIndex = null;
   document.getElementById('newItemName').value = '';
   document.getElementById('newItemPrice').value = '';
+}
+
+// ============ 统计页分类 ============
+// 统计卡片按「看一看 / 算一算」分组展示；新增卡片时只需放进对应 panel，
+// 需要新增分类时在 #statsTabs 里补一个 .stats-tab 即可。
+let statsTab = 'data';
+
+function selectStatsTab(cat) {
+  statsTab = cat;
+  document.querySelectorAll('#statsTabs .stats-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.cat === cat);
+  });
+  document.querySelectorAll('.stats-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.dataset.cat === cat);
+  });
+  updateStats();
 }
 
 // ============ Navigation ============
