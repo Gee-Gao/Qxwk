@@ -750,6 +750,106 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 生命消耗大盘 */
+.life-card {
+  background: linear-gradient(160deg, #1f1f1f, #141414);
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.life-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), rgba(200, 255, 0, 0));
+}
+.life-card h3 { font-size: 16px; margin-bottom: 4px; }
+.life-card .desc { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; }
+
+.life-hero {
+  background: #000;
+  border: 1px solid #262626;
+  border-radius: var(--radius-sm);
+  padding: 18px 14px;
+  text-align: center;
+  margin-top: 14px;
+}
+.life-hero .life-hours {
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Consolas", monospace;
+  line-height: 1.1;
+}
+.life-hero .life-hours .unit {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-dim);
+  margin-left: 4px;
+}
+.life-hero .life-hours-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+.life-roast {
+  font-size: 13px;
+  color: #bbb;
+  line-height: 1.7;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #333;
+}
+.life-roast .hl { color: var(--accent); font-weight: 700; }
+
+.life-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.life-stat {
+  background: #222;
+  border-radius: var(--radius-sm);
+  padding: 10px 4px;
+  text-align: center;
+  min-width: 0;
+}
+.life-stat .v {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.life-stat .v small { font-size: 11px; font-weight: 400; color: var(--text-dim); }
+.life-stat .k { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+.life-empty {
+  font-size: 12px;
+  color: #777;
+  text-align: center;
+  line-height: 1.6;
+  padding: 14px 0 4px;
+}
+
+/* 反向计算器 */
+.calc-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.calc-card h3 { font-size: 16px; margin-bottom: 4px; }
+.calc-card .desc { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; }
+.calc-card .field-group { margin-top: 12px; }
+.calc-card .cost-result { margin-top: 12px; }
 
 /* Segmented control (休息制度) */
 .seg-control {
@@ -857,6 +957,34 @@ body {
       <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
     </div>
     <div class="section-title">一些不必严肃的统计</div>
+
+    <div class="life-card">
+      <h3>生命消耗大盘</h3>
+      <div class="desc">从入职那天起，你的生命就在按小时计价</div>
+      <div class="field-group">
+        <label>入职日期</label>
+        <input type="date" id="hireDateInput" onchange="setHireDate(this.value)">
+      </div>
+      <div id="lifePanel"></div>
+    </div>
+
+    <div class="calc-card">
+      <h3>反向计算器</h3>
+      <div class="desc">摸鱼是在赚，熬班是在花 —— 自己挑个方向算</div>
+      <div class="seg-control" id="calcMode">
+        <button type="button" class="seg-btn active" data-mode="slack" onclick="selectCalcMode('slack')">摸鱼能白拿多少</button>
+        <button type="button" class="seg-btn" data-mode="goal" onclick="selectCalcMode('goal')">赚到目标要熬多久</button>
+      </div>
+      <div class="field-group">
+        <label id="calcInputLabel">想摸鱼多少小时</label>
+        <input type="number" id="calcInput" value="1" min="0" step="0.5" placeholder="1" oninput="updateCalculator()">
+      </div>
+      <div class="cost-result">
+        <div class="rate" id="calcResultValue">¥0.00</div>
+        <div class="rate-label" id="calcResultLabel">白拿工资</div>
+        <div class="usage" id="calcResultNote"></div>
+      </div>
+    </div>
 
     <div class="paid-leave-card" id="paidLeaveCard">
       <h3>带薪离席</h3>
@@ -1081,6 +1209,8 @@ let consumptionItems = [];
 let devices = [];
 const MAX_DEVICES = 10;
 let paidLeaveSessions = [];
+let hireDate = '';      // 入职日期，用于生命消耗大盘
+let calcMode = 'slack'; // 反向计算器模式：slack 摸鱼白拿 / goal 熬班换钱
 let paidLeaveActive = false;
 let paidLeaveStart = null;
 let editingItemIndex = null; // null = adding, otherwise index of the item being edited
@@ -1092,11 +1222,13 @@ function load() {
     consumptionItems = JSON.parse(localStorage.getItem('qianxwk_items')) || getDefaultItems();
     devices = JSON.parse(localStorage.getItem('qianxwk_devices')) || [];
     paidLeaveSessions = JSON.parse(localStorage.getItem('qianxwk_leave')) || [];
+    hireDate = localStorage.getItem('qianxwk_hire') || '';
   } catch(e) {
     settings = {...DEFAULTS};
     consumptionItems = getDefaultItems();
     devices = [];
     paidLeaveSessions = [];
+    hireDate = '';
   }
   // Fill defaults
   for (const k in DEFAULTS) {
@@ -1579,6 +1711,10 @@ function updateStats() {
   // Device cost（使用时长随当前时间增长，需定时重算）
   updateAllDeviceCosts();
 
+  // 生命消耗大盘 & 反向计算器
+  updateLifePanel();
+  updateCalculator();
+
   // Annual trajectory
   const yearlyWorkDays = getWorkedDaysThisYear();
   const dailyHours = getDailyHours();
@@ -1800,6 +1936,140 @@ function deleteDevice(idx) {
   saveDevices();
   renderDevices();
   showToast('已删除');
+}
+
+// ============ 生命消耗大盘 ============
+function setHireDate(value) {
+  hireDate = value || '';
+  try { localStorage.setItem('qianxwk_hire', hireDate); } catch (e) { /* 存储失败不影响展示 */ }
+  updateLifePanel();
+}
+
+// 从某天（含）到今天（含）之间的工作日数，按当前休息制度与节假日折算
+function getWorkdaysSince(dateStr) {
+  if (!dateStr) return 0;
+  const start = new Date(dateStr + 'T00:00:00');
+  if (isNaN(start.getTime())) return 0;
+  const today = new Date();
+  const d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (d > end) return 0;
+  let count = 0;
+  while (d <= end) {
+    if (isWorkday(d)) count++;
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+// 大额金额压缩显示，避免窄屏把卡片顶破
+function fmtMoneyCompact(val) {
+  if (val >= 100000000) return '¥' + (val / 100000000).toFixed(1) + '亿';
+  if (val >= 10000) return '¥' + (val / 10000).toFixed(1) + '万';
+  return '¥' + Math.round(val).toLocaleString();
+}
+
+function updateLifePanel() {
+  const panel = document.getElementById('lifePanel');
+  if (!panel) return;
+  const input = document.getElementById('hireDateInput');
+  if (input) {
+    if (input.value !== hireDate) input.value = hireDate;
+    input.max = fmtDateKey(new Date());
+  }
+
+  const workDays = getWorkdaysSince(hireDate);
+  if (!hireDate || workDays <= 0) {
+    panel.innerHTML = '<div class="life-empty">填上入职日期，看看这些年你把多少生命换成了工资。</div>';
+    return;
+  }
+
+  const totalHours = workDays * getDailyHours();
+  const totalEarned = totalHours * getHourlyRate();
+  const lifeDays = totalHours / 24;
+  const lifeYears = lifeDays / 365;
+
+  panel.innerHTML = `
+    <div class="life-hero">
+      <div class="life-hours">${Math.round(totalHours).toLocaleString()}<span class="unit">小时</span></div>
+      <div class="life-hours-label">累计卖给工位的时间</div>
+    </div>
+    <div class="life-grid">
+      <div class="life-stat"><div class="v">${workDays.toLocaleString()}<small>天</small></div><div class="k">打工天数</div></div>
+      <div class="life-stat"><div class="v">${lifeDays.toFixed(1)}<small>天</small></div><div class="k">折合生命</div></div>
+      <div class="life-stat"><div class="v">${fmtMoneyCompact(totalEarned)}</div><div class="k">已换工资</div></div>
+    </div>
+    <div class="life-roast">
+      从 <span class="hl">${hireDate}</span> 至今，你已把 <span class="hl">${lifeDays.toFixed(1)} 天</span>
+      （约 <span class="hl">${lifeYears.toFixed(1)} 年</span>）的生命典当给了工位。<br>
+      这些时间不会回来，但工资到账了 —— 这就是交易的全部内容。
+    </div>
+  `;
+}
+
+// ============ 反向计算器 ============
+function selectCalcMode(mode) {
+  calcMode = mode;
+  document.querySelectorAll('#calcMode .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  const label = document.getElementById('calcInputLabel');
+  const input = document.getElementById('calcInput');
+  if (mode === 'goal') {
+    if (label) label.textContent = '想赚多少钱 (¥)';
+    if (input) { input.step = '10'; input.placeholder = '500'; }
+  } else {
+    if (label) label.textContent = '想摸鱼多少小时';
+    if (input) { input.step = '0.5'; input.placeholder = '1'; }
+  }
+  updateCalculator();
+}
+
+function fmtHours(h) {
+  if (h <= 0) return '0 小时';
+  if (h < 1) return Math.round(h * 60) + ' 分钟';
+  if (h < 100) return h.toFixed(1) + ' 小时';
+  return Math.round(h).toLocaleString() + ' 小时';
+}
+
+function updateCalculator() {
+  const input = document.getElementById('calcInput');
+  const valueEl = document.getElementById('calcResultValue');
+  if (!input || !valueEl) return;
+
+  const raw = parseFloat(input.value);
+  const val = isNaN(raw) || raw < 0 ? 0 : raw;
+  const hourlyRate = getHourlyRate();
+  const dailyHours = getDailyHours();
+  const labelEl = document.getElementById('calcResultLabel');
+  const noteEl = document.getElementById('calcResultNote');
+
+  if (hourlyRate <= 0) {
+    valueEl.textContent = '—';
+    labelEl.textContent = '';
+    noteEl.textContent = '先去设置里填上你的月薪，这笔账才算得清';
+    return;
+  }
+
+  if (calcMode === 'goal') {
+    const hours = val / hourlyRate;
+    valueEl.textContent = fmtHours(hours);
+    labelEl.textContent = '需要熬的工时';
+    if (val <= 0) {
+      noteEl.textContent = '输入想赚的金额，看看要熬多久才能换到';
+    } else if (dailyHours > 0) {
+      noteEl.textContent = `按每天 ${dailyHours.toFixed(1)} 小时算，约 ${(hours / dailyHours).toFixed(1)} 个工作日。慢走，不送。`;
+    } else {
+      noteEl.textContent = '';
+    }
+  } else {
+    const money = val * hourlyRate;
+    valueEl.textContent = formatMoney(money);
+    labelEl.textContent = '白拿工资';
+    noteEl.textContent = val > 0
+      ? `摸鱼 ${fmtHours(val)}，钱一分不少地到账 —— 这是你应得的。`
+      : '输入摸鱼小时数，看看能白拿多少';
+  }
 }
 
 // ============ Emoji Picker ============
