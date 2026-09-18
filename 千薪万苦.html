@@ -221,6 +221,19 @@ body {
   align-items: center;
   gap: 8px;
 }
+.settings-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: -8px 0 14px;
+}
+.settings-subhead {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1040,25 +1053,6 @@ body {
           </div>
         </div>
       </div>
-
-      <div class="stats-card">
-        <h3>购买力换算</h3>
-        <div class="stats-bar-row">
-          <span class="lbl">咖啡</span>
-          <div class="bar"><div class="bar-fill" id="powerCoffee" style="width:0%"></div></div>
-          <span class="val" id="powerCoffeeVal">0杯</span>
-        </div>
-        <div class="stats-bar-row">
-          <span class="lbl">午饭</span>
-          <div class="bar"><div class="bar-fill" id="powerLunch" style="width:0%"></div></div>
-          <span class="val" id="powerLunchVal">0顿</span>
-        </div>
-        <div class="stats-bar-row">
-          <span class="lbl">电影</span>
-          <div class="bar"><div class="bar-fill" id="powerMovie" style="width:0%"></div></div>
-          <span class="val" id="powerMovieVal">0张</span>
-        </div>
-      </div>
     </div>
 
     <!-- 算一算 -->
@@ -1129,9 +1123,17 @@ body {
             <button type="button" class="seg-btn" data-mode="custom" onclick="selectWorkDayMode('custom')">自定义</button>
           </div>
         </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <label>工资口径</label>
+          <div class="seg-control" id="salaryMode">
+            <button type="button" class="seg-btn" data-mode="gross" onclick="selectSalaryMode('gross')">税前</button>
+            <button type="button" class="seg-btn" data-mode="net" onclick="selectSalaryMode('net')">税后</button>
+          </div>
+          <div class="field-hint" id="salaryModeHint"></div>
+        </div>
         <div class="field-group">
           <label>税前月薪 (¥)</label>
-          <input type="number" id="monthlySalary" placeholder="3000" value="3000">
+          <input type="number" id="monthlySalary" placeholder="3000" value="3000" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
           <label>每月工作天数</label>
@@ -1154,19 +1156,71 @@ body {
           <label>午休结束</label>
           <input type="time" id="lunchEnd" value="13:00">
         </div>
+      </div>
+    </div>
+    <div class="settings-card" id="taxCard">
+      <h3>🧾 税后测算</h3>
+      <div class="desc">填得越细估算越准，税后口径的时薪与统计都按这里的参数算出</div>
+      <div class="settings-grid">
+        <div class="settings-subhead">缴费基数</div>
         <div class="field-group">
-          <label>咖啡单价 (¥)</label>
-          <input type="number" id="coffeePrice" placeholder="15" value="15">
+          <label>社保基数 (¥/月)</label>
+          <input type="number" id="socialBase" placeholder="留空=税前月薪" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>午饭单价 (¥)</label>
-          <input type="number" id="lunchPrice" placeholder="35" value="35">
+          <label>公积金基数 (¥/月)</label>
+          <input type="number" id="fundBase" placeholder="留空=税前月薪" oninput="updateTaxHint()">
+        </div>
+        <div class="settings-subhead">五险一金个人比例 (%)</div>
+        <div class="field-group">
+          <label>养老</label>
+          <input type="number" id="pensionRate" step="0.5" placeholder="8" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group">
+          <label>医疗</label>
+          <input type="number" id="medicalRate" step="0.5" placeholder="2" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group">
+          <label>失业</label>
+          <input type="number" id="unemploymentRate" step="0.1" placeholder="0.5" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group">
+          <label>住房公积金</label>
+          <input type="number" id="fundRate" step="0.5" placeholder="12" oninput="updateTaxHint()">
+        </div>
+        <div class="settings-subhead">专项附加扣除 (¥/月)</div>
+        <div class="field-group">
+          <label>子女教育</label>
+          <input type="number" id="specialChild" placeholder="0" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group">
+          <label>3岁以下婴幼儿照护</label>
+          <input type="number" id="specialBaby" placeholder="0" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group">
+          <label>继续教育</label>
+          <input type="number" id="specialEducation" placeholder="0" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group">
+          <label>住房贷款利息</label>
+          <input type="number" id="specialLoan" placeholder="0" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group">
+          <label>住房租金</label>
+          <input type="number" id="specialRent" placeholder="0" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group">
+          <label>赡养老人</label>
+          <input type="number" id="specialElder" placeholder="0" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <div class="field-hint" id="taxHint"></div>
         </div>
       </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" onclick="resetSettings()">取消</button>
-        <button class="btn btn-primary" onclick="saveSettings()">保存参数</button>
-      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="resetSettings()">取消</button>
+      <button class="btn btn-primary" onclick="saveSettings()">保存参数</button>
     </div>
     <div class="settings-card">
       <h3>ℹ 关于</h3>
@@ -1230,16 +1284,32 @@ body {
 <script>
 // ============ Data & State ============
 const DEFAULTS = {
-  monthlySalary: 3000,
+  monthlySalary: 3000,       // 税前月薪
+  salaryMode: 'gross',       // 工资口径：gross 税前只统计税前 / net 税后按参数算出的到手金额统计
+  socialBase: 0,             // 社保缴费基数，0 表示按税前月薪
+  fundBase: 0,               // 公积金缴费基数，0 表示按税前月薪
+  pensionRate: 8,            // 养老保险个人比例（%）
+  medicalRate: 2,            // 医疗保险个人比例（%）
+  unemploymentRate: 0.5,     // 失业保险个人比例（%）
+  fundRate: 12,              // 住房公积金个人比例（%）
   workDaysPerMonth: 22,
   workDayMode: 'double',
   startTime: '09:00',
   endTime: '18:00',
   lunchStart: '12:00',
-  lunchEnd: '13:00',
-  coffeePrice: 15,
-  lunchPrice: 35
+  lunchEnd: '13:00'
 };
+
+// 专项附加扣除分项（元/月），key 同时用作设置页输入框 id
+const SPECIAL_ITEMS = [
+  { key: 'specialChild',     label: '子女教育' },
+  { key: 'specialBaby',      label: '3岁以下婴幼儿照护' },
+  { key: 'specialEducation', label: '继续教育' },
+  { key: 'specialLoan',      label: '住房贷款利息' },
+  { key: 'specialRent',      label: '住房租金' },
+  { key: 'specialElder',     label: '赡养老人' }
+];
+SPECIAL_ITEMS.forEach(it => { DEFAULTS[it.key] = 0; });
 
 const QUOTES = [
   '下班不是奖励，是应得。',
@@ -1304,16 +1374,55 @@ function selectWorkDayMode(mode) {
   });
 }
 
+function selectSalaryMode(mode) {
+  settings.salaryMode = mode;
+  document.querySelectorAll('#salaryMode .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  const isNet = mode === 'net';
+  // 税前口径只统计税前数据，税后口径才需要展开缴费参数
+  const taxCard = document.getElementById('taxCard');
+  if (taxCard) taxCard.style.display = isNet ? '' : 'none';
+  const modeHint = document.getElementById('salaryModeHint');
+  if (modeHint) {
+    modeHint.textContent = isNet
+      ? '统计按下方参数算出的税后到手金额'
+      : '只统计税前数据，不做五险一金与个税扣除';
+  }
+  updateTaxHint();
+}
+
+// 税后测算提示：直接读表单当前值，改动时实时反馈
+function updateTaxHint() {
+  const hint = document.getElementById('taxHint');
+  if (!hint) return;
+  const p = taxParamsFromForm();
+  if (p.gross <= 0) { hint.textContent = ''; return; }
+
+  const r = calcNetFromGross(p);
+  hint.textContent = `税后到手 ¥${r.net.toFixed(0)}/月：五险一金 ¥${r.insurance.toFixed(0)}（社保 ¥${r.social.toFixed(0)} + 公积金 ¥${r.fund.toFixed(0)}），个税 ¥${Math.round(r.annualTax / 12)}/月（全年 ¥${Math.round(r.annualTax).toLocaleString()}）。`;
+}
+
 function saveSettings() {
-  settings.monthlySalary = parseFloat(document.getElementById('monthlySalary').value) || DEFAULTS.monthlySalary;
+  const num = (id, fallback) => {
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? fallback : v;
+  };
+  settings.monthlySalary = num('monthlySalary', DEFAULTS.monthlySalary);
+  settings.salaryMode = settings.salaryMode || DEFAULTS.salaryMode;
+  settings.socialBase = num('socialBase', 0);
+  settings.fundBase = num('fundBase', 0);
+  settings.pensionRate = num('pensionRate', DEFAULTS.pensionRate);
+  settings.medicalRate = num('medicalRate', DEFAULTS.medicalRate);
+  settings.unemploymentRate = num('unemploymentRate', DEFAULTS.unemploymentRate);
+  settings.fundRate = num('fundRate', DEFAULTS.fundRate);
+  SPECIAL_ITEMS.forEach(it => { settings[it.key] = num(it.key, 0); });
   settings.workDaysPerMonth = parseFloat(document.getElementById('workDaysPerMonth').value) || DEFAULTS.workDaysPerMonth;
   settings.workDayMode = settings.workDayMode || 'double';
   settings.startTime = document.getElementById('startTime').value || DEFAULTS.startTime;
   settings.endTime = document.getElementById('endTime').value || DEFAULTS.endTime;
   settings.lunchStart = document.getElementById('lunchStart').value || DEFAULTS.lunchStart;
   settings.lunchEnd = document.getElementById('lunchEnd').value || DEFAULTS.lunchEnd;
-  settings.coffeePrice = parseFloat(document.getElementById('coffeePrice').value) || DEFAULTS.coffeePrice;
-  settings.lunchPrice = parseFloat(document.getElementById('lunchPrice').value) || DEFAULTS.lunchPrice;
   localStorage.setItem('qianxwk_settings', JSON.stringify(settings));
   showToast('参数已保存');
   switchScreen('timer');
@@ -1334,7 +1443,17 @@ function resetSettings() {
 }
 
 function fillSettingsForm() {
-  document.getElementById('monthlySalary').value = settings.monthlySalary;
+  const set = (id, v) => { document.getElementById(id).value = v; };
+  set('monthlySalary', settings.monthlySalary);
+  set('socialBase', settings.socialBase > 0 ? settings.socialBase : '');
+  set('fundBase', settings.fundBase > 0 ? settings.fundBase : '');
+  set('pensionRate', settings.pensionRate);
+  set('medicalRate', settings.medicalRate);
+  set('unemploymentRate', settings.unemploymentRate);
+  set('fundRate', settings.fundRate);
+  SPECIAL_ITEMS.forEach(it => set(it.key, settings[it.key] > 0 ? settings[it.key] : ''));
+  // 放在赋值之后：口径开关会顺带刷新字段显隐、补默认到手值并重算提示
+  selectSalaryMode(settings.salaryMode || DEFAULTS.salaryMode);
   document.getElementById('workDaysPerMonth').value = settings.workDaysPerMonth;
   // 放在赋值之后：双休/单休时用自动算出的天数覆盖，自定义时保留已存值
   selectWorkDayMode(settings.workDayMode || 'double');
@@ -1342,8 +1461,6 @@ function fillSettingsForm() {
   document.getElementById('endTime').value = settings.endTime;
   document.getElementById('lunchStart').value = settings.lunchStart;
   document.getElementById('lunchEnd').value = settings.lunchEnd;
-  document.getElementById('coffeePrice').value = settings.coffeePrice;
-  document.getElementById('lunchPrice').value = settings.lunchPrice;
 }
 
 function getDefaultItems() {
@@ -1358,8 +1475,74 @@ function getDefaultItems() {
 }
 
 // ============ Calculations ============
+// 个税税率表（综合所得年度税率；累计预扣法下，全年税额与按年计算一致）
+const IIT_BRACKETS = [
+  { limit: 36000,   rate: 0.03, quick: 0 },
+  { limit: 144000,  rate: 0.10, quick: 2520 },
+  { limit: 300000,  rate: 0.20, quick: 16920 },
+  { limit: 420000,  rate: 0.25, quick: 31920 },
+  { limit: 660000,  rate: 0.30, quick: 52920 },
+  { limit: 960000,  rate: 0.35, quick: 85920 },
+  { limit: Infinity, rate: 0.45, quick: 181920 }
+];
+const IIT_THRESHOLD_MONTHLY = 5000; // 个税起征点（元/月）
+
+function calcIIT(annualTaxable) {
+  if (!(annualTaxable > 0)) return 0;
+  const b = IIT_BRACKETS.find(x => annualTaxable <= x.limit);
+  return annualTaxable * b.rate - b.quick;
+}
+
+// 税前月薪 -> 月均到手：五险一金按各自缴费基数与分项比例，个税按累计预扣法折算全年
+function calcNetFromGross(o) {
+  const gross = Math.max(0, o.gross || 0);
+  const socialBase = o.socialBase > 0 ? o.socialBase : gross;
+  const fundBase = o.fundBase > 0 ? o.fundBase : gross;
+  const social = socialBase * (o.pensionRate + o.medicalRate + o.unemploymentRate) / 100;
+  const fund = fundBase * o.fundRate / 100;
+  const insurance = social + fund; // 五险一金个人部分
+  const special = o.special || 0;  // 专项附加扣除合计（元/月）
+  const annualTaxable = Math.max(0, (gross - insurance - special - IIT_THRESHOLD_MONTHLY) * 12);
+  const annualTax = calcIIT(annualTaxable);
+  return { social, fund, insurance, annualTax, net: (gross * 12 - insurance * 12 - annualTax) / 12 };
+}
+
+// 收集测算参数，read(id) 决定数据来自设置页表单还是已保存的 settings
+function readTaxParams(read) {
+  return {
+    gross: read('monthlySalary'),
+    socialBase: read('socialBase'),
+    fundBase: read('fundBase'),
+    pensionRate: read('pensionRate'),
+    medicalRate: read('medicalRate'),
+    unemploymentRate: read('unemploymentRate'),
+    fundRate: read('fundRate'),
+    special: SPECIAL_ITEMS.reduce((sum, it) => sum + read(it.key), 0)
+  };
+}
+
+function taxParamsFromForm() {
+  return readTaxParams(id => {
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? 0 : v;
+  });
+}
+
+function taxParamsFromSettings() {
+  return readTaxParams(key => {
+    const v = parseFloat(settings[key]);
+    return isNaN(v) ? 0 : v;
+  });
+}
+
+// 统计口径：税前模式只算税前月薪；税后模式按缴费参数折算到手金额
+function getMonthlyNet() {
+  if ((settings.salaryMode || DEFAULTS.salaryMode) !== 'net') return settings.monthlySalary;
+  return calcNetFromGross(taxParamsFromSettings()).net;
+}
+
 function getHourlyRate() {
-  const salary = settings.monthlySalary;
+  const salary = getMonthlyNet();
   const workDays = settings.workDaysPerMonth;
   const startH = parseInt(settings.startTime.split(':')[0]);
   const startM = parseInt(settings.startTime.split(':')[1]);
@@ -1780,7 +1963,7 @@ function updateStats() {
   // Monthly overview
   const monthWorked = getWorkedDaysThisMonth();
   const monthEarned = monthWorked * dailyHours * getHourlyRate();
-  const monthTotal = settings.monthlySalary;
+  const monthTotal = getMonthlyNet();
   const monthProgress = settings.workDaysPerMonth > 0 ? (monthWorked / settings.workDaysPerMonth) * 100 : 0;
 
   document.getElementById('monthEarned').textContent = formatMoney(monthEarned);
@@ -1789,22 +1972,6 @@ function updateStats() {
   document.getElementById('monthEarnedVal').textContent = formatMoney(monthEarned);
   document.getElementById('monthProgress').style.width = monthProgress.toFixed(0) + '%';
   document.getElementById('monthProgressVal').textContent = monthProgress.toFixed(0) + '%';
-
-  // Purchasing power
-  const todayState = getCurrentWorkState();
-  const todayEarned = todayState.earnedToday;
-  const coffees = settings.coffeePrice > 0 ? Math.floor(todayEarned / settings.coffeePrice) : 0;
-  const lunches = settings.lunchPrice > 0 ? Math.floor(todayEarned / settings.lunchPrice) : 0;
-  const moviePrice = 55;
-  const movies = Math.floor(todayEarned / moviePrice);
-
-  const maxVal = Math.max(coffees, lunches, movies, 1);
-  document.getElementById('powerCoffee').style.width = (coffees / maxVal * 100) + '%';
-  document.getElementById('powerCoffeeVal').textContent = coffees + '杯';
-  document.getElementById('powerLunch').style.width = (lunches / maxVal * 100) + '%';
-  document.getElementById('powerLunchVal').textContent = lunches + '顿';
-  document.getElementById('powerMovie').style.width = (movies / maxVal * 100) + '%';
-  document.getElementById('powerMovieVal').textContent = movies + '张';
 }
 
 // ============ Paid Leave ============
