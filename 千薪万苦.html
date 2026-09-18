@@ -1,0 +1,1963 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>千薪万苦</title>
+
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230f0f0f'/%3E%3Ccircle%20cx='32'%20cy='32'%20r='19'%20fill='none'%20stroke='%23c8ff00'%20stroke-width='5'/%3E%3Cpath%20d='M32%2020v13l9%206'%20fill='none'%20stroke='%23c8ff00'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  color-scheme: dark; /* 让日期/时间选择器等原生控件跟随暗色主题 */
+  --bg: #0f0f0f;
+  --card: #1a1a1a;
+  --card-light: #f5f5f5;
+  --accent: #c8ff00;
+  --accent-dim: #9bc200;
+  --accent-dark: #1a1a1a;
+  --text: #ffffff;
+  --text-dim: #999;
+  --text-dark: #333;
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* 移动端浏览器地址栏收缩时不留空白 */
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  padding-bottom: 80px;
+  display: none;
+}
+.screen.active { display: block; }
+
+.screen::-webkit-scrollbar { width: 4px; }
+.screen::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 4px 16px;
+}
+.header .logo {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.header .logo span { color: var(--accent); }
+.header .icon-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #222;
+  border: none;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+}
+.header .icon-btn:hover { background: #333; }
+
+/* Timer Card */
+.timer-card {
+  background: linear-gradient(145deg, #1e1e1e, #161616);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  text-align: center;
+  border: 1px solid #2a2a2a;
+}
+.timer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.timer-status .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s infinite;
+}
+.timer-status.paused .dot { background: #ff6b6b; animation: none; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+.timer-display {
+  font-size: 56px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 2px;
+  color: var(--text);
+  margin-bottom: 8px;
+  font-family: "SF Mono", "Consolas", monospace;
+}
+.timer-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.timer-progress {
+  width: 100%;
+  height: 6px;
+  background: #2a2a2a;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.timer-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width .5s ease;
+}
+.timer-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.timer-quote {
+  font-size: 13px;
+  color: #aaa;
+  padding: 10px 0 0;
+  border-top: 1px solid #2a2a2a;
+  line-height: 1.5;
+}
+
+/* Stats Cards */
+.stats-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.stat-card {
+  flex: 1;
+  min-width: 0; /* 同上：避免卡片内长文本把 flex 项撑出容器 */
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+}
+.stat-card.green {
+  background: var(--accent);
+  color: #000;
+}
+.stat-card.gray {
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  color: var(--text);
+}
+.stat-card .label {
+  font-size: 12px;
+  opacity: .7;
+  margin-bottom: 6px;
+}
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.stat-card .sub {
+  font-size: 11px;
+  opacity: .6;
+  margin-top: 4px;
+}
+.stat-card .icon {
+  position: absolute;
+  top: 12px; right: 12px;
+  font-size: 16px;
+  opacity: .5;
+}
+.stat-card .link {
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 8px;
+  display: block;
+  cursor: pointer;
+}
+
+/* Settings Screen */
+.settings-card {
+  background: #1a1a1a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  border: 1px solid #2a2a2a;
+}
+.settings-card h3 {
+  font-size: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; /* 作为 grid/flex 项时，默认 min-width:auto 会被输入框固有宽度撑开轨道 */
+}
+.field-group label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.field-group .field-hint {
+  font-size: 11px;
+  color: #777;
+  line-height: 1.45;
+}
+.field-group .field-hint:empty { display: none; }
+.field-group input {
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 16px; /* 移动端 16px 以下会触发 iOS Safari 聚焦自动放大 */
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  min-width: 0;
+  transition: border-color .2s;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.field-group input:focus { border-color: var(--accent); }
+.field-group input[type="date"],
+.field-group input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 42px;
+  line-height: 1.2;
+}
+.field-group input::placeholder { color: #555; }
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+.btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+}
+.btn-primary:hover { background: var(--accent-dim); }
+.btn-secondary {
+  background: #2a2a2a;
+  color: var(--text);
+}
+.btn-secondary:hover { background: #333; }
+.btn-dark {
+  background: #000;
+  color: #fff;
+}
+.btn-dark:hover { background: #222; }
+
+/* Consumption Screen */
+.consumption-hero {
+  text-align: center;
+  padding: 24px 16px;
+  margin-bottom: 16px;
+}
+.consumption-hero h2 {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+.consumption-hero h2 span { color: var(--accent); }
+.consumption-hero p {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.consumption-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.consumption-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  position: relative;
+  cursor: pointer;
+  transition: transform .15s, border-color .15s;
+}
+.consumption-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.consumption-card .item-name {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.consumption-card .item-price {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.consumption-card .item-time {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.consumption-card .item-time .mins {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin-right: 4px;
+}
+.consumption-card .item-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #262626;
+}
+.consumption-card .item-action {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 8px;
+  background: #262626;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+.consumption-card .item-action:hover { background: #333; color: var(--text); }
+.consumption-card .item-action.danger { color: #d98a8a; }
+.consumption-card .item-action.danger:hover { background: #3a1f1f; color: #ff7b7b; }
+.consumption-card .item-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+}
+
+.add-card {
+  border: 2px dashed #333;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  min-height: 100px;
+  transition: border-color .2s;
+}
+.add-card:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Paid Leave Timer */
+.paid-leave-card {
+  background: var(--accent);
+  color: #000;
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+.paid-leave-card h3 {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+.paid-leave-card .desc {
+  font-size: 12px;
+  opacity: .7;
+  margin-bottom: 16px;
+}
+.paid-leave-timer {
+  font-size: 48px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Consolas", monospace;
+  margin-bottom: 8px;
+}
+.paid-leave-earned {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.paid-leave-count {
+  font-size: 12px;
+  opacity: .6;
+  margin-bottom: 16px;
+}
+
+/* Device Cost */
+.cost-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.cost-card h3 {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.cost-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+.cost-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cost-result {
+  background: var(--accent);
+  color: #000;
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  text-align: center;
+}
+.cost-result .rate {
+  font-size: 24px;
+  font-weight: 700;
+}
+.cost-result .rate-label {
+  font-size: 12px;
+  opacity: .7;
+}
+.cost-result .usage {
+  font-size: 12px;
+  opacity: .7;
+  margin-top: 2px;
+}
+.device-item {
+  position: relative;
+  border-top: 1px solid #262626;
+  margin-top: 14px;
+}
+.device-item:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+.device-item .device-name {
+  padding-right: 32px; /* 给右上角的删除按钮留位 */
+  margin-bottom: 10px;
+}
+.device-item .device-del {
+  position: absolute;
+  top: 0; right: 0;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  border: none;
+  color: #999;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.device-item .device-del:hover { background: #3a3a3a; color: #fff; }
+.add-device {
+  border: 2px dashed #333;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  margin-top: 14px;
+  transition: border-color .2s, color .2s;
+}
+.add-device:hover { border-color: var(--accent); color: var(--accent); }
+.add-device.limit,
+.add-device.limit:hover {
+  border-color: #2a2a2a;
+  color: #555;
+  cursor: default;
+}
+
+/* Annual Trajectory */
+.trajectory-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.trajectory-card h3 {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.trajectory-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+.trajectory-stats {
+  display: flex;
+  gap: 12px;
+}
+.trajectory-stat {
+  flex: 1;
+  text-align: center;
+  padding: 10px;
+  background: #222;
+  border-radius: var(--radius-sm);
+}
+.trajectory-stat .val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.trajectory-stat .lbl {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Bottom Nav */
+.bottom-nav {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 64px;
+  background: rgba(15, 15, 15, .95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  transition: all .2s;
+  color: var(--text-dim);
+}
+.nav-item.active {
+  color: var(--text);
+  background: rgba(200, 255, 0, .12);
+}
+.nav-item .nav-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.nav-item .nav-label {
+  font-size: 10px;
+  font-weight: 500;
+}
+.nav-item.active .nav-label { color: var(--accent); }
+
+/* Modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 100;
+  padding: 16px 0;
+  overflow-y: auto; /* tall modal: keep the buttons reachable on short screens */
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: #1a1a1a;
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 90%;
+  max-width: 360px;
+  border: 1px solid #2a2a2a;
+  margin: auto; /* stays centered, and scrolls instead of clipping when too tall */
+}
+.modal h3 {
+  font-size: 18px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal h3 .close {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 22px;
+  background: none;
+  border: none;
+}
+.modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* Emoji picker */
+.emoji-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-top: 2px;
+}
+.emoji-option {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.emoji-option:hover { border-color: var(--accent-dim); }
+.emoji-option.active {
+  border-color: var(--accent);
+  background: rgba(200, 255, 0, .12);
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #333;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  opacity: 0;
+  transition: all .3s;
+  z-index: 200;
+  pointer-events: none;
+  max-width: 88%;
+  text-align: center;
+  line-height: 1.4;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Section title */
+.section-title {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 16px 0 8px;
+  padding: 0 4px;
+}
+
+/* Stats Screen */
+.stats-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.stats-card h3 {
+  font-size: 15px;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+}
+.stats-card .big-val {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.stats-card .sub-val {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.stats-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.stats-bar-row .lbl {
+  width: 60px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.stats-bar-row .bar {
+  flex: 1;
+  height: 8px;
+  background: #222;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.stats-bar-row .bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+}
+.stats-bar-row .val {
+  width: 70px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* Segmented control (休息制度) */
+.seg-control {
+  display: flex;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.seg-btn {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+.seg-btn + .seg-btn { border-left: 1px solid #333; }
+.seg-btn.active {
+  background: var(--accent);
+  color: #000;
+}
+
+/* 移动端适配：窄屏下日期/数字输入并排会挤，改为单列 */
+@media (max-width: 380px) {
+  .cost-fields { grid-template-columns: 1fr; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .screen { padding: 12px; padding-bottom: 80px; }
+  .timer-display { font-size: 48px; letter-spacing: 1px; }
+  .consumption-card { padding: 12px; }
+  /* 金额位数多时 28px 会顶出卡片，窄屏缩小并收紧内边距 */
+  .stat-card { padding: 12px; }
+  .stat-card .value { font-size: 22px; }
+}
+/* 横屏 / 矮屏：避免计时卡片把内容顶出屏幕 */
+@media (max-height: 560px) {
+  .timer-card { padding: 16px; }
+  .timer-display { font-size: 40px; }
+}
+</style>
+
+</head>
+<body>
+<div id="app">
+  <!-- Timer Screen -->
+  <div class="screen active" id="screen-timer">
+    <div class="header">
+      <div class="logo">千<span>薪</span>万苦</div>
+      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+    </div>
+    <div class="timer-card">
+      <div class="timer-status" id="workStatus">
+        <span class="dot"></span>
+        <span id="statusText">工作中</span>
+      </div>
+      <div class="timer-display" id="countdownDisplay">00:00:00</div>
+      <div class="timer-label" id="countdownLabel">距离今天下班</div>
+      <div class="timer-progress">
+        <div class="timer-progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div class="timer-range">
+        <span id="startTimeLabel">09:00</span>
+        <span id="endTimeLabel">18:00</span>
+      </div>
+      <div class="timer-quote" id="dailyQuote">今日格言：下班不是奖励，是应得。</div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card green">
+        <div class="label">今日已赚</div>
+        <div class="value" id="earnedToday">¥0.00</div>
+        <div class="sub" id="hourlyRate">¥0.00/小时</div>
+      </div>
+      <div class="stat-card gray">
+        <div class="label">本月已赚</div>
+        <div class="value" id="homeMonthEarned">¥0.00</div>
+        <div class="sub" id="homeMonthDays">已工作 0 天 / 22 天</div>
+        <div class="link" onclick="switchScreen('stats')">查看更多数据 →</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Consumption Screen -->
+  <div class="screen" id="screen-consumption">
+    <div class="header">
+      <div class="logo">千<span>薪</span>万苦</div>
+      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+    </div>
+    <div class="consumption-hero">
+      <h2>你买的不是东西<br>是<span>上班时间</span>。</h2>
+      <p>每一笔消费，都等于你用生命换来的工作时间</p>
+    </div>
+    <div class="consumption-grid" id="consumptionGrid"></div>
+    <div class="add-card" id="addCard" onclick="openAddModal()">
+      + 添加新消费项目
+    </div>
+  </div>
+
+  <!-- Stats Screen -->
+  <div class="screen" id="screen-stats">
+    <div class="header">
+      <div class="logo">千<span>薪</span>万苦</div>
+      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+    </div>
+    <div class="section-title">一些不必严肃的统计</div>
+
+    <div class="paid-leave-card" id="paidLeaveCard">
+      <h3>带薪离席</h3>
+      <div class="desc">离开工位的时间，也是带薪的时间</div>
+      <div class="paid-leave-timer" id="paidLeaveTimer">00:00:00</div>
+      <div class="paid-leave-earned" id="paidLeaveEarned">¥0.00</div>
+      <div class="paid-leave-count" id="paidLeaveCount">已记录 0 次</div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="paidLeaveResetBtn" onclick="resetPaidLeave()">重置</button>
+        <button class="btn btn-dark" id="paidLeaveBtn" onclick="togglePaidLeave()">开始计时</button>
+      </div>
+    </div>
+
+    <div class="cost-card">
+      <h3>设备使用成本</h3>
+      <div class="desc">按购买时间自动折算每小时成本，可添加多台</div>
+      <div id="deviceList"></div>
+      <div class="add-device" onclick="addDevice()">+ 添加设备</div>
+    </div>
+
+    <div class="trajectory-card">
+      <h3>年度工资轨迹</h3>
+      <div class="desc">今年你已通过上班换来了多少</div>
+      <div class="trajectory-stats">
+        <div class="trajectory-stat">
+          <div class="val" id="annualEarned">¥0</div>
+          <div class="lbl">年度已赚</div>
+        </div>
+        <div class="trajectory-stat">
+          <div class="val" id="annualDays">0天</div>
+          <div class="lbl">已过工作日</div>
+        </div>
+        <div class="trajectory-stat">
+          <div class="val" id="annualRemain">¥0</div>
+          <div class="lbl">剩余预计</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-card">
+      <h3>本月概览</h3>
+      <div class="big-val" id="monthEarned">¥0.00</div>
+      <div class="sub-val" id="monthDays">已工作 0 天 / 22 天</div>
+      <div style="margin-top:16px">
+        <div class="stats-bar-row">
+          <span class="lbl">已赚</span>
+          <div class="bar"><div class="bar-fill" id="monthEarnedBar" style="width:0%"></div></div>
+          <span class="val" id="monthEarnedVal">¥0</span>
+        </div>
+        <div class="stats-bar-row">
+          <span class="lbl">进度</span>
+          <div class="bar"><div class="bar-fill" id="monthProgress" style="width:0%"></div></div>
+          <span class="val" id="monthProgressVal">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-card">
+      <h3>购买力换算</h3>
+      <div class="stats-bar-row">
+        <span class="lbl">咖啡</span>
+        <div class="bar"><div class="bar-fill" id="powerCoffee" style="width:0%"></div></div>
+        <span class="val" id="powerCoffeeVal">0杯</span>
+      </div>
+      <div class="stats-bar-row">
+        <span class="lbl">午饭</span>
+        <div class="bar"><div class="bar-fill" id="powerLunch" style="width:0%"></div></div>
+        <span class="val" id="powerLunchVal">0顿</span>
+      </div>
+      <div class="stats-bar-row">
+        <span class="lbl">电影</span>
+        <div class="bar"><div class="bar-fill" id="powerMovie" style="width:0%"></div></div>
+        <span class="val" id="powerMovieVal">0张</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Screen -->
+  <div class="screen" id="screen-settings">
+    <div class="header">
+      <div class="logo">千<span>薪</span>万苦</div>
+      <button class="icon-btn" onclick="switchScreen('timer')">✕</button>
+    </div>
+    <div class="settings-card">
+      <h3>📋 工作参数</h3>
+      <div class="settings-grid">
+        <div class="field-group" style="grid-column:1/-1">
+          <label>休息制度</label>
+          <div class="seg-control" id="workDayMode">
+            <button type="button" class="seg-btn" data-mode="double" onclick="selectWorkDayMode('double')">双休</button>
+            <button type="button" class="seg-btn" data-mode="single" onclick="selectWorkDayMode('single')">单休</button>
+            <button type="button" class="seg-btn" data-mode="custom" onclick="selectWorkDayMode('custom')">自定义</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>税前月薪 (¥)</label>
+          <input type="number" id="monthlySalary" placeholder="3000" value="3000">
+        </div>
+        <div class="field-group">
+          <label>每月工作天数</label>
+          <input type="number" id="workDaysPerMonth" placeholder="22" value="22">
+          <div class="field-hint" id="workDaysHint"></div>
+        </div>
+        <div class="field-group">
+          <label>上班时间</label>
+          <input type="time" id="startTime" value="09:00">
+        </div>
+        <div class="field-group">
+          <label>下班时间</label>
+          <input type="time" id="endTime" value="18:00">
+        </div>
+        <div class="field-group">
+          <label>午休开始</label>
+          <input type="time" id="lunchStart" value="12:00">
+        </div>
+        <div class="field-group">
+          <label>午休结束</label>
+          <input type="time" id="lunchEnd" value="13:00">
+        </div>
+        <div class="field-group">
+          <label>咖啡单价 (¥)</label>
+          <input type="number" id="coffeePrice" placeholder="15" value="15">
+        </div>
+        <div class="field-group">
+          <label>午饭单价 (¥)</label>
+          <input type="number" id="lunchPrice" placeholder="35" value="35">
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="resetSettings()">取消</button>
+        <button class="btn btn-primary" onclick="saveSettings()">保存参数</button>
+      </div>
+    </div>
+    <div class="settings-card">
+      <h3>ℹ 关于</h3>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.6">
+        千薪万苦 —— 把你的薪水变成看得见的时间。<br><br>
+        灵感来自打工人的日常：每一分钟都在用生命换钱，每一笔消费都是在花上班时间买的。<br><br>
+        数据存储在本地，不会上传任何服务器。
+      </p>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav">
+    <div class="nav-item active" data-screen="timer" onclick="switchScreen('timer')">
+      <div class="nav-icon">⏱</div>
+      <div class="nav-label">计时</div>
+    </div>
+    <div class="nav-item" data-screen="consumption" onclick="switchScreen('consumption')">
+      <div class="nav-icon">🛒</div>
+      <div class="nav-label">消费</div>
+    </div>
+    <div class="nav-item" data-screen="stats" onclick="switchScreen('stats')">
+      <div class="nav-icon">📊</div>
+      <div class="nav-label">统计</div>
+    </div>
+    <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">
+      <div class="nav-icon">⚙</div>
+      <div class="nav-label">设置</div>
+    </div>
+  </div>
+
+  <!-- Add / Edit Consumption Modal -->
+  <div class="modal-overlay" id="addModal">
+    <div class="modal">
+      <h3><span id="modalTitle">添加消费项目</span> <button class="close" onclick="closeAddModal()">×</button></h3>
+      <div class="modal-fields">
+        <div class="field-group">
+          <label>项目名称</label>
+          <input type="text" id="newItemName" placeholder="例如：一杯奶茶">
+        </div>
+        <div class="field-group">
+          <label>价格 (¥)</label>
+          <input type="number" id="newItemPrice" placeholder="20">
+        </div>
+        <div class="field-group">
+          <label>图标 (emoji)</label>
+          <div class="emoji-picker" id="emojiPicker"></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
+        <button class="btn btn-primary" id="modalSubmitBtn" onclick="submitConsumptionItem()">添加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+// ============ Data & State ============
+const DEFAULTS = {
+  monthlySalary: 3000,
+  workDaysPerMonth: 22,
+  workDayMode: 'double',
+  startTime: '09:00',
+  endTime: '18:00',
+  lunchStart: '12:00',
+  lunchEnd: '13:00',
+  coffeePrice: 15,
+  lunchPrice: 35
+};
+
+const QUOTES = [
+  '下班不是奖励，是应得。',
+  '摸鱼不是偷懒，是拿回属于你的时间。',
+  '你卖的不是时间，是生命。',
+  '上班如上坟，下班如出狱。',
+  '工资到账的那天，是一月中最快乐的一天。',
+  '不是工作需要你，是你需要工资。',
+  '打工人的快乐，就是发工资和下班。',
+  '每一分钟的摸鱼，都是对资本的微小胜利。',
+  '上班痛苦没有关系，下班快乐就好。',
+  '你的时间很贵，别浪费在不值得的事情上。'
+];
+
+let settings = {};
+let consumptionItems = [];
+let devices = [];
+const MAX_DEVICES = 10;
+let paidLeaveSessions = [];
+let paidLeaveActive = false;
+let paidLeaveStart = null;
+let editingItemIndex = null; // null = adding, otherwise index of the item being edited
+
+// ============ Persistence ============
+function load() {
+  try {
+    settings = JSON.parse(localStorage.getItem('qianxwk_settings')) || {...DEFAULTS};
+    consumptionItems = JSON.parse(localStorage.getItem('qianxwk_items')) || getDefaultItems();
+    devices = JSON.parse(localStorage.getItem('qianxwk_devices')) || [];
+    paidLeaveSessions = JSON.parse(localStorage.getItem('qianxwk_leave')) || [];
+  } catch(e) {
+    settings = {...DEFAULTS};
+    consumptionItems = getDefaultItems();
+    devices = [];
+    paidLeaveSessions = [];
+  }
+  // Fill defaults
+  for (const k in DEFAULTS) {
+    if (settings[k] === undefined || settings[k] === '') settings[k] = DEFAULTS[k];
+  }
+}
+
+function selectWorkDayMode(mode) {
+  settings.workDayMode = mode;
+  const input = document.getElementById('workDaysPerMonth');
+  const hint = document.getElementById('workDaysHint');
+  if (mode === 'double' || mode === 'single') {
+    // 按当年节假日与调休自动折算月均工作日，不允许手改
+    input.value = autoWorkDaysPerMonth(mode);
+    input.disabled = true;
+    if (hint) hint.textContent = '自动计算，已含法定节假日与调休补班';
+  } else {
+    input.disabled = false;
+    if (hint) hint.textContent = '';
+  }
+  document.querySelectorAll('#workDayMode .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+}
+
+function saveSettings() {
+  settings.monthlySalary = parseFloat(document.getElementById('monthlySalary').value) || DEFAULTS.monthlySalary;
+  settings.workDaysPerMonth = parseFloat(document.getElementById('workDaysPerMonth').value) || DEFAULTS.workDaysPerMonth;
+  settings.workDayMode = settings.workDayMode || 'double';
+  settings.startTime = document.getElementById('startTime').value || DEFAULTS.startTime;
+  settings.endTime = document.getElementById('endTime').value || DEFAULTS.endTime;
+  settings.lunchStart = document.getElementById('lunchStart').value || DEFAULTS.lunchStart;
+  settings.lunchEnd = document.getElementById('lunchEnd').value || DEFAULTS.lunchEnd;
+  settings.coffeePrice = parseFloat(document.getElementById('coffeePrice').value) || DEFAULTS.coffeePrice;
+  settings.lunchPrice = parseFloat(document.getElementById('lunchPrice').value) || DEFAULTS.lunchPrice;
+  localStorage.setItem('qianxwk_settings', JSON.stringify(settings));
+  showToast('参数已保存');
+  switchScreen('timer');
+  updateAll();
+}
+
+function saveItems() {
+  localStorage.setItem('qianxwk_items', JSON.stringify(consumptionItems));
+}
+
+function saveLeave() {
+  localStorage.setItem('qianxwk_leave', JSON.stringify(paidLeaveSessions));
+}
+
+function resetSettings() {
+  fillSettingsForm();
+  switchScreen('timer');
+}
+
+function fillSettingsForm() {
+  document.getElementById('monthlySalary').value = settings.monthlySalary;
+  document.getElementById('workDaysPerMonth').value = settings.workDaysPerMonth;
+  // 放在赋值之后：双休/单休时用自动算出的天数覆盖，自定义时保留已存值
+  selectWorkDayMode(settings.workDayMode || 'double');
+  document.getElementById('startTime').value = settings.startTime;
+  document.getElementById('endTime').value = settings.endTime;
+  document.getElementById('lunchStart').value = settings.lunchStart;
+  document.getElementById('lunchEnd').value = settings.lunchEnd;
+  document.getElementById('coffeePrice').value = settings.coffeePrice;
+  document.getElementById('lunchPrice').value = settings.lunchPrice;
+}
+
+function getDefaultItems() {
+  return [
+    {name:'一杯咖啡', price:15, icon:'☕'},
+    {name:'一顿午饭', price:35, icon:'🍱'},
+    {name:'一张电影票', price:55, icon:'🎬'},
+    {name:'一场演出', price:680, icon:'🎤'},
+    {name:'一双球鞋', price:899, icon:'👟'},
+    {name:'一杯奶茶', price:20, icon:'🧋'}
+  ];
+}
+
+// ============ Calculations ============
+function getHourlyRate() {
+  const salary = settings.monthlySalary;
+  const workDays = settings.workDaysPerMonth;
+  const startH = parseInt(settings.startTime.split(':')[0]);
+  const startM = parseInt(settings.startTime.split(':')[1]);
+  const endH = parseInt(settings.endTime.split(':')[0]);
+  const endM = parseInt(settings.endTime.split(':')[1]);
+  const lunchStartH = parseInt(settings.lunchStart.split(':')[0]);
+  const lunchStartM = parseInt(settings.lunchStart.split(':')[1]);
+  const lunchEndH = parseInt(settings.lunchEnd.split(':')[0]);
+  const lunchEndM = parseInt(settings.lunchEnd.split(':')[1]);
+
+  const workMinutes = (endH * 60 + endM) - (startH * 60 + startM);
+  const lunchMinutes = (lunchEndH * 60 + lunchEndM) - (lunchStartH * 60 + lunchStartM);
+  const actualWorkMinutes = Math.max(0, workMinutes - lunchMinutes);
+  const dailyHours = actualWorkMinutes / 60;
+  const monthlyHours = dailyHours * workDays;
+  return monthlyHours > 0 ? salary / monthlyHours : 0;
+}
+
+function getMinuteRate() {
+  return getHourlyRate() / 60;
+}
+
+// 每个工作日的实际工作时长（小时，已扣除午休）
+function getDailyHours() {
+  const start = settings.startTime.split(':');
+  const end = settings.endTime.split(':');
+  const lunchS = settings.lunchStart.split(':');
+  const lunchE = settings.lunchEnd.split(':');
+  const workMins = (parseInt(end[0])*60+parseInt(end[1])) - (parseInt(start[0])*60+parseInt(start[1]));
+  const lunchMins = (parseInt(lunchE[0])*60+parseInt(lunchE[1])) - (parseInt(lunchS[0])*60+parseInt(lunchS[1]));
+  return Math.max(0, workMins - lunchMins) / 60;
+}
+
+function getCurrentWorkState() {
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+
+  const startH = parseInt(settings.startTime.split(':')[0]);
+  const startM = parseInt(settings.startTime.split(':')[1]);
+  const endH = parseInt(settings.endTime.split(':')[0]);
+  const endM = parseInt(settings.endTime.split(':')[1]);
+  const lunchStartH = parseInt(settings.lunchStart.split(':')[0]);
+  const lunchStartM = parseInt(settings.lunchStart.split(':')[1]);
+  const lunchEndH = parseInt(settings.lunchEnd.split(':')[0]);
+  const lunchEndM = parseInt(settings.lunchEnd.split(':')[1]);
+
+  const start = startH * 60 + startM;
+  const end = endH * 60 + endM;
+  const lunchS = lunchStartH * 60 + lunchStartM;
+  const lunchE = lunchEndH * 60 + lunchEndM;
+
+  let workedMinutes = 0;
+  let isWorking = false;
+  let isLunch = false;
+  let remainingMinutes = 0;
+
+  if (nowMinutes < start) {
+    isWorking = false;
+    workedMinutes = 0;
+    remainingMinutes = (end - start) - (lunchE - lunchS);
+  } else if (nowMinutes >= end) {
+    isWorking = false;
+    // Calculate total worked
+    if (lunchS >= start && lunchE <= end) {
+      workedMinutes = (end - start) - (lunchE - lunchS);
+    } else {
+      workedMinutes = end - start;
+    }
+    remainingMinutes = 0;
+  } else if (nowMinutes >= lunchS && nowMinutes < lunchE) {
+    isWorking = false;
+    isLunch = true;
+    // Worked before lunch
+    workedMinutes = nowMinutes - start;
+    // Remaining after lunch
+    remainingMinutes = end - lunchE;
+  } else if (nowMinutes >= lunchE) {
+    isWorking = true;
+    // Before lunch + after lunch start
+    workedMinutes = (lunchS - start) + (nowMinutes - lunchE);
+    remainingMinutes = end - nowMinutes;
+  } else {
+    isWorking = true;
+    workedMinutes = nowMinutes - start;
+    remainingMinutes = end - nowMinutes - (lunchE - lunchS);
+  }
+
+  workedMinutes = Math.max(0, workedMinutes);
+  remainingMinutes = Math.max(0, remainingMinutes);
+
+  const totalWorkMinutes = (() => {
+    if (lunchS >= start && lunchE <= end) return (end - start) - (lunchE - lunchS);
+    return end - start;
+  })();
+
+  return {
+    workedMinutes,
+    remainingMinutes,
+    totalWorkMinutes,
+    isWorking,
+    isLunch,
+    progress: totalWorkMinutes > 0 ? (workedMinutes / totalWorkMinutes) * 100 : 0,
+    earnedToday: workedMinutes * getMinuteRate(),
+    remainingValue: remainingMinutes * getMinuteRate()
+  };
+}
+
+function formatTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function formatMoney(val) {
+  return '¥' + val.toFixed(2);
+}
+
+function getTodayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+
+// 法定节假日数据：优先联网获取，失败时回退到下面的内置数据
+//   holidays: 放假日期（含调休放假的周末）
+//   workdays: 调休补班日期（原本是周末但需上班）
+//   联网成功后写入 localStorage 缓存（30 天有效）并覆盖内置数据；
+//   内置数据仅为兜底（按国务院办公厅通知录入，每年需更新一次），
+//   两者都拿不到时回退到「按周几判断」，不会报错。
+const HOLIDAY_API = 'https://timor.tech/api/holiday/year/';
+const HOLIDAY_CACHE_PREFIX = 'qianxwk_holiday_';
+const HOLIDAY_CACHE_TTL = 30 * 24 * 60 * 60 * 1000; // 缓存 30 天
+
+const HOLIDAY_DATA = {
+  2026: {
+    holidays: [
+      '2026-01-01','2026-01-02','2026-01-03',                  // 元旦
+      '2026-02-15','2026-02-16','2026-02-17','2026-02-18',     // 春节(9天)
+      '2026-02-19','2026-02-20','2026-02-21','2026-02-22','2026-02-23',
+      '2026-04-04','2026-04-05','2026-04-06',                  // 清明
+      '2026-05-01','2026-05-02','2026-05-03','2026-05-04','2026-05-05', // 劳动节
+      '2026-06-19','2026-06-20','2026-06-21',                  // 端午
+      '2026-09-25','2026-09-26','2026-09-27',                  // 中秋
+      '2026-10-01','2026-10-02','2026-10-03','2026-10-04',     // 国庆(7天)
+      '2026-10-05','2026-10-06','2026-10-07'
+    ],
+    workdays: [
+      '2026-01-04', // 元旦调休
+      '2026-02-14','2026-02-28', // 春节调休
+      '2026-05-09', // 劳动节调休
+      '2026-09-20','2026-10-10'  // 国庆调休
+    ]
+  }
+};
+
+// 运行时生效的节假日集合：内置数据打底，缓存/联网数据覆盖
+const holidaySets = {};
+
+function _holidaySets(year) {
+  if (!holidaySets[year]) {
+    const data = HOLIDAY_DATA[year];
+    if (!data) return null;
+    holidaySets[year] = {
+      holidays: new Set(data.holidays),
+      workdays: new Set(data.workdays)
+    };
+  }
+  return holidaySets[year];
+}
+
+function applyHolidayData(year, holidays, workdays) {
+  holidaySets[year] = {
+    holidays: new Set(holidays),
+    workdays: new Set(workdays)
+  };
+}
+
+function readHolidayCache(year) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HOLIDAY_CACHE_PREFIX + year));
+    if (!raw || !raw.ts || Date.now() - raw.ts > HOLIDAY_CACHE_TTL) return false;
+    if (!raw.holidays || !raw.holidays.length) return false;
+    applyHolidayData(year, raw.holidays, raw.workdays || []);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// 联网获取某年节假日，成功返回 true
+async function fetchHolidayData(year) {
+  try {
+    const res = await fetch(HOLIDAY_API + year);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (json.code !== 0 || !json.holiday) throw new Error('数据格式异常');
+
+    const holidays = [];
+    const workdays = [];
+    Object.keys(json.holiday).forEach(k => {
+      const d = json.holiday[k];
+      if (!d || !d.date) return;
+      (d.holiday ? holidays : workdays).push(d.date);
+    });
+    if (!holidays.length) throw new Error('无节假日数据');
+
+    applyHolidayData(year, holidays, workdays);
+    try {
+      localStorage.setItem(HOLIDAY_CACHE_PREFIX + year, JSON.stringify({
+        ts: Date.now(), holidays, workdays
+      }));
+    } catch (e) { /* 缓存写入失败不影响使用 */ }
+    return true;
+  } catch (e) {
+    return false; // 联网失败沿用内置数据
+  }
+}
+
+// 先读本地缓存立即生效，再联网刷新；同一年只请求一次
+const holidayFetched = {};
+async function refreshHolidays() {
+  const year = new Date().getFullYear();
+  if (holidayFetched[year]) return;
+  holidayFetched[year] = true;
+
+  if (readHolidayCache(year)) { syncAutoWorkDays(); updateAll(); }
+  if (await fetchHolidayData(year)) { syncAutoWorkDays(); updateAll(); }
+}
+
+function fmtDateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function dayType(date) {
+  // 'holiday' 法定放假 / 'makeup' 调休补班 / 'normal'
+  const sets = _holidaySets(date.getFullYear());
+  if (sets) {
+    const key = fmtDateKey(date);
+    if (sets.workdays.has(key)) return 'makeup';
+    if (sets.holidays.has(key)) return 'holiday';
+  }
+  return 'normal';
+}
+
+function isWorkday(date, mode) {
+  const t = dayType(date);
+  if (t === 'makeup') return true;   // 调休补班日：按工作日计
+  if (t === 'holiday') return false;  // 法定放假日：不计工作日
+  const dow = date.getDay();
+  const m = mode || settings.workDayMode;
+  // 单休：仅周日休息（周一至周六上班）
+  if (m === 'single') return dow !== 0;
+  // 双休 / 自定义：按周一至周五计
+  return dow !== 0 && dow !== 6;
+}
+
+// 全年实际工作日数（已含法定节假日与调休补班）
+function countWorkdaysInYear(year, mode) {
+  let count = 0;
+  const d = new Date(year, 0, 1);
+  while (d.getFullYear() === year) {
+    if (isWorkday(d, mode)) count++;
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+// 双休/单休时按当年实际工作日折算的月均天数（自动包含调休）
+function autoWorkDaysPerMonth(mode) {
+  const days = countWorkdaysInYear(new Date().getFullYear(), mode);
+  return Math.max(1, Math.round(days / 12));
+}
+
+// 联网/缓存更新节假日数据后，同步「每月工作天数」的自动值（自定义模式不覆盖）
+function syncAutoWorkDays() {
+  const mode = settings.workDayMode;
+  if (mode !== 'double' && mode !== 'single') return;
+  const input = document.getElementById('workDaysPerMonth');
+  if (!input || !input.disabled) return;
+  input.value = autoWorkDaysPerMonth(mode);
+}
+
+function getWorkedDaysThisMonth() {
+  const now = new Date();
+  const day = now.getDate();
+  // 按休息制度统计本月已过工作日
+  let count = 0;
+  for (let i = 1; i <= day; i++) {
+    if (isWorkday(new Date(now.getFullYear(), now.getMonth(), i))) count++;
+  }
+  return Math.min(count, settings.workDaysPerMonth);
+}
+
+function getWorkedDaysThisYear() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  let count = 0;
+  for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
+    if (isWorkday(d)) count++;
+  }
+  // 自定义模式下按月均摊封顶，避免超过全年预计工作日
+  const annualTotal = settings.workDaysPerMonth * 12;
+  return Math.min(count, annualTotal);
+}
+
+// ============ UI Updates ============
+function updateTimer() {
+  const state = getCurrentWorkState();
+  const remainingSeconds = Math.round(state.remainingMinutes * 60);
+
+  document.getElementById('countdownDisplay').textContent = formatTime(remainingSeconds);
+  document.getElementById('progressFill').style.width = state.progress.toFixed(1) + '%';
+
+  const statusEl = document.getElementById('workStatus');
+  const statusText = document.getElementById('statusText');
+  if (state.isLunch) {
+    statusText.textContent = '午休中';
+    statusEl.classList.add('paused');
+  } else if (state.isWorking) {
+    statusText.textContent = '工作中';
+    statusEl.classList.remove('paused');
+  } else {
+    if (state.remainingMinutes === 0) {
+      statusText.textContent = '已下班';
+    } else {
+      statusText.textContent = '未上班';
+    }
+    statusEl.classList.add('paused');
+  }
+
+  document.getElementById('startTimeLabel').textContent = settings.startTime;
+  document.getElementById('endTimeLabel').textContent = settings.endTime;
+
+  // Earnings
+  document.getElementById('earnedToday').textContent = formatMoney(state.earnedToday);
+  const hourlyRate = getHourlyRate();
+  document.getElementById('hourlyRate').textContent = formatMoney(hourlyRate) + '/小时';
+
+  // 本月概览（与统计页口径一致）
+  const monthWorked = getWorkedDaysThisMonth();
+  const monthEarned = monthWorked * getDailyHours() * getHourlyRate();
+  document.getElementById('homeMonthEarned').textContent = formatMoney(monthEarned);
+  document.getElementById('homeMonthDays').textContent = `已工作 ${monthWorked} 天 / ${settings.workDaysPerMonth} 天`;
+
+  // Daily quote - rotate daily（节假日/调休日给出对应提示）
+  const todayType = dayType(new Date());
+  let quotePrefix = '今日格言：';
+  if (todayType === 'holiday') {
+    quotePrefix = '今日法定节假日 · ';
+  } else if (todayType === 'makeup') {
+    quotePrefix = '今日调休补班 · ';
+  }
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+  const quote = QUOTES[dayOfYear % QUOTES.length];
+  document.getElementById('dailyQuote').textContent = quotePrefix + quote;
+}
+
+function updateConsumption() {
+  const grid = document.getElementById('consumptionGrid');
+  grid.innerHTML = '';
+  const minuteRate = getMinuteRate();
+
+  consumptionItems.forEach((item, idx) => {
+    const minutes = minuteRate > 0 ? item.price / minuteRate : 0;
+    const hours = minutes / 60;
+    const card = document.createElement('div');
+    card.className = 'consumption-card';
+
+    let timeStr;
+    if (minutes < 60) {
+      timeStr = Math.round(minutes) + ' 分钟';
+    } else if (minutes < 1440) {
+      timeStr = hours.toFixed(1) + ' 小时';
+    } else {
+      timeStr = (minutes / 60 / 24).toFixed(1) + ' 天';
+    }
+
+    card.innerHTML = `
+      <div class="item-icon">${item.icon || '📦'}</div>
+      <div class="item-name">${item.name}</div>
+      <div class="item-price">¥${item.price}</div>
+      <div class="item-time"><span class="mins">${Math.round(minutes)}</span>分钟<br><span style="font-size:11px;opacity:.6">${timeStr}</span></div>
+      <div class="item-actions">
+        <button class="item-action" onclick="openEditModal(${idx})">编辑</button>
+        <button class="item-action danger" onclick="deleteItem(${idx})">删除</button>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function updateStats() {
+  // Paid leave
+  updatePaidLeave();
+
+  // Device cost（使用时长随当前时间增长，需定时重算）
+  updateAllDeviceCosts();
+
+  // Annual trajectory
+  const yearlyWorkDays = getWorkedDaysThisYear();
+  const dailyHours = getDailyHours();
+
+  const annualEarned = yearlyWorkDays * dailyHours * getHourlyRate();
+  const annualTotalDays = settings.workDaysPerMonth * 12;
+  const annualRemain = (annualTotalDays - yearlyWorkDays) * dailyHours * getHourlyRate();
+
+  document.getElementById('annualEarned').textContent = '¥' + Math.round(annualEarned).toLocaleString();
+  document.getElementById('annualDays').textContent = yearlyWorkDays + '天';
+  document.getElementById('annualRemain').textContent = '¥' + Math.round(annualRemain).toLocaleString();
+
+  // Monthly overview
+  const monthWorked = getWorkedDaysThisMonth();
+  const monthEarned = monthWorked * dailyHours * getHourlyRate();
+  const monthTotal = settings.monthlySalary;
+  const monthProgress = settings.workDaysPerMonth > 0 ? (monthWorked / settings.workDaysPerMonth) * 100 : 0;
+
+  document.getElementById('monthEarned').textContent = formatMoney(monthEarned);
+  document.getElementById('monthDays').textContent = `已工作 ${monthWorked} 天 / ${settings.workDaysPerMonth} 天`;
+  document.getElementById('monthEarnedBar').style.width = (monthTotal > 0 ? Math.min(100, monthEarned / monthTotal * 100) : 0) + '%';
+  document.getElementById('monthEarnedVal').textContent = formatMoney(monthEarned);
+  document.getElementById('monthProgress').style.width = monthProgress.toFixed(0) + '%';
+  document.getElementById('monthProgressVal').textContent = monthProgress.toFixed(0) + '%';
+
+  // Purchasing power
+  const todayState = getCurrentWorkState();
+  const todayEarned = todayState.earnedToday;
+  const coffees = settings.coffeePrice > 0 ? Math.floor(todayEarned / settings.coffeePrice) : 0;
+  const lunches = settings.lunchPrice > 0 ? Math.floor(todayEarned / settings.lunchPrice) : 0;
+  const moviePrice = 55;
+  const movies = Math.floor(todayEarned / moviePrice);
+
+  const maxVal = Math.max(coffees, lunches, movies, 1);
+  document.getElementById('powerCoffee').style.width = (coffees / maxVal * 100) + '%';
+  document.getElementById('powerCoffeeVal').textContent = coffees + '杯';
+  document.getElementById('powerLunch').style.width = (lunches / maxVal * 100) + '%';
+  document.getElementById('powerLunchVal').textContent = lunches + '顿';
+  document.getElementById('powerMovie').style.width = (movies / maxVal * 100) + '%';
+  document.getElementById('powerMovieVal').textContent = movies + '张';
+}
+
+// ============ Paid Leave ============
+function togglePaidLeave() {
+  if (paidLeaveActive) {
+    // End session
+    const earned = (Date.now() - paidLeaveStart) / 1000 / 60 * getMinuteRate();
+    paidLeaveSessions.push({
+      start: paidLeaveStart,
+      end: Date.now(),
+      earned: earned
+    });
+    saveLeave();
+    paidLeaveActive = false;
+    paidLeaveStart = null;
+    document.getElementById('paidLeaveBtn').textContent = '开始计时';
+    showToast('带薪离席结束！赚了' + formatMoney(earned));
+  } else {
+    paidLeaveActive = true;
+    paidLeaveStart = Date.now();
+    document.getElementById('paidLeaveBtn').textContent = '结束并结算';
+    showToast('开始带薪离席！');
+  }
+  updatePaidLeave();
+}
+
+// 清空带薪离席的全部记录（含正在进行的计时）
+function resetPaidLeave() {
+  if (!paidLeaveActive && paidLeaveSessions.length === 0) {
+    showToast('暂无可重置的记录');
+    return;
+  }
+  if (!confirm('确定重置带薪离席？已记录的时长和金额将全部清空。')) return;
+
+  paidLeaveActive = false;
+  paidLeaveStart = null;
+  paidLeaveSessions = [];
+  saveLeave();
+  document.getElementById('paidLeaveBtn').textContent = '开始计时';
+  updatePaidLeave();
+  showToast('带薪离席已重置');
+}
+
+function updatePaidLeave() {
+  let totalSeconds = 0;
+  let totalEarned = 0;
+
+  if (paidLeaveActive && paidLeaveStart) {
+    totalSeconds = (Date.now() - paidLeaveStart) / 1000;
+    totalEarned = totalSeconds / 60 * getMinuteRate();
+  }
+
+  for (const s of paidLeaveSessions) {
+    totalEarned += s.earned || 0;
+  }
+
+  if (paidLeaveActive && paidLeaveStart) {
+    document.getElementById('paidLeaveTimer').textContent = formatTime(totalSeconds);
+    document.getElementById('paidLeaveEarned').textContent = formatMoney(totalEarned);
+  } else {
+    // Show total from all sessions
+    let totalSessionSeconds = 0;
+    for (const s of paidLeaveSessions) {
+      totalSessionSeconds += (s.end - s.start) / 1000;
+    }
+    document.getElementById('paidLeaveTimer').textContent = formatTime(totalSessionSeconds);
+    document.getElementById('paidLeaveEarned').textContent = formatMoney(totalEarned);
+  }
+
+  document.getElementById('paidLeaveCount').textContent = `已记录 ${paidLeaveSessions.length} 次`;
+}
+
+// ============ Device Cost ============
+function saveDevices() {
+  localStorage.setItem('qianxwk_devices', JSON.stringify(devices));
+}
+
+function renderDevices() {
+  const list = document.getElementById('deviceList');
+  list.innerHTML = '';
+  devices.forEach((d, idx) => {
+    const item = document.createElement('div');
+    item.className = 'device-item';
+    item.innerHTML = `
+      <button class="device-del" onclick="deleteDevice(${idx})" title="删除">×</button>
+      <div class="field-group device-name">
+        <label>设备名称</label>
+        <input type="text" value="${escapeAttr(d.name || '')}" placeholder="例如：耳机" oninput="updateDevice(${idx},'name',this.value)">
+      </div>
+      <div class="cost-fields">
+        <div class="field-group">
+          <label>设备价格 (¥)</label>
+          <input type="number" value="${escapeAttr(d.price)}" placeholder="请输入设备价格" oninput="updateDevice(${idx},'price',this.value)">
+        </div>
+        <div class="field-group">
+          <label>购买时间</label>
+          <input type="date" value="${escapeAttr(d.purchase)}" max="${fmtDateKey(new Date())}" oninput="updateDevice(${idx},'purchase',this.value)">
+        </div>
+      </div>
+      <div class="cost-result">
+        <div class="rate" id="deviceRate-${idx}">¥0.00</div>
+        <div class="rate-label">每小时使用成本</div>
+        <div class="usage" id="deviceUsage-${idx}">未填写购买时间</div>
+      </div>
+    `;
+    list.appendChild(item);
+    updateDeviceCost(idx);
+  });
+
+  // 达到上限时把「添加」按钮置灰并提示
+  const addBtn = document.querySelector('.add-device');
+  if (addBtn) {
+    const limitReached = devices.length >= MAX_DEVICES;
+    addBtn.textContent = limitReached ? '最多 ' + MAX_DEVICES + ' 台设备' : '+ 添加设备';
+    addBtn.classList.toggle('limit', limitReached);
+  }
+}
+
+function escapeAttr(val) {
+  return String(val === undefined || val === null ? '' : val)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+// 只更新状态与该设备的成本，不重绘列表（避免输入框失焦）
+function updateDevice(idx, field, value) {
+  if (!devices[idx]) return;
+  devices[idx][field] = value;
+  saveDevices();
+  updateDeviceCost(idx);
+}
+
+// 从购买时间（YYYY-MM-DD）到现在经过的小时数；未填或日期非法返回 0
+function getUsedHours(purchase) {
+  if (!purchase) return 0;
+  const t = new Date(purchase + 'T00:00:00').getTime();
+  if (isNaN(t)) return 0;
+  return (Date.now() - t) / 3600000;
+}
+
+function formatUsage(hours) {
+  if (hours <= 0) return '未填写购买时间';
+  if (hours < 24) return '已使用 ' + hours.toFixed(1) + ' 小时';
+  return '已使用 ' + Math.floor(hours / 24) + ' 天 · 约 ' + Math.round(hours) + ' 小时';
+}
+
+function updateDeviceCost(idx) {
+  const d = devices[idx];
+  const rateEl = document.getElementById('deviceRate-' + idx);
+  if (!d || !rateEl) return;
+
+  const price = parseFloat(d.price) || 0;
+  const usedHours = getUsedHours(d.purchase);
+  const rate = usedHours > 0 ? price / usedHours : 0;
+
+  rateEl.textContent = '¥' + rate.toFixed(2);
+  const usageEl = document.getElementById('deviceUsage-' + idx);
+  if (usageEl) usageEl.textContent = formatUsage(usedHours);
+}
+
+// 使用时长随时间增长，统计页每秒刷新时同步更新
+function updateAllDeviceCosts() {
+  devices.forEach((d, idx) => updateDeviceCost(idx));
+}
+
+function addDevice() {
+  if (devices.length >= MAX_DEVICES) {
+    showToast('最多添加 ' + MAX_DEVICES + ' 台设备');
+    return;
+  }
+  devices.push({ name: '', price: '', purchase: '' });
+  saveDevices();
+  renderDevices();
+  const items = document.querySelectorAll('#deviceList .device-name input');
+  if (items.length) items[items.length - 1].focus();
+}
+
+function deleteDevice(idx) {
+  devices.splice(idx, 1);
+  saveDevices();
+  renderDevices();
+  showToast('已删除');
+}
+
+// ============ Emoji Picker ============
+const EMOJI_OPTIONS = ['📦','☕','🍱','🧋','🍔','🍜','🍺','🎬','🎤','🎮','📱','💻','👟','👕','👗','🎧','🚗','🏨','🚲','🐱','🐶','🎁','📚','🛒'];
+
+let selectedIcon = '📦';
+
+function renderEmojiPicker() {
+  const picker = document.getElementById('emojiPicker');
+  const list = EMOJI_OPTIONS.slice();
+  // 老数据里的图标可能不在预设里，临时补进列表，避免当前选中项看不到
+  if (selectedIcon && list.indexOf(selectedIcon) === -1) list.unshift(selectedIcon);
+  picker.innerHTML = '';
+  list.forEach(function (emoji) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'emoji-option' + (emoji === selectedIcon ? ' active' : '');
+    btn.textContent = emoji;
+    btn.onclick = function () {
+      selectedIcon = emoji;
+      renderEmojiPicker();
+    };
+    picker.appendChild(btn);
+  });
+}
+
+// ============ Consumption Items ============
+// add and edit share one modal; editingItemIndex tells them apart
+function submitConsumptionItem() {
+  const name = document.getElementById('newItemName').value.trim();
+  const price = parseFloat(document.getElementById('newItemPrice').value);
+  const icon = selectedIcon || '📦';
+
+  if (!name || !price || price <= 0) {
+    showToast('请填写名称和价格');
+    return;
+  }
+
+  if (editingItemIndex === null) {
+    consumptionItems.push({name, price, icon});
+    showToast('已添加：' + name);
+  } else {
+    consumptionItems[editingItemIndex] = {name, price, icon};
+    showToast('已保存：' + name);
+  }
+  saveItems();
+  updateConsumption();
+  closeAddModal();
+}
+
+function deleteItem(idx) {
+  consumptionItems.splice(idx, 1);
+  saveItems();
+  updateConsumption();
+  showToast('已删除');
+}
+
+function openAddModal() {
+  editingItemIndex = null;
+  document.getElementById('modalTitle').textContent = '添加消费项目';
+  document.getElementById('modalSubmitBtn').textContent = '添加';
+  document.getElementById('newItemName').value = '';
+  document.getElementById('newItemPrice').value = '';
+  selectedIcon = '📦';
+  renderEmojiPicker();
+  document.getElementById('addModal').classList.add('show');
+  document.getElementById('newItemName').focus();
+}
+
+function openEditModal(idx) {
+  const item = consumptionItems[idx];
+  if (!item) return;
+  editingItemIndex = idx;
+  document.getElementById('modalTitle').textContent = '编辑消费项目';
+  document.getElementById('modalSubmitBtn').textContent = '保存';
+  document.getElementById('newItemName').value = item.name;
+  document.getElementById('newItemPrice').value = item.price;
+  selectedIcon = item.icon || '📦';
+  renderEmojiPicker();
+  document.getElementById('addModal').classList.add('show');
+  document.getElementById('newItemName').focus();
+}
+
+function closeAddModal() {
+  document.getElementById('addModal').classList.remove('show');
+  editingItemIndex = null;
+  document.getElementById('newItemName').value = '';
+  document.getElementById('newItemPrice').value = '';
+}
+
+// ============ Navigation ============
+function switchScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navItem = document.querySelector(`.nav-item[data-screen="${name}"]`);
+  if (navItem) navItem.classList.add('active');
+
+  if (name === 'timer') updateTimer();
+  if (name === 'consumption') updateConsumption();
+  if (name === 'stats') updateStats();
+  if (name === 'settings') fillSettingsForm();
+}
+
+// ============ Toast ============
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ============ Update All ============
+function updateAll() {
+  updateTimer();
+  updateConsumption();
+  updateStats();
+}
+
+// ============ Init ============
+// 首次进入（本地还没保存过参数）时直接停在设置页，先把工作参数填了
+let isFirstRun = false;
+try { isFirstRun = !localStorage.getItem('qianxwk_settings'); } catch (e) { isFirstRun = false; }
+
+load();
+fillSettingsForm();
+renderDevices();
+updateAll();
+refreshHolidays(); // 异步联网更新节假日，不阻塞首屏渲染
+
+if (isFirstRun) switchScreen('settings');
+
+// Real-time update loop
+setInterval(() => {
+  const activeScreen = document.querySelector('.screen.active');
+  if (activeScreen) {
+    const id = activeScreen.id;
+    if (id === 'screen-timer') updateTimer();
+    if (id === 'screen-stats') {
+      updatePaidLeave();
+      updateStats();
+    }
+  }
+}, 1000);
+
+// Close modal on overlay click
+document.getElementById('addModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAddModal();
+});
+
+// Keyboard
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeAddModal();
+    switchScreen('timer');
+  }
+});
+</script>
+</body>
+</html>
