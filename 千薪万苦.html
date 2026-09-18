@@ -18,6 +18,11 @@
   --accent: #c8ff00;
   --accent-dim: #9bc200;
   --accent-dark: #1a1a1a;
+  --compare: #a78bfa;      /* 税前对照色：紫罗兰，与主色（税后荧光绿）色相 + 明暗双重区分 */
+  --compare-bg: #1e1830;   /* 对照色浅底（左侧卡片） */
+  --compare-border: #463469;
+  --compare-line: rgba(167, 139, 250, .35);  /* 对照色描边（右侧黑底卡片） */
+  --compare-tag: rgba(167, 139, 250, .18);
   --text: #ffffff;
   --text-dim: #999;
   --text-dark: #333;
@@ -156,10 +161,16 @@ body {
 }
 
 /* Stats Cards */
+.stats-grid {
+  display: grid;
+  grid-auto-rows: 1fr; /* 每行等高：税后与税前两组卡片高度自动对齐 */
+  column-gap: 10px;
+  row-gap: 12px;
+  margin-top: 12px;
+}
 .stats-row {
   display: flex;
   gap: 10px;
-  margin-top: 12px;
 }
 .stat-card {
   flex: 1;
@@ -176,6 +187,17 @@ body {
   background: #1e1e1e;
   border: 1px solid #2a2a2a;
   color: var(--text);
+}
+/* 税后口径标识：灰色卡片描主色边框，与绿色卡片归为一组 */
+.stat-card.net { border-color: rgba(200, 255, 0, .35); }
+/* 税前对照卡片：左侧用对照色浅底，右侧沿用黑底 + 对照色描边，与上方税后行同构 */
+.stat-card.compare {
+  background: var(--compare-bg);
+  border: 1px solid var(--compare-border);
+}
+.stat-card.compare-flat {
+  background: #1e1e1e;
+  border: 1px solid var(--compare-line);
 }
 .stat-card .label {
   font-size: 12px;
@@ -198,12 +220,36 @@ body {
   font-size: 16px;
   opacity: .5;
 }
-.stat-card .link {
+/* 卡片外的「查看更多数据」入口 */
+.stats-more {
+  display: block;
+  margin-top: 10px;
+  text-align: right;
   font-size: 11px;
   color: var(--accent);
-  margin-top: 8px;
-  display: block;
   cursor: pointer;
+}
+.stat-card .tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+/* 口径标签跟着卡片配色走：税后=主色，税前=对比色 */
+.tag-net {
+  background: rgba(200, 255, 0, .16);
+  color: var(--accent);
+}
+.tag-gross {
+  background: var(--compare-tag);
+  color: var(--compare);
+}
+.stat-card.green .tag-net {
+  background: rgba(0, 0, 0, .16);
+  color: #000;
 }
 
 /* Settings Screen */
@@ -971,19 +1017,34 @@ body {
       </div>
       <div class="timer-quote" id="dailyQuote">今日格言：下班不是奖励，是应得。</div>
     </div>
-    <div class="stats-row">
-      <div class="stat-card green">
-        <div class="label">今日已赚</div>
-        <div class="value" id="earnedToday">¥0.00</div>
-        <div class="sub" id="hourlyRate">¥0.00/小时</div>
+    <div class="stats-grid">
+      <div class="stats-row">
+        <div class="stat-card green">
+          <div class="label">今日已赚<span class="tag tag-net" id="earnedTag" style="display:none">税后</span></div>
+          <div class="value" id="earnedToday">¥0.00</div>
+          <div class="sub" id="hourlyRate">¥0.00/小时</div>
+        </div>
+        <div class="stat-card gray net">
+          <div class="label">本月已赚<span class="tag tag-net" id="monthTag" style="display:none">税后</span></div>
+          <div class="value" id="homeMonthEarned">¥0.00</div>
+          <div class="sub" id="homeMonthDays">已工作 0 天 / 22 天</div>
+        </div>
       </div>
-      <div class="stat-card gray">
-        <div class="label">本月已赚</div>
-        <div class="value" id="homeMonthEarned">¥0.00</div>
-        <div class="sub" id="homeMonthDays">已工作 0 天 / 22 天</div>
-        <div class="link" onclick="selectStatsTab('data'); switchScreen('stats')">查看更多数据 →</div>
+      <!-- 税后口径下额外展示税前数据，卡片格式与上方税后卡片一致 -->
+      <div class="stats-row" id="preTaxRow" style="display:none">
+        <div class="stat-card compare">
+          <div class="label">今日已赚<span class="tag tag-gross">税前</span></div>
+          <div class="value" id="preTaxEarnedToday">¥0.00</div>
+          <div class="sub" id="preTaxHourly">¥0.00/小时</div>
+        </div>
+        <div class="stat-card compare-flat">
+          <div class="label">本月已赚<span class="tag tag-gross">税前</span></div>
+          <div class="value" id="preTaxMonthEarned">¥0.00</div>
+          <div class="sub" id="preTaxMonthDays">已工作 0 天 / 22 天</div>
+        </div>
       </div>
     </div>
+    <div class="stats-more" onclick="selectStatsTab('data'); switchScreen('stats')">查看更多数据 →</div>
   </div>
 
   <!-- Consumption Screen -->
@@ -1541,8 +1602,13 @@ function getMonthlyNet() {
   return calcNetFromGross(taxParamsFromSettings()).net;
 }
 
-function getHourlyRate() {
-  const salary = getMonthlyNet();
+// 税前月薪（不扣五险一金与个税），用于税后口径下的对照展示
+function getMonthlyGross() {
+  return settings.monthlySalary;
+}
+
+// 月薪 -> 时薪，按每日实际工作时长与月工作天数折算
+function calcHourlyRate(salary) {
   const workDays = settings.workDaysPerMonth;
   const startH = parseInt(settings.startTime.split(':')[0]);
   const startM = parseInt(settings.startTime.split(':')[1]);
@@ -1559,6 +1625,16 @@ function getHourlyRate() {
   const dailyHours = actualWorkMinutes / 60;
   const monthlyHours = dailyHours * workDays;
   return monthlyHours > 0 ? salary / monthlyHours : 0;
+}
+
+// 当前统计口径下的时薪（税后口径即到手时薪）
+function getHourlyRate() {
+  return calcHourlyRate(getMonthlyNet());
+}
+
+// 税前时薪，用于税后口径下的对照展示
+function getGrossHourlyRate() {
+  return calcHourlyRate(getMonthlyGross());
 }
 
 function getMinuteRate() {
@@ -1890,6 +1966,9 @@ function updateTimer() {
   document.getElementById('homeMonthEarned').textContent = formatMoney(monthEarned);
   document.getElementById('homeMonthDays').textContent = `已工作 ${monthWorked} 天 / ${settings.workDaysPerMonth} 天`;
 
+  // 税后口径：额外展示税前对照卡片，口径标签同步显隐
+  updatePreTaxCard(state, monthWorked);
+
   // Daily quote - rotate daily（节假日/调休日给出对应提示）
   const todayType = dayType(new Date());
   let quotePrefix = '今日格言：';
@@ -1901,6 +1980,25 @@ function updateTimer() {
   const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
   const quote = QUOTES[dayOfYear % QUOTES.length];
   document.getElementById('dailyQuote').textContent = quotePrefix + quote;
+}
+
+// 税后口径下，用税前薪资折算同一批指标，填充税前卡片
+function updatePreTaxCard(state, monthWorked) {
+  const row = document.getElementById('preTaxRow');
+  if (!row) return;
+  const isNet = (settings.salaryMode || DEFAULTS.salaryMode) === 'net';
+
+  row.style.display = isNet ? '' : 'none';
+  // 上方卡片在税后口径下展示的是到手金额，补一个口径标签避免混淆
+  document.getElementById('earnedTag').style.display = isNet ? '' : 'none';
+  document.getElementById('monthTag').style.display = isNet ? '' : 'none';
+  if (!isNet) return;
+
+  const grossRate = getGrossHourlyRate();
+  document.getElementById('preTaxEarnedToday').textContent = formatMoney(state.workedMinutes * grossRate / 60);
+  document.getElementById('preTaxHourly').textContent = formatMoney(grossRate) + '/小时';
+  document.getElementById('preTaxMonthEarned').textContent = formatMoney(monthWorked * getDailyHours() * grossRate);
+  document.getElementById('preTaxMonthDays').textContent = `已工作 ${monthWorked} 天 / ${settings.workDaysPerMonth} 天`;
 }
 
 function updateConsumption() {
