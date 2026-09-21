@@ -22,7 +22,6 @@
   --compare-bg: #1e1830;   /* 对照色浅底（左侧卡片） */
   --compare-border: #463469;
   --compare-line: rgba(167, 139, 250, .35);  /* 对照色描边（右侧黑底卡片） */
-  --compare-tag: rgba(167, 139, 250, .18);
   --text: #ffffff;
   --text-dim: #999;
   --text-dark: #333;
@@ -201,8 +200,12 @@ body {
 }
 .stat-card .label {
   font-size: 12px;
-  opacity: .7;
+  /* 用颜色而非 opacity 变淡：opacity 会连带冲淡内部的「税前/税后」徽章 */
+  color: rgba(255, 255, 255, .7);
   margin-bottom: 6px;
+}
+.stat-card.green .label {
+  color: rgba(0, 0, 0, .7);
 }
 .stat-card .value {
   font-size: 28px;
@@ -229,28 +232,18 @@ body {
   color: var(--accent);
   cursor: pointer;
 }
-.stat-card .tag {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 500;
-  vertical-align: middle;
+/* 口径标注（税后/税前）挪到卡片右上角，改用纯文字，不再用胶囊徽章 */
+.stat-card .card-note {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 11px;
+  letter-spacing: .02em;
 }
-/* 口径标签跟着卡片配色走：税后=主色，税前=对比色 */
-.tag-net {
-  background: rgba(200, 255, 0, .16);
-  color: var(--accent);
-}
-.tag-gross {
-  background: var(--compare-tag);
-  color: var(--compare);
-}
-.stat-card.green .tag-net {
-  background: rgba(0, 0, 0, .16);
-  color: #000;
-}
+
+/* 「税前」两处都在深底上，统一用对照紫，左右完全一致 */
+.stat-card.compare .card-note,
+.stat-card.compare-flat .card-note { color: var(--compare); }
 
 /* Settings Screen */
 .settings-card {
@@ -1029,12 +1022,14 @@ body {
     <div class="stats-grid">
       <div class="stats-row">
         <div class="stat-card green">
-          <div class="label">今日已赚<span class="tag tag-net" id="earnedTag" style="display:none">税后</span></div>
+          <span class="card-note" id="earnedTag" style="display:none">税后</span>
+          <div class="label">今日已赚</div>
           <div class="value" id="earnedToday">¥0.00</div>
           <div class="sub" id="hourlyRate">¥0.00/小时</div>
         </div>
         <div class="stat-card gray net">
-          <div class="label">本月已赚<span class="tag tag-net" id="monthTag" style="display:none">税后</span></div>
+          <span class="card-note" id="monthTag" style="display:none">税后</span>
+          <div class="label">本月已赚</div>
           <div class="value" id="homeMonthEarned">¥0.00</div>
           <div class="sub" id="homeMonthDays">已工作 0 天 / 22 天</div>
         </div>
@@ -1042,12 +1037,14 @@ body {
       <!-- 税后口径下额外展示税前数据，卡片格式与上方税后卡片一致 -->
       <div class="stats-row" id="preTaxRow" style="display:none">
         <div class="stat-card compare">
-          <div class="label">今日已赚<span class="tag tag-gross">税前</span></div>
+          <span class="card-note">税前</span>
+          <div class="label">今日已赚</div>
           <div class="value" id="preTaxEarnedToday">¥0.00</div>
           <div class="sub" id="preTaxHourly">¥0.00/小时</div>
         </div>
         <div class="stat-card compare-flat">
-          <div class="label">本月已赚<span class="tag tag-gross">税前</span></div>
+          <span class="card-note">税前</span>
+          <div class="label">本月已赚</div>
           <div class="value" id="preTaxMonthEarned">¥0.00</div>
           <div class="sub" id="preTaxMonthDays">已工作 0 天 / 22 天</div>
         </div>
@@ -2000,7 +1997,7 @@ function updatePreTaxCard(state, monthWorked, monthCompleted) {
   const isNet = (settings.salaryMode || DEFAULTS.salaryMode) === 'net';
 
   row.style.display = isNet ? '' : 'none';
-  // 上方卡片在税后口径下展示的是到手金额，补一个口径标签避免混淆
+  // 上方卡片在税后口径下展示的是到手金额，补一个右上角口径标注避免混淆
   document.getElementById('earnedTag').style.display = isNet ? '' : 'none';
   document.getElementById('monthTag').style.display = isNet ? '' : 'none';
   if (!isNet) return;
