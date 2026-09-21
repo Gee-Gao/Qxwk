@@ -273,6 +273,15 @@ body {
   line-height: 1.5;
   margin: -8px 0 14px;
 }
+
+.settings-card.about {
+  margin-top: 16px;
+}
+.settings-card.about p {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
 .settings-subhead {
   grid-column: 1 / -1;
   font-size: 12px;
@@ -1283,9 +1292,9 @@ body {
       <button class="btn btn-secondary" onclick="resetSettings()">取消</button>
       <button class="btn btn-primary" onclick="saveSettings()">保存参数</button>
     </div>
-    <div class="settings-card">
+    <div class="settings-card about">
       <h3>ℹ 关于</h3>
-      <p style="font-size:13px;color:var(--text-dim);line-height:1.6">
+      <p>
         千薪万苦 —— 把你的薪水变成看得见的时间。<br><br>
         灵感来自打工人的日常：每一分钟都在用生命换钱，每一笔消费都是在花上班时间买的。<br><br>
         数据存储在本地，不会上传任何服务器。
@@ -1904,9 +1913,10 @@ function syncAutoWorkDays() {
   input.value = autoWorkDaysPerMonth(mode);
 }
 
-function getWorkedDaysThisMonth() {
+// excludeToday=true 时只统计今天之前的工作日，用于本月收益按秒实时累计
+function getWorkedDaysThisMonth(excludeToday) {
   const now = new Date();
-  const day = now.getDate();
+  const day = excludeToday ? now.getDate() - 1 : now.getDate();
   // 按休息制度统计本月已过工作日
   let count = 0;
   for (let i = 1; i <= day; i++) {
@@ -1960,14 +1970,15 @@ function updateTimer() {
   const hourlyRate = getHourlyRate();
   document.getElementById('hourlyRate').textContent = formatMoney(hourlyRate) + '/小时';
 
-  // 本月概览（与统计页口径一致）
+  // 本月概览：已完成工作日按整天计，今天的收益按秒实时累计（与今日已赚口径一致）
   const monthWorked = getWorkedDaysThisMonth();
-  const monthEarned = monthWorked * getDailyHours() * getHourlyRate();
+  const monthCompleted = getWorkedDaysThisMonth(true);
+  const monthEarned = monthCompleted * getDailyHours() * getHourlyRate() + state.earnedToday;
   document.getElementById('homeMonthEarned').textContent = formatMoney(monthEarned);
   document.getElementById('homeMonthDays').textContent = `已工作 ${monthWorked} 天 / ${settings.workDaysPerMonth} 天`;
 
   // 税后口径：额外展示税前对照卡片，口径标签同步显隐
-  updatePreTaxCard(state, monthWorked);
+  updatePreTaxCard(state, monthWorked, monthCompleted);
 
   // Daily quote - rotate daily（节假日/调休日给出对应提示）
   const todayType = dayType(new Date());
@@ -1983,7 +1994,7 @@ function updateTimer() {
 }
 
 // 税后口径下，用税前薪资折算同一批指标，填充税前卡片
-function updatePreTaxCard(state, monthWorked) {
+function updatePreTaxCard(state, monthWorked, monthCompleted) {
   const row = document.getElementById('preTaxRow');
   if (!row) return;
   const isNet = (settings.salaryMode || DEFAULTS.salaryMode) === 'net';
@@ -1995,9 +2006,10 @@ function updatePreTaxCard(state, monthWorked) {
   if (!isNet) return;
 
   const grossRate = getGrossHourlyRate();
-  document.getElementById('preTaxEarnedToday').textContent = formatMoney(state.workedMinutes * grossRate / 60);
+  const grossToday = state.workedMinutes * grossRate / 60;
+  document.getElementById('preTaxEarnedToday').textContent = formatMoney(grossToday);
   document.getElementById('preTaxHourly').textContent = formatMoney(grossRate) + '/小时';
-  document.getElementById('preTaxMonthEarned').textContent = formatMoney(monthWorked * getDailyHours() * grossRate);
+  document.getElementById('preTaxMonthEarned').textContent = formatMoney(monthCompleted * getDailyHours() * grossRate + grossToday);
   document.getElementById('preTaxMonthDays').textContent = `已工作 ${monthWorked} 天 / ${settings.workDaysPerMonth} 天`;
 }
 
