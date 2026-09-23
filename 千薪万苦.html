@@ -1845,14 +1845,14 @@ async function fetchHolidayData(year) {
   }
 }
 
-// 先读本地缓存立即生效，再联网刷新；同一年只请求一次
+// 本地已有当年有效缓存时直接用，不再联网；无缓存或缓存过期才联网获取并写入缓存
 const holidayFetched = {};
 async function refreshHolidays() {
   const year = new Date().getFullYear();
   if (holidayFetched[year]) return;
   holidayFetched[year] = true;
 
-  if (readHolidayCache(year)) { syncAutoWorkDays(); updateAll(); }
+  if (readHolidayCache(year)) { syncAutoWorkDays(); updateAll(); return; }
   if (await fetchHolidayData(year)) { syncAutoWorkDays(); updateAll(); }
 }
 
