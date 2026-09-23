@@ -1428,8 +1428,10 @@ function selectWorkDayMode(mode) {
   const input = document.getElementById('workDaysPerMonth');
   const hint = document.getElementById('workDaysHint');
   if (mode === 'double' || mode === 'single') {
-    // 按当年节假日与调休自动折算月均工作日，不允许手改
-    input.value = autoWorkDaysPerMonth(mode);
+    // 按当月实际工作日自动取值，不允许手改
+    const days = autoWorkDaysPerMonth(mode);
+    input.value = days;
+    settings.workDaysPerMonth = days; // 同步统计口径，避免展示与实际计算不一致
     input.disabled = true;
     if (hint) hint.textContent = '自动计算，已含法定节假日与调休补班';
   } else {
@@ -1895,19 +1897,31 @@ function countWorkdaysInYear(year, mode) {
   return count;
 }
 
-// 双休/单休时按当年实际工作日折算的月均天数（自动包含调休）
+// 某年某月的实际工作日数（已含法定节假日与调休补班）
+function countWorkdaysInMonth(year, month, mode) {
+  const days = new Date(year, month + 1, 0).getDate();
+  let count = 0;
+  for (let i = 1; i <= days; i++) {
+    if (isWorkday(new Date(year, month, i), mode)) count++;
+  }
+  return count;
+}
+
+// 双休/单休时取当月实际工作日数（自动包含调休）
 function autoWorkDaysPerMonth(mode) {
-  const days = countWorkdaysInYear(new Date().getFullYear(), mode);
-  return Math.max(1, Math.round(days / 12));
+  const now = new Date();
+  return Math.max(1, countWorkdaysInMonth(now.getFullYear(), now.getMonth(), mode));
 }
 
 // 联网/缓存更新节假日数据后，同步「每月工作天数」的自动值（自定义模式不覆盖）
 function syncAutoWorkDays() {
   const mode = settings.workDayMode;
   if (mode !== 'double' && mode !== 'single') return;
+  const days = autoWorkDaysPerMonth(mode);
+  settings.workDaysPerMonth = days;
   const input = document.getElementById('workDaysPerMonth');
   if (!input || !input.disabled) return;
-  input.value = autoWorkDaysPerMonth(mode);
+  input.value = days;
 }
 
 // excludeToday=true 时只统计今天之前的工作日，用于本月收益按秒实时累计
@@ -1929,8 +1943,8 @@ function getWorkedDaysThisYear() {
   for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
     if (isWorkday(d)) count++;
   }
-  // 自定义模式下按月均摊封顶，避免超过全年预计工作日
-  const annualTotal = settings.workDaysPerMonth * 12;
+  // 以全年实际工作日为上限，避免统计超出
+  const annualTotal = countWorkdaysInYear(now.getFullYear());
   return Math.min(count, annualTotal);
 }
 
@@ -2060,7 +2074,7 @@ function updateStats() {
   const dailyHours = getDailyHours();
 
   const annualEarned = yearlyWorkDays * dailyHours * getHourlyRate();
-  const annualTotalDays = settings.workDaysPerMonth * 12;
+  const annualTotalDays = countWorkdaysInYear(new Date().getFullYear());
   const annualRemain = (annualTotalDays - yearlyWorkDays) * dailyHours * getHourlyRate();
 
   document.getElementById('annualEarned').textContent = '¥' + Math.round(annualEarned).toLocaleString();
