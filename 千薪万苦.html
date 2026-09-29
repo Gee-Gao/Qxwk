@@ -1187,8 +1187,18 @@ body {
           <div class="seg-control" id="workDayMode">
             <button type="button" class="seg-btn" data-mode="double" onclick="selectWorkDayMode('double')">双休</button>
             <button type="button" class="seg-btn" data-mode="single" onclick="selectWorkDayMode('single')">单休</button>
+            <button type="button" class="seg-btn" data-mode="bigsmall" onclick="selectWorkDayMode('bigsmall')">大小周</button>
             <button type="button" class="seg-btn" data-mode="custom" onclick="selectWorkDayMode('custom')">自定义</button>
           </div>
+          <div class="field-hint" id="workDayModeHint"></div>
+        </div>
+        <div class="field-group" id="bigSmallWeekGroup" style="grid-column:1/-1; display:none">
+          <label>本周类型</label>
+          <div class="seg-control" id="bigSmallWeekType">
+            <button type="button" class="seg-btn" data-week="big" onclick="selectBigSmallWeek('big')">双休周</button>
+            <button type="button" class="seg-btn" data-week="small" onclick="selectBigSmallWeek('small')">单休周</button>
+          </div>
+          <div class="field-hint" id="bigSmallWeekHint"></div>
         </div>
         <div class="field-group" style="grid-column:1/-1">
           <label>已工作天数小数位</label>
@@ -1370,6 +1380,8 @@ const DEFAULTS = {
   fundRate: 12,              // 住房公积金个人比例（%）
   workDaysPerMonth: 22,
   workDayMode: 'double',
+  bigSmallWeekStart: '',  // 大小周基准周的周一日期，与 bigSmallWeekType 一起确定每周类型
+  bigSmallWeekType: 'big', // 基准周类型：big 双休周（大周）/ small 单休周（小周）
   workedDaysDecimals: 0, // 已工作天数小数位：0 今天按整天计 / 1、2 今天按已工作时长折算并保留对应位数
   startTime: '09:00',
   endTime: '18:00',
@@ -1441,20 +1453,73 @@ function selectWorkDayMode(mode) {
   settings.workDayMode = mode;
   const input = document.getElementById('workDaysPerMonth');
   const hint = document.getElementById('workDaysHint');
-  if (mode === 'double' || mode === 'single') {
-    // 按当月实际工作日自动取值，不允许手改
+  if (mode === 'custom') {
+    // 自定义：每月工作天数手动填
+    input.disabled = false;
+    if (hint) hint.textContent = '';
+  } else {
+    // 双休/单休/大小周：按当月实际工作日自动取值，不允许手改
     const days = autoWorkDaysPerMonth(mode);
     input.value = days;
     settings.workDaysPerMonth = days; // 同步统计口径，避免展示与实际计算不一致
     input.disabled = true;
     if (hint) hint.textContent = '自动计算，已含法定节假日与调休补班';
-  } else {
-    input.disabled = false;
-    if (hint) hint.textContent = '';
   }
+  const modeHint = document.getElementById('workDayModeHint');
+  if (modeHint) {
+    modeHint.textContent = mode === 'bigsmall'
+      ? '双休周与单休周每周交替，先在下方确认本周类型'
+      : '';
+  }
+  // 首次切到大小周时，以当前周作为基准周
+  if (mode === 'bigsmall' && !settings.bigSmallWeekStart) {
+    settings.bigSmallWeekStart = fmtDateKey(weekStart(new Date()));
+  }
+  const group = document.getElementById('bigSmallWeekGroup');
+  if (group) group.style.display = mode === 'bigsmall' ? '' : 'none';
+  if (mode === 'bigsmall') renderBigSmallWeek();
   document.querySelectorAll('#workDayMode .seg-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.mode === mode);
   });
+}
+
+// 取某天所在自然周的周一（零点），用于大小周按周交替
+function weekStart(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
+// 大小周：以基准周（bigSmallWeekStart）的类型为锚点，按相隔周数奇偶交替
+function bigSmallWeekTypeOf(date) {
+  const anchorKey = settings.bigSmallWeekStart;
+  if (!anchorKey) return settings.bigSmallWeekType === 'small' ? 'small' : 'big';
+  const anchor = new Date(anchorKey + 'T00:00:00');
+  if (isNaN(anchor.getTime())) return 'big';
+  const base = settings.bigSmallWeekType === 'small' ? 'small' : 'big';
+  const weeks = Math.round((weekStart(date) - weekStart(anchor)) / (7 * 86400000));
+  return ((weeks % 2) + 2) % 2 === 0 ? base : (base === 'big' ? 'small' : 'big');
+}
+
+// 把「本周类型」控件同步为当前周的推导结果
+function renderBigSmallWeek() {
+  const type = bigSmallWeekTypeOf(new Date());
+  document.querySelectorAll('#bigSmallWeekType .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.week === type);
+  });
+  const hint = document.getElementById('bigSmallWeekHint');
+  if (hint) {
+    hint.textContent = type === 'big'
+      ? '本周双休（大周），下周单休，依次交替'
+      : '本周单休（小周），下周双休，依次交替';
+  }
+}
+
+// 以「本周」为基准记录大/小周，后续每周自动交替
+function selectBigSmallWeek(type) {
+  settings.bigSmallWeekStart = fmtDateKey(weekStart(new Date()));
+  settings.bigSmallWeekType = type === 'small' ? 'small' : 'big';
+  renderBigSmallWeek();
 }
 
 // 已工作天数小数位：0 整数（今天按一整天计）/ 1、2 按已工作时长折算并保留对应位数
@@ -1516,6 +1581,7 @@ function saveSettings() {
   SPECIAL_ITEMS.forEach(it => { settings[it.key] = num(it.key, 0); });
   settings.workDaysPerMonth = parseFloat(document.getElementById('workDaysPerMonth').value) || DEFAULTS.workDaysPerMonth;
   settings.workDayMode = settings.workDayMode || 'double';
+  settings.bigSmallWeekType = settings.bigSmallWeekType === 'small' ? 'small' : 'big';
   settings.workedDaysDecimals = getWorkedDaysDecimals();
   settings.startTime = document.getElementById('startTime').value || DEFAULTS.startTime;
   settings.endTime = document.getElementById('endTime').value || DEFAULTS.endTime;
@@ -1912,6 +1978,10 @@ function isWorkday(date, mode) {
   const m = mode || settings.workDayMode;
   // 单休：仅周日休息（周一至周六上班）
   if (m === 'single') return dow !== 0;
+  // 大小周：双休周按周一至周五，单休周按周一至周六
+  if (m === 'bigsmall') {
+    return bigSmallWeekTypeOf(date) === 'big' ? (dow !== 0 && dow !== 6) : dow !== 0;
+  }
   // 双休 / 自定义：按周一至周五计
   return dow !== 0 && dow !== 6;
 }
@@ -1937,7 +2007,7 @@ function countWorkdaysInMonth(year, month, mode) {
   return count;
 }
 
-// 双休/单休时取当月实际工作日数（自动包含调休）
+// 双休/单休/大小周时取当月实际工作日数（自动包含调休）
 function autoWorkDaysPerMonth(mode) {
   const now = new Date();
   return Math.max(1, countWorkdaysInMonth(now.getFullYear(), now.getMonth(), mode));
@@ -1946,7 +2016,7 @@ function autoWorkDaysPerMonth(mode) {
 // 联网/缓存更新节假日数据后，同步「每月工作天数」的自动值（自定义模式不覆盖）
 function syncAutoWorkDays() {
   const mode = settings.workDayMode;
-  if (mode !== 'double' && mode !== 'single') return;
+  if (mode === 'custom') return;
   const days = autoWorkDaysPerMonth(mode);
   settings.workDaysPerMonth = days;
   const input = document.getElementById('workDaysPerMonth');
