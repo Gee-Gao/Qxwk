@@ -1758,6 +1758,22 @@ function getDailyHours() {
 
 function getCurrentWorkState() {
   const now = new Date();
+
+  // 非工作日（周末/法定节假日）不计时，避免休息日仍在累计工时与收益
+  if (!isWorkday(now)) {
+    return {
+      workedMinutes: 0,
+      remainingMinutes: 0,
+      totalWorkMinutes: 0,
+      isWorking: false,
+      isLunch: false,
+      isRest: true,
+      progress: 0,
+      earnedToday: 0,
+      remainingValue: 0
+    };
+  }
+
   const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
   const startH = parseInt(settings.startTime.split(':')[0]);
@@ -1824,6 +1840,7 @@ function getCurrentWorkState() {
     totalWorkMinutes,
     isWorking,
     isLunch,
+    isRest: false,
     progress: totalWorkMinutes > 0 ? (workedMinutes / totalWorkMinutes) * 100 : 0,
     earnedToday: workedMinutes * getMinuteRate(),
     remainingValue: remainingMinutes * getMinuteRate()
@@ -2077,12 +2094,25 @@ function updateTimer() {
   const state = getCurrentWorkState();
   const remainingSeconds = Math.round(state.remainingMinutes * 60);
 
-  document.getElementById('countdownDisplay').textContent = formatTime(remainingSeconds);
+  const countdownEl = document.getElementById('countdownDisplay');
+  const countdownLabel = document.getElementById('countdownLabel');
+
+  if (state.isRest) {
+    // 非工作日不计时，倒计时与进度都归零
+    countdownEl.textContent = '--:--:--';
+    countdownLabel.textContent = '今天休息，不计时';
+  } else {
+    countdownEl.textContent = formatTime(remainingSeconds);
+    countdownLabel.textContent = '距离今天下班';
+  }
   document.getElementById('progressFill').style.width = state.progress.toFixed(1) + '%';
 
   const statusEl = document.getElementById('workStatus');
   const statusText = document.getElementById('statusText');
-  if (state.isLunch) {
+  if (state.isRest) {
+    statusText.textContent = '休息日';
+    statusEl.classList.add('paused');
+  } else if (state.isLunch) {
     statusText.textContent = '午休中';
     statusEl.classList.add('paused');
   } else if (state.isWorking) {
