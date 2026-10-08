@@ -1219,12 +1219,24 @@ body {
         </div>
         <div class="field-group">
           <label>税前月薪 (¥)</label>
-          <input type="number" id="monthlySalary" placeholder="3000" value="3000" oninput="updateTaxHint()">
+          <input type="number" id="monthlySalary" placeholder="3000" value="3000" oninput="updateTaxHint(); updateProbationHint()">
         </div>
         <div class="field-group">
           <label>每月工作天数</label>
           <input type="number" id="workDaysPerMonth" placeholder="22" value="22">
           <div class="field-hint" id="workDaysHint"></div>
+        </div>
+        <div class="settings-subhead">试用期 / 正式期（可选）</div>
+        <div class="field-group">
+          <label>转正日期</label>
+          <input type="date" id="regularDate" onchange="updateProbationHint()">
+        </div>
+        <div class="field-group">
+          <label>试用期薪资比例 (%)</label>
+          <input type="number" id="probationRatio" step="1" placeholder="80" value="80" oninput="updateProbationHint()">
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <div class="field-hint" id="probationHint"></div>
         </div>
         <div class="field-group">
           <label>上班时间</label>
@@ -1379,6 +1391,8 @@ const DEFAULTS = {
   unemploymentRate: 0.5,     // 失业保险个人比例（%）
   fundRate: 12,              // 住房公积金个人比例（%）
   workDaysPerMonth: 22,
+  regularDate: '',        // 转正日期，留空表示无试用期，全部按正式期月薪算
+  probationRatio: 80,     // 试用期薪资比例（%），按正式期月薪折算
   workDayMode: 'double',
   bigSmallWeekStart: '',  // 大小周基准周的周一日期，与 bigSmallWeekType 一起确定每周类型
   bigSmallWeekType: 'big', // 基准周类型：big 双休周（大周）/ small 单休周（小周）
@@ -1565,6 +1579,29 @@ function updateTaxHint() {
   hint.textContent = `税后到手 ¥${r.net.toFixed(0)}/月：五险一金 ¥${r.insurance.toFixed(0)}（社保 ¥${r.social.toFixed(0)} + 公积金 ¥${r.fund.toFixed(0)}），个税 ¥${Math.round(r.annualTax / 12)}/月（全年 ¥${Math.round(r.annualTax).toLocaleString()}）。`;
 }
 
+// 试用期提示：直接读表单当前值，改动时实时反馈当前处于哪个阶段
+function updateProbationHint() {
+  const hint = document.getElementById('probationHint');
+  if (!hint) return;
+  const dateStr = document.getElementById('regularDate').value;
+  const ratioInput = parseFloat(document.getElementById('probationRatio').value);
+  const ratio = isNaN(ratioInput) ? 100 : Math.min(100, Math.max(0, ratioInput));
+  const salary = parseFloat(document.getElementById('monthlySalary').value) || 0;
+
+  if (!dateStr) {
+    hint.textContent = '留空表示无试用期，全部按正式期月薪计算';
+    return;
+  }
+  const regular = new Date(dateStr + 'T00:00:00');
+  const today = new Date();
+  const day = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (isNaN(regular.getTime()) || day >= regular) {
+    hint.textContent = `${dateStr} 起已转正，按正式期月薪 ¥${salary.toFixed(0)}/月计算`;
+  } else {
+    hint.textContent = `试用期至 ${dateStr} 前，月薪按正式期的 ${ratio}% 计算（¥${(salary * ratio / 100).toFixed(0)}/月）`;
+  }
+}
+
 function saveSettings() {
   const num = (id, fallback) => {
     const v = parseFloat(document.getElementById(id).value);
@@ -1579,6 +1616,8 @@ function saveSettings() {
   settings.unemploymentRate = num('unemploymentRate', DEFAULTS.unemploymentRate);
   settings.fundRate = num('fundRate', DEFAULTS.fundRate);
   SPECIAL_ITEMS.forEach(it => { settings[it.key] = num(it.key, 0); });
+  settings.regularDate = document.getElementById('regularDate').value || '';
+  settings.probationRatio = num('probationRatio', DEFAULTS.probationRatio);
   settings.workDaysPerMonth = parseFloat(document.getElementById('workDaysPerMonth').value) || DEFAULTS.workDaysPerMonth;
   settings.workDayMode = settings.workDayMode || 'double';
   settings.bigSmallWeekType = settings.bigSmallWeekType === 'small' ? 'small' : 'big';
@@ -1609,6 +1648,8 @@ function resetSettings() {
 function fillSettingsForm() {
   const set = (id, v) => { document.getElementById(id).value = v; };
   set('monthlySalary', settings.monthlySalary);
+  set('regularDate', settings.regularDate || '');
+  set('probationRatio', settings.probationRatio);
   set('socialBase', settings.socialBase > 0 ? settings.socialBase : '');
   set('fundBase', settings.fundBase > 0 ? settings.fundBase : '');
   set('pensionRate', settings.pensionRate);
@@ -1626,6 +1667,7 @@ function fillSettingsForm() {
   document.getElementById('endTime').value = settings.endTime;
   document.getElementById('lunchStart').value = settings.lunchStart;
   document.getElementById('lunchEnd').value = settings.lunchEnd;
+  updateProbationHint();
 }
 
 function getDefaultItems() {
@@ -1700,15 +1742,30 @@ function taxParamsFromSettings() {
   });
 }
 
-// 统计口径：税前模式只算税前月薪；税后模式按缴费参数折算到手金额
-function getMonthlyNet() {
-  if ((settings.salaryMode || DEFAULTS.salaryMode) !== 'net') return settings.monthlySalary;
-  return calcNetFromGross(taxParamsFromSettings()).net;
+// 转正日期之前为试用期：返回当天的薪资系数（试用期比例/100），已转正或未设置试用期为 1
+function salaryFactorFor(date) {
+  if (!settings.regularDate) return 1;
+  const regular = new Date(settings.regularDate + 'T00:00:00');
+  if (isNaN(regular.getTime())) return 1;
+  const d = date || new Date();
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (day >= regular) return 1;
+  const ratio = parseFloat(settings.probationRatio);
+  return (isNaN(ratio) ? 100 : Math.min(100, Math.max(0, ratio))) / 100;
 }
 
-// 税前月薪（不扣五险一金与个税），用于税后口径下的对照展示
+// 统计口径：税前模式只算税前月薪；税后模式按缴费参数折算到手金额（均含试用期折算）
+function getMonthlyNet() {
+  const factor = salaryFactorFor(new Date());
+  if ((settings.salaryMode || DEFAULTS.salaryMode) !== 'net') return settings.monthlySalary * factor;
+  const params = taxParamsFromSettings();
+  params.gross = params.gross * factor;
+  return calcNetFromGross(params).net;
+}
+
+// 税前月薪（不扣五险一金与个税），用于税后口径下的对照展示（含试用期折算）
 function getMonthlyGross() {
-  return settings.monthlySalary;
+  return settings.monthlySalary * salaryFactorFor(new Date());
 }
 
 // 月薪 -> 时薪，按每日实际工作时长与月工作天数折算
