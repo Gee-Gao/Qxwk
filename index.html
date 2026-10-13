@@ -6,6 +6,15 @@
 <title>千薪万苦</title>
 
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%230f0f0f'/%3E%3Ccircle%20cx='32'%20cy='32'%20r='19'%20fill='none'%20stroke='%23c8ff00'%20stroke-width='5'/%3E%3Cpath%20d='M32%2020v13l9%206'%20fill='none'%20stroke='%23c8ff00'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="千薪万苦">
 
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2842,6 +2851,18 @@ document.addEventListener('keydown', function(e) {
     switchScreen('timer');
   }
 });
+</script>
+
+<script>
+// ============ PWA: 注册 Service Worker ============
+// file:// 下浏览器不允许注册 SW，仅在 http(s)（含 localhost）环境启用
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function (err) {
+      console.warn('Service Worker 注册失败：', err);
+    });
+  });
+}
 </script>
 </body>
 </html>
