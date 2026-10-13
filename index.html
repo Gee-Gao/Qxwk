@@ -27,7 +27,7 @@
   --accent: #c8ff00;
   --accent-dim: #9bc200;
   --accent-dark: #1a1a1a;
-  --compare: #a78bfa;      /* 税前对照色：紫罗兰，与主色（税后荧光绿）色相 + 明暗双重区分 */
+  --compare: #a78bfa;      /* 对照色：紫罗兰，与主色（荧光绿）色相 + 明暗双重区分 */
   --compare-bg: #1e1830;   /* 对照色浅底（左侧卡片） */
   --compare-border: #463469;
   --compare-line: rgba(167, 139, 250, .35);  /* 对照色描边（右侧黑底卡片） */
@@ -211,9 +211,9 @@ body {
   border: 1px solid #2a2a2a;
   color: var(--text);
 }
-/* 税后口径标识：灰色卡片描主色边框，与绿色卡片归为一组 */
+/* 主色主题的次级卡片：灰底描主色边框，与绿色卡片归为一组 */
 .stat-card.net { border-color: rgba(200, 255, 0, .35); }
-/* 税前对照卡片：左侧用对照色浅底，右侧沿用黑底 + 对照色描边，与上方税后行同构 */
+/* 对照主题卡片：左侧用对照色底，右侧沿用黑底 + 对照色描边 */
 .stat-card.compare {
   background: var(--compare-bg);
   border: 1px solid var(--compare-border);
@@ -1046,21 +1046,7 @@ body {
       <div class="timer-quote" id="dailyQuote">今日格言：下班不是奖励，是应得。</div>
     </div>
     <div class="stats-grid">
-      <div class="stats-row">
-        <div class="stat-card green">
-          <span class="card-note" id="earnedTag" style="display:none">税后</span>
-          <div class="label">今日已赚</div>
-          <div class="value" id="earnedToday">¥0.00</div>
-          <div class="sub" id="hourlyRate">¥0.00/小时</div>
-        </div>
-        <div class="stat-card gray net">
-          <span class="card-note" id="monthTag" style="display:none">税后</span>
-          <div class="label">本月已赚</div>
-          <div class="value" id="homeMonthEarned">¥0.00</div>
-          <div class="sub" id="homeMonthDays">已工作 0 天 / 22 天</div>
-        </div>
-      </div>
-      <!-- 税后口径下额外展示税前数据，卡片格式与上方税后卡片一致 -->
+      <!-- 对比口径下置于税后行上方，并列展示税前数据 -->
       <div class="stats-row" id="preTaxRow" style="display:none">
         <div class="stat-card compare">
           <span class="card-note">税前</span>
@@ -1073,6 +1059,20 @@ body {
           <div class="label">本月已赚</div>
           <div class="value" id="preTaxMonthEarned">¥0.00</div>
           <div class="sub" id="preTaxMonthDays">已工作 0 天 / 22 天</div>
+        </div>
+      </div>
+      <div class="stats-row" id="mainStatsRow">
+        <div class="stat-card green">
+          <span class="card-note" id="earnedTag">税前</span>
+          <div class="label">今日已赚</div>
+          <div class="value" id="earnedToday">¥0.00</div>
+          <div class="sub" id="hourlyRate">¥0.00/小时</div>
+        </div>
+        <div class="stat-card gray net">
+          <span class="card-note" id="monthTag">税前</span>
+          <div class="label">本月已赚</div>
+          <div class="value" id="homeMonthEarned">¥0.00</div>
+          <div class="sub" id="homeMonthDays">已工作 0 天 / 22 天</div>
         </div>
       </div>
     </div>
@@ -1240,6 +1240,7 @@ body {
           <div class="seg-control" id="salaryMode">
             <button type="button" class="seg-btn" data-mode="gross" onclick="selectSalaryMode('gross')">税前</button>
             <button type="button" class="seg-btn" data-mode="net" onclick="selectSalaryMode('net')">税后</button>
+            <button type="button" class="seg-btn" data-mode="compare" onclick="selectSalaryMode('compare')">税前税后对比</button>
           </div>
           <div class="field-hint" id="salaryModeHint"></div>
         </div>
@@ -1408,7 +1409,7 @@ body {
 // ============ Data & State ============
 const DEFAULTS = {
   monthlySalary: 3000,       // 税前月薪
-  salaryMode: 'gross',       // 工资口径：gross 税前只统计税前 / net 税后按参数算出的到手金额统计
+  salaryMode: 'gross',       // 工资口径：gross 只统计税前 / net 统计税后到手 / compare 统计税后并并列展示税前对照
   socialBase: 0,             // 社保缴费基数，0 表示按税前月薪
   fundBase: 0,               // 公积金缴费基数，0 表示按税前月薪
   pensionRate: 8,            // 养老保险个人比例（%）
@@ -1580,15 +1581,19 @@ function selectSalaryMode(mode) {
   document.querySelectorAll('#salaryMode .seg-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.mode === mode);
   });
-  const isNet = mode === 'net';
-  // 税前口径只统计税前数据，税后口径才需要展开缴费参数
+  // 税前口径不做任何扣除；税后与对比口径都按参数折算到手金额，需要展开缴费参数
+  const needsTaxParams = mode !== 'gross';
   const taxCard = document.getElementById('taxCard');
-  if (taxCard) taxCard.style.display = isNet ? '' : 'none';
+  if (taxCard) taxCard.style.display = needsTaxParams ? '' : 'none';
   const modeHint = document.getElementById('salaryModeHint');
   if (modeHint) {
-    modeHint.textContent = isNet
-      ? '统计按下方参数算出的税后到手金额'
-      : '只统计税前数据，不做五险一金与个税扣除';
+    if (mode === 'net') {
+      modeHint.textContent = '统计按下方参数算出的税后到手金额';
+    } else if (mode === 'compare') {
+      modeHint.textContent = '统计口径为税后到手，首页额外并列展示税前金额以便对照';
+    } else {
+      modeHint.textContent = '只统计税前数据，不做五险一金与个税扣除';
+    }
   }
   updateTaxHint();
 }
@@ -1795,16 +1800,17 @@ function salaryFactorFor(date) {
   return (isNaN(ratio) ? 100 : Math.min(100, Math.max(0, ratio))) / 100;
 }
 
-// 统计口径：税前模式只算税前月薪；税后模式按缴费参数折算到手金额（均含试用期折算）
+// 统计口径：税前模式只算税前月薪；税后与对比模式按缴费参数折算到手金额（均含试用期折算）
 function getMonthlyNet() {
+  const mode = settings.salaryMode || DEFAULTS.salaryMode;
   const factor = salaryFactorFor(new Date());
-  if ((settings.salaryMode || DEFAULTS.salaryMode) !== 'net') return settings.monthlySalary * factor;
+  if (mode === 'gross') return settings.monthlySalary * factor;
   const params = taxParamsFromSettings();
   params.gross = params.gross * factor;
   return calcNetFromGross(params).net;
 }
 
-// 税前月薪（不扣五险一金与个税），用于税后口径下的对照展示（含试用期折算）
+// 税前月薪（不扣五险一金与个税），用于税后/对比口径下的对照展示（含试用期折算）
 function getMonthlyGross() {
   return settings.monthlySalary * salaryFactorFor(new Date());
 }
@@ -2273,17 +2279,38 @@ function updateTimer() {
   document.getElementById('dailyQuote').textContent = quotePrefix + quote;
 }
 
-// 税后口径下，用税前薪资折算同一批指标，填充税前卡片
+// 卡片主题：main 主色主题（绿卡 + 灰卡描绿边）/ compare 对照主题（对照色卡 + 暗卡描对照边）
+const ROW_THEMES = {
+  main: ['stat-card green', 'stat-card gray net'],
+  compare: ['stat-card compare', 'stat-card compare-flat']
+};
+
+function applyRowTheme(row, theme) {
+  const classes = ROW_THEMES[theme];
+  if (!row || !classes || row.children.length < 2) return;
+  row.children[0].className = classes[0];
+  row.children[1].className = classes[1];
+}
+
+// 对比口径下，用税前薪资折算同一批指标，填充税前卡片
 function updatePreTaxCard(state, monthWorked, monthCompleted) {
   const row = document.getElementById('preTaxRow');
   if (!row) return;
-  const isNet = (settings.salaryMode || DEFAULTS.salaryMode) === 'net';
+  const mode = settings.salaryMode || DEFAULTS.salaryMode;
+  const showCompare = mode === 'compare';
 
-  row.style.display = isNet ? '' : 'none';
-  // 上方卡片在税后口径下展示的是到手金额，补一个右上角口径标注避免混淆
-  document.getElementById('earnedTag').style.display = isNet ? '' : 'none';
-  document.getElementById('monthTag').style.display = isNet ? '' : 'none';
-  if (!isNet) return;
+  // 口径标注：税前口径标「税前」，税后/对比口径标「税后」
+  const tagText = mode === 'gross' ? '税前' : '税后';
+  document.getElementById('earnedTag').textContent = tagText;
+  document.getElementById('monthTag').textContent = tagText;
+
+  // 对比口径下两排配色整体对调：上排（税前）用主色主题，下排（税后）用对照主题
+  applyRowTheme(row, 'main');
+  applyRowTheme(document.getElementById('mainStatsRow'), showCompare ? 'compare' : 'main');
+
+  // 只有对比口径才额外并列展示税前一行
+  row.style.display = showCompare ? '' : 'none';
+  if (!showCompare) return;
 
   const grossRate = getGrossHourlyRate();
   const grossToday = state.workedMinutes * grossRate / 60;
