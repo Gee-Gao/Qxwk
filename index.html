@@ -1347,8 +1347,9 @@ body {
         <div class="field-group">
           <label>计时页展示加班费卡片</label>
           <div class="seg-control" id="overtimePanelShow">
-            <button type="button" class="seg-btn" data-show="on" onclick="selectOvertimePanelShow(true)">展示</button>
-            <button type="button" class="seg-btn" data-show="off" onclick="selectOvertimePanelShow(false)">隐藏</button>
+            <button type="button" class="seg-btn" data-show="always" onclick="selectOvertimePanelShow('always')">始终展示</button>
+            <button type="button" class="seg-btn" data-show="auto" onclick="selectOvertimePanelShow('auto')">有则展示</button>
+            <button type="button" class="seg-btn" data-show="off" onclick="selectOvertimePanelShow('off')">始终隐藏</button>
           </div>
           <div class="field-hint" id="overtimePanelShowHint"></div>
         </div>
@@ -1693,7 +1694,7 @@ const DEFAULTS = {
   lunchEnd: '13:00',
   overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 调休
   overtimeSync: false,     // 加班金额是否计入计时页（仅给钱模式有效）
-  overtimePanelShow: true  // 是否在计时页展示加班费卡片
+  overtimePanelShow: 'always' // 计时页加班费卡片展示：always 始终展示 / auto 无数据不展示 / off 隐藏
 };
 
 // 专项附加扣除分项（元/月），key 同时用作设置页输入框 id
@@ -1993,7 +1994,7 @@ function fillSettingsForm() {
   document.getElementById('lunchEnd').value = settings.lunchEnd;
   selectOvertimeSettle(settings.overtimeSettle || DEFAULTS.overtimeSettle);
   selectOvertimeSync(settings.overtimeSync);
-  selectOvertimePanelShow(settings.overtimePanelShow !== false);
+  selectOvertimePanelShow(overtimePanelMode());
   syncProbationFields();
 }
 
@@ -2718,7 +2719,7 @@ function renderHomeOvertimePanel(todayTotals, monthTotals, linked) {
   const panel = document.getElementById('homeOvertimePanel');
   const grid = document.getElementById('homeOvertimeGrid');
   if (!panel || !grid) return;
-  const showPanel = settings.overtimePanelShow !== false;
+  const panelMode = overtimePanelMode();
   const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
   const titleEl = document.getElementById('homeOvertimeTitle');
   const noteEl = document.getElementById('homeOvertimeNote');
@@ -2731,7 +2732,8 @@ function renderHomeOvertimePanel(todayTotals, monthTotals, linked) {
   if (isLeave) {
     const earned = totalLeaveEarned();
     const used = totalLeaveUsed();
-    if (!showPanel || (earned <= 0 && used <= 0)) {
+    // 关闭展示、或「无数据不展示」且没有任何调休时都不占位
+    if (panelMode === 'off' || (panelMode === 'auto' && earned <= 0 && used <= 0)) {
       panel.style.display = 'none';
       return;
     }
@@ -2748,8 +2750,8 @@ function renderHomeOvertimePanel(todayTotals, monthTotals, linked) {
 
   grid.classList.remove('cols-3');
   if (titleEl) titleEl.textContent = '🌙 加班费';
-  // 关闭展示、或没有任何加班时都不占位
-  if (!showPanel || (todayTotals.hours <= 0 && monthTotals.hours <= 0)) {
+  // 关闭展示、或「无数据不展示」且没有任何加班时都不占位
+  if (panelMode === 'off' || (panelMode === 'auto' && todayTotals.hours <= 0 && monthTotals.hours <= 0)) {
     panel.style.display = 'none';
     return;
   }
@@ -3148,7 +3150,7 @@ function selectOvertimeSettle(mode) {
 // 「加班金额计入计时页」的可用状态：调休模式、或计时页已隐藏卡片时都不可改
 function updateOvertimeSyncDisabled() {
   const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
-  const panelHidden = settings.overtimePanelShow === false;
+  const panelHidden = overtimePanelMode() === 'off';
   const syncSeg = document.getElementById('overtimeSync');
   if (syncSeg) syncSeg.classList.toggle('disabled', isLeave || panelHidden);
   const syncHint = document.getElementById('overtimeSyncHint');
@@ -3168,20 +3170,30 @@ function selectOvertimeSync(on) {
   persistOvertimeSettings();
 }
 
-// 加班页：是否在计时页展示加班费卡片
-function selectOvertimePanelShow(on) {
-  settings.overtimePanelShow = !!on;
+// 加班页：计时页加班费卡片展示模式；兼容旧布尔值：true → always / false → off
+function overtimePanelMode() {
+  const v = settings.overtimePanelShow;
+  if (v === 'always' || v === 'auto' || v === 'off') return v;
+  return v === false ? 'off' : 'always';
+}
+
+// 加班页：设置计时页加班费卡片的展示方式
+function selectOvertimePanelShow(mode) {
+  if (mode !== 'always' && mode !== 'auto' && mode !== 'off') mode = 'always';
+  settings.overtimePanelShow = mode;
   document.querySelectorAll('#overtimePanelShow .seg-btn').forEach(b => {
-    b.classList.toggle('active', (b.dataset.show === 'on') === !!on);
+    b.classList.toggle('active', b.dataset.show === mode);
   });
   const hint = document.getElementById('overtimePanelShowHint');
   if (hint) {
-    hint.textContent = on
-      ? '计时页会显示今日 / 本月加班费小面板'
-      : '计时页不再显示加班费小面板，数据仍可在加班页查看';
+    hint.textContent = mode === 'off'
+      ? '计时页不再显示加班费小面板，数据仍可在加班页查看'
+      : (mode === 'auto'
+        ? '有加班记录时在计时页显示今日 / 本月加班费小面板，没有则不占位'
+        : '计时页始终显示今日 / 本月加班费小面板');
   }
   // 隐藏卡片后，加班费也就不在计时页体现，自动切到「不计入」并锁住该项
-  if (!on) {
+  if (mode === 'off') {
     settings.overtimeSync = false;
     document.querySelectorAll('#overtimeSync .seg-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.sync === 'off');
