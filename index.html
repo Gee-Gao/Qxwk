@@ -549,6 +549,17 @@ body {
   font-size: 24px;
   font-weight: 700;
 }
+/* 对比口径：税前 / 税后并排算 */
+.cost-result .rate.rate-cols { display: flex; }
+.cost-result .rate-cols .rate-col { flex: 1; }
+.cost-result .rate-cols .rate-col + .rate-col { border-left: 1px solid rgba(0, 0, 0, .18); }
+.cost-result .rate-cols .rate-val { font-size: 20px; font-weight: 700; }
+.cost-result .rate-cap {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: .65;
+  margin-top: 2px;
+}
 .cost-result .rate-label {
   font-size: 12px;
   opacity: .7;
@@ -602,6 +613,60 @@ body {
   color: #555;
   cursor: default;
 }
+
+/* 加班记录列表 */
+.overtime-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 30px 12px 0; /* 右侧留出删除按钮的位置 */
+  border-top: 1px solid #262626;
+}
+.overtime-item:first-child { border-top: none; padding-top: 0; }
+.overtime-item .overtime-date { font-size: 13px; }
+.overtime-item .overtime-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.overtime-item .overtime-amount {
+  margin-left: auto;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+}
+/* 对比口径：单条记录里税前 / 税后各一行 */
+.overtime-item .overtime-amount.compare {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+/* 单一口径：在金额前标注税前 / 税后 */
+.overtime-item .overtime-amount .overtime-basis {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+/* 调休记录：使用（扣减）的时长用中性色，与加班的绿色区分 */
+.overtime-item .overtime-amount.used { color: var(--text-dim); }
+.overtime-item .overtime-del {
+  position: absolute;
+  top: 50%; right: 0;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  border: none;
+  color: #999;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.overtime-item .overtime-del:hover { background: #3a3a3a; color: #fff; }
 
 /* Annual Trajectory */
 .trajectory-card {
@@ -803,6 +868,53 @@ body {
   font-size: 13px;
   color: var(--text-dim);
 }
+/* 统计页：加班费与加班总时长明细行 */
+.overtime-line {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 8px 0;
+}
+/* 计时页：加班费小面板 */
+.overtime-panel {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 12px;
+}
+.overtime-panel-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.overtime-panel-note { color: #777; }
+.overtime-panel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+/* 调休口径：总 / 已 / 剩余三列 */
+.overtime-panel-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.overtime-panel-grid.cols-3 .overtime-stat .val { font-size: 15px; }
+.overtime-stat {
+  background: #222;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  text-align: left;
+}
+.overtime-stat .val {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.overtime-stat .lbl {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+/* 对比口径下的税后块：与上方税后行同色 */
+.overtime-stat.compare .val { color: var(--compare); }
 .stats-bar-row {
   display: flex;
   align-items: center;
@@ -1000,6 +1112,11 @@ body {
   background: var(--accent);
   color: #000;
 }
+/* 依赖其它开关、当前不可用的选项整体置灰 */
+.seg-control.disabled {
+  opacity: .4;
+  pointer-events: none;
+}
 
 /* 移动端适配：窄屏下日期/数字输入并排会挤，改为单列 */
 @media (max-width: 380px) {
@@ -1076,6 +1193,10 @@ body {
         </div>
       </div>
     </div>
+    <div class="overtime-panel" id="homeOvertimePanel" style="display:none">
+      <div class="overtime-panel-title"><span id="homeOvertimeTitle">🌙 加班费</span> <span class="overtime-panel-note" id="homeOvertimeNote"></span></div>
+      <div class="overtime-panel-grid" id="homeOvertimeGrid"></div>
+    </div>
     <div class="stats-more" onclick="selectStatsTab('data'); switchScreen('stats')">查看更多数据 →</div>
   </div>
 
@@ -1114,6 +1235,7 @@ body {
         <h3>本月概览</h3>
         <div class="big-val" id="monthEarned">¥0.00</div>
         <div class="sub-val" id="monthDays">已工作 0 天 / 22 天</div>
+        <div class="overtime-line" id="monthOvertimeLine" style="display:none"></div>
         <div style="margin-top:16px">
           <div class="stats-bar-row">
             <span class="lbl">已赚</span>
@@ -1131,6 +1253,7 @@ body {
       <div class="trajectory-card">
         <h3>年度工资轨迹</h3>
         <div class="desc">今年你已通过上班换来了多少</div>
+        <div class="overtime-line" id="annualOvertimeLine" style="display:none"></div>
         <div class="trajectory-stats">
           <div class="trajectory-stat">
             <div class="val" id="annualEarned">¥0</div>
@@ -1196,6 +1319,141 @@ body {
         <div id="deviceList"></div>
         <div class="add-device" onclick="addDevice()">+ 添加设备</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Overtime Screen -->
+  <div class="screen" id="screen-overtime">
+    <div class="header">
+      <div class="logo">千<span>薪</span>万苦</div>
+      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+    </div>
+    <div class="section-title">你的加班，换回来了多少</div>
+
+    <div class="cost-card">
+      <h3>🌙 加班设置</h3>
+      <div class="desc">加班是给钱还是换调休，金额是否计入计时页，以及卡片是否在计时页展示</div>
+      <div class="cost-fields" style="grid-template-columns:1fr">
+        <div class="field-group">
+          <label>加班结算方式</label>
+          <div class="seg-control" id="overtimeSettle">
+            <button type="button" class="seg-btn" data-settle="money" onclick="selectOvertimeSettle('money')">给钱</button>
+            <button type="button" class="seg-btn" data-settle="leave" onclick="selectOvertimeSettle('leave')">调休</button>
+          </div>
+          <div class="field-hint" id="overtimeSettleHint"></div>
+        </div>
+        <div class="field-group">
+          <label>计时页展示加班费卡片</label>
+          <div class="seg-control" id="overtimePanelShow">
+            <button type="button" class="seg-btn" data-show="on" onclick="selectOvertimePanelShow(true)">展示</button>
+            <button type="button" class="seg-btn" data-show="off" onclick="selectOvertimePanelShow(false)">隐藏</button>
+          </div>
+          <div class="field-hint" id="overtimePanelShowHint"></div>
+        </div>
+        <div class="field-group">
+          <label>加班金额计入计时页</label>
+          <div class="seg-control" id="overtimeSync">
+            <button type="button" class="seg-btn" data-sync="on" onclick="selectOvertimeSync(true)">计入</button>
+            <button type="button" class="seg-btn" data-sync="off" onclick="selectOvertimeSync(false)">不计入</button>
+          </div>
+          <div class="field-hint" id="overtimeSyncHint"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cost-card">
+      <h3 id="recordCardTitle">🌙 记一笔加班</h3>
+      <div class="desc" id="recordCardDesc">按加班那天填。倍率选工作日 1.5、休息日 2、法定节假日 3，也可自定义</div>
+
+      <div class="cost-fields" id="recordTypeFields" style="grid-template-columns:1fr; display:none">
+        <div class="field-group">
+          <label>记录类型</label>
+          <div class="seg-control" id="recordType">
+            <button type="button" class="seg-btn active" data-type="overtime" onclick="selectRecordType('overtime')">记加班</button>
+            <button type="button" class="seg-btn" data-type="leave" onclick="selectRecordType('leave')">记调休</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="overtimeForm">
+        <div class="cost-fields" style="grid-template-columns:1fr">
+          <div class="field-group">
+            <label>时长单位</label>
+            <div class="seg-control" id="overtimeUnit">
+              <button type="button" class="seg-btn active" data-unit="hour" onclick="selectOvertimeUnit('hour')">小时</button>
+              <button type="button" class="seg-btn" data-unit="day" onclick="selectOvertimeUnit('day')">天</button>
+            </div>
+          </div>
+        </div>
+        <div class="cost-fields">
+          <div class="field-group">
+            <label>加班日期</label>
+            <input type="date" id="overtimeDate">
+          </div>
+          <div class="field-group">
+            <label>加班时长</label>
+            <input type="number" id="overtimeAmount" min="0" step="0.5" oninput="updateOvertimePreview()">
+          </div>
+        </div>
+        <div class="cost-fields" id="overtimeRateGroup" style="grid-template-columns:1fr">
+          <div class="field-group">
+            <label>薪资倍率</label>
+            <div class="seg-control" id="overtimeRateMode">
+              <button type="button" class="seg-btn active" data-rate="1.5" onclick="selectOvertimeRate('1.5')">1.5</button>
+              <button type="button" class="seg-btn" data-rate="2" onclick="selectOvertimeRate('2')">2</button>
+              <button type="button" class="seg-btn" data-rate="3" onclick="selectOvertimeRate('3')">3</button>
+              <button type="button" class="seg-btn" data-rate="custom" onclick="selectOvertimeRate('custom')">自定义</button>
+            </div>
+            <input type="number" id="overtimeRate" min="0" step="0.1" placeholder="输入倍率" style="display:none" oninput="updateOvertimePreview()">
+          </div>
+        </div>
+        <div class="cost-result" id="overtimePreviewBox">
+          <div class="rate" id="overtimePreview">¥0.00</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="addOvertime()">添加记录</button>
+        </div>
+      </div>
+
+      <div id="leaveForm" style="display:none">
+        <div class="cost-fields" style="grid-template-columns:1fr">
+          <div class="field-group">
+            <label>时长单位</label>
+            <div class="seg-control" id="leaveUnit">
+              <button type="button" class="seg-btn active" data-unit="hour" onclick="selectLeaveUnit('hour')">小时</button>
+              <button type="button" class="seg-btn" data-unit="day" onclick="selectLeaveUnit('day')">天</button>
+            </div>
+          </div>
+        </div>
+        <div class="cost-fields">
+          <div class="field-group">
+            <label>调休日期</label>
+            <input type="date" id="leaveUsedDate">
+          </div>
+          <div class="field-group">
+            <label>调休时长</label>
+            <input type="number" id="leaveUsedAmount" min="0" step="0.5">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="addLeaveUsed()">添加记录</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="cost-card">
+      <h3 id="recordListTitle">加班记录</h3>
+      <div class="desc" id="overtimeSummary">还没有记录。被留下加班的那天，回来记一笔。</div>
+      <div class="cost-fields" id="recordFilterFields" style="grid-template-columns:1fr; display:none">
+        <div class="field-group">
+          <div class="seg-control" id="recordFilter">
+            <button type="button" class="seg-btn active" data-filter="all" onclick="selectRecordFilter('all')">全部</button>
+            <button type="button" class="seg-btn" data-filter="overtime" onclick="selectRecordFilter('overtime')">只看加班</button>
+            <button type="button" class="seg-btn" data-filter="leave" onclick="selectRecordFilter('leave')">只看调休</button>
+          </div>
+        </div>
+      </div>
+      <div id="overtimeList"></div>
     </div>
   </div>
 
@@ -1359,19 +1617,23 @@ body {
   <!-- Bottom Nav -->
   <div class="bottom-nav">
     <div class="nav-item active" data-screen="timer" onclick="switchScreen('timer')">
-      <div class="nav-icon">⏱</div>
+      <div class="nav-icon">⏱️</div>
       <div class="nav-label">计时</div>
     </div>
-    <div class="nav-item" data-screen="consumption" onclick="switchScreen('consumption')">
-      <div class="nav-icon">🛒</div>
-      <div class="nav-label">消费</div>
+    <div class="nav-item" data-screen="overtime" onclick="switchScreen('overtime')">
+      <div class="nav-icon">🌙</div>
+      <div class="nav-label">加班</div>
     </div>
     <div class="nav-item" data-screen="stats" onclick="switchScreen('stats')">
       <div class="nav-icon">📊</div>
       <div class="nav-label">统计</div>
     </div>
+    <div class="nav-item" data-screen="consumption" onclick="switchScreen('consumption')">
+      <div class="nav-icon">🛍️</div>
+      <div class="nav-label">消费</div>
+    </div>
     <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">
-      <div class="nav-icon">⚙</div>
+      <div class="nav-icon">⚙️</div>
       <div class="nav-label">设置</div>
     </div>
   </div>
@@ -1426,7 +1688,10 @@ const DEFAULTS = {
   startTime: '09:00',
   endTime: '18:00',
   lunchStart: '12:00',
-  lunchEnd: '13:00'
+  lunchEnd: '13:00',
+  overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 调休
+  overtimeSync: false,     // 加班金额是否计入计时页（仅给钱模式有效）
+  overtimePanelShow: true  // 是否在计时页展示加班费卡片
 };
 
 // 专项附加扣除分项（元/月），key 同时用作设置页输入框 id
@@ -1462,6 +1727,13 @@ let hireDate = '';      // 入职日期，用于生命消耗大盘
 let calcMode = 'slack'; // 反向计算器模式：slack 摸鱼白拿 / goal 熬班换钱
 let paidLeaveActive = false;
 let paidLeaveStart = null;
+let overtimeRecords = [];  // 加班记录
+let leaveUsedRecords = []; // 已调休记录（调休模式下用来抵扣加班时长）
+let overtimeUnit = 'hour'; // 录入时长单位：hour 小时 / day 天
+let overtimeRateMode = '1.5'; // 录入倍率档位：'1.5' | '2' | '3' | 'custom'
+let leaveUnit = 'hour';    // 调休录入时长单位：hour 小时 / day 天
+let recordType = 'overtime'; // 「记一笔」卡片的记录类型：overtime 记加班 / leave 记调休
+let recordFilter = 'all';   // 记录列表筛选：all 全部 / overtime 只看加班 / leave 只看调休
 let editingItemIndex = null; // null = adding, otherwise index of the item being edited
 
 // ============ Persistence ============
@@ -1472,12 +1744,16 @@ function load() {
     devices = JSON.parse(localStorage.getItem('qianxwk_devices')) || [];
     paidLeaveSessions = JSON.parse(localStorage.getItem('qianxwk_leave')) || [];
     hireDate = localStorage.getItem('qianxwk_hire') || '';
+    overtimeRecords = JSON.parse(localStorage.getItem('qianxwk_overtime')) || [];
+    leaveUsedRecords = JSON.parse(localStorage.getItem('qianxwk_leave_used')) || [];
   } catch(e) {
     settings = {...DEFAULTS};
     consumptionItems = getDefaultItems();
     devices = [];
     paidLeaveSessions = [];
     hireDate = '';
+    overtimeRecords = [];
+    leaveUsedRecords = [];
   }
   // 兼容旧版「整天/小数」开关：小数 -> 1 位，其余（整天/未设置）-> 0 位
   if (settings.workedDaysDecimals === undefined) {
@@ -1713,6 +1989,9 @@ function fillSettingsForm() {
   document.getElementById('endTime').value = settings.endTime;
   document.getElementById('lunchStart').value = settings.lunchStart;
   document.getElementById('lunchEnd').value = settings.lunchEnd;
+  selectOvertimeSettle(settings.overtimeSettle || DEFAULTS.overtimeSettle);
+  selectOvertimeSync(settings.overtimeSync);
+  selectOvertimePanelShow(settings.overtimePanelShow !== false);
   syncProbationFields();
 }
 
@@ -2251,20 +2530,30 @@ function updateTimer() {
   document.getElementById('startTimeLabel').textContent = settings.startTime;
   document.getElementById('endTimeLabel').textContent = settings.endTime;
 
-  // Earnings
-  document.getElementById('earnedToday').textContent = formatMoney(state.earnedToday);
+  // Earnings（开启联动时，加班应得一并计入；加班费另起一行单独展示）
+  const now = new Date();
+  const todayOvertime = sumOvertime(overtimeOnDay(fmtDateKey(now)));
+  const monthOvertimeTotals = sumOvertime(overtimeInMonth(now.getFullYear(), now.getMonth()));
+  const linked = isOvertimeLinked();
+  const overtimeToday = linked ? todayOvertime.money : 0;
+  const overtimeMonth = linked ? monthOvertimeTotals.money : 0;
+
+  document.getElementById('earnedToday').textContent = formatMoney(state.earnedToday + overtimeToday);
   const hourlyRate = getHourlyRate();
   document.getElementById('hourlyRate').textContent = formatMoney(hourlyRate) + '/小时';
 
   // 本月概览：已完成工作日按整天计，今天的收益按秒实时累计（与今日已赚口径一致）
   const monthWorked = getWorkedDaysThisMonth();
   const monthCompleted = getWorkedDaysThisMonth(true);
-  const monthEarned = monthCompleted * getDailyHours() * getHourlyRate() + state.earnedToday;
+  const monthEarned = monthCompleted * getDailyHours() * getHourlyRate() + state.earnedToday + overtimeMonth;
   document.getElementById('homeMonthEarned').textContent = formatMoney(monthEarned);
   document.getElementById('homeMonthDays').textContent = `已工作 ${formatDays(monthWorked)} 天 / ${settings.workDaysPerMonth} 天`;
 
   // 税后口径：额外展示税前对照卡片，口径标签同步显隐
   updatePreTaxCard(state, monthWorked, monthCompleted);
+
+  // 加班费小面板（今日 / 本月；对比口径下含税前税后）
+  renderHomeOvertimePanel(todayOvertime, monthOvertimeTotals, linked);
 
   // Daily quote - rotate daily（节假日/调休日给出对应提示）
   const todayType = dayType(new Date());
@@ -2314,9 +2603,12 @@ function updatePreTaxCard(state, monthWorked, monthCompleted) {
 
   const grossRate = getGrossHourlyRate();
   const grossToday = state.workedMinutes * grossRate / 60;
-  document.getElementById('preTaxEarnedToday').textContent = formatMoney(grossToday);
+  const grossOvertimeToday = linkedOvertime(overtimeOnDay(fmtDateKey(new Date())), grossRate);
+  const grossNow = new Date();
+  const grossOvertimeMonth = linkedOvertime(overtimeInMonth(grossNow.getFullYear(), grossNow.getMonth()), grossRate);
+  document.getElementById('preTaxEarnedToday').textContent = formatMoney(grossToday + grossOvertimeToday);
   document.getElementById('preTaxHourly').textContent = formatMoney(grossRate) + '/小时';
-  document.getElementById('preTaxMonthEarned').textContent = formatMoney(monthCompleted * getDailyHours() * grossRate + grossToday);
+  document.getElementById('preTaxMonthEarned').textContent = formatMoney(monthCompleted * getDailyHours() * grossRate + grossToday + grossOvertimeMonth);
   document.getElementById('preTaxMonthDays').textContent = `已工作 ${formatDays(monthWorked)} 天 / ${settings.workDaysPerMonth} 天`;
 }
 
@@ -2365,21 +2657,29 @@ function updateStats() {
   updateLifePanel();
   updateCalculator();
 
-  // Annual trajectory
+  // Annual trajectory（开启联动时，加班应得一并计入）
   const yearlyWorkDays = getWorkedDaysThisYear();
   const dailyHours = getDailyHours();
+  const thisYear = new Date().getFullYear();
+  const now = new Date();
 
-  const annualEarned = yearlyWorkDays * dailyHours * getHourlyRate();
-  const annualTotalDays = countWorkdaysInYear(new Date().getFullYear());
+  const yearTotals = sumOvertime(overtimeInYear(thisYear));
+  const monthTotals = sumOvertime(overtimeInMonth(now.getFullYear(), now.getMonth()));
+  const yearOvertime = isOvertimeLinked() ? yearTotals.money : 0;
+  const monthOvertime = isOvertimeLinked() ? monthTotals.money : 0;
+
+  const annualEarned = yearlyWorkDays * dailyHours * getHourlyRate() + yearOvertime;
+  const annualTotalDays = countWorkdaysInYear(thisYear);
   const annualRemain = (annualTotalDays - yearlyWorkDays) * dailyHours * getHourlyRate();
 
   document.getElementById('annualEarned').textContent = '¥' + Math.round(annualEarned).toLocaleString();
   document.getElementById('annualDays').textContent = yearlyWorkDays + '天';
   document.getElementById('annualRemain').textContent = '¥' + Math.round(annualRemain).toLocaleString();
+  renderOvertimeLine('annualOvertimeLine', overtimeInYear(thisYear));
 
   // Monthly overview
   const monthWorked = getWorkedDaysThisMonth();
-  const monthEarned = monthWorked * dailyHours * getHourlyRate();
+  const monthEarned = monthWorked * dailyHours * getHourlyRate() + monthOvertime;
   const monthTotal = getMonthlyNet();
   const monthProgress = settings.workDaysPerMonth > 0 ? (monthWorked / settings.workDaysPerMonth) * 100 : 0;
 
@@ -2389,6 +2689,84 @@ function updateStats() {
   document.getElementById('monthEarnedVal').textContent = formatMoney(monthEarned);
   document.getElementById('monthProgress').style.width = monthProgress.toFixed(0) + '%';
   document.getElementById('monthProgressVal').textContent = monthProgress.toFixed(0) + '%';
+  renderOvertimeLine('monthOvertimeLine', overtimeInMonth(now.getFullYear(), now.getMonth()));
+}
+
+// 统计页：列出该周期的加班费 / 调休时长，没有就不占位；按当前口径只取对应来源的记录
+function renderOvertimeLine(id, match) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if ((settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave') {
+    const hours = sumLeaveEarned(match);
+    if (hours <= 0) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.textContent = `调休 ${hours.toFixed(1)} 小时`;
+    return;
+  }
+  const totals = sumOvertime(match);
+  if (totals.hours <= 0) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  // 未开启联动时金额不在上面的合计里，补一句说明避免误读
+  el.textContent = `加班费 ${formatMoney(totals.money)} · 共 ${totals.hours.toFixed(1)} 小时`
+    + (isOvertimeLinked() ? '' : '（未计入）');
+}
+
+// 计时页：加班费小面板；调休口径展示调休结余，对比口径下按税前 / 税后两组并列
+function renderHomeOvertimePanel(todayTotals, monthTotals, linked) {
+  const panel = document.getElementById('homeOvertimePanel');
+  const grid = document.getElementById('homeOvertimeGrid');
+  if (!panel || !grid) return;
+  const showPanel = settings.overtimePanelShow !== false;
+  const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
+  const titleEl = document.getElementById('homeOvertimeTitle');
+  const noteEl = document.getElementById('homeOvertimeNote');
+
+  const cell = (label, valueText, cls) =>
+    `<div class="overtime-stat${cls ? ' ' + cls : ''}">`
+    + `<div class="val">${valueText}</div><div class="lbl">${label}</div></div>`;
+
+  // 调休口径：展示总调休 / 已调休 / 剩余调休
+  if (isLeave) {
+    const earned = totalLeaveEarned();
+    const used = totalLeaveUsed();
+    if (!showPanel || (earned <= 0 && used <= 0)) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+    if (titleEl) titleEl.textContent = '🌴 调休';
+    if (noteEl) noteEl.textContent = '';
+    grid.classList.add('cols-3');
+    grid.innerHTML =
+      cell('总调休', formatHours(earned))
+      + cell('已调休', formatHours(used))
+      + cell('剩余调休', formatHours(earned - used));
+    return;
+  }
+
+  grid.classList.remove('cols-3');
+  if (titleEl) titleEl.textContent = '🌙 加班费';
+  // 关闭展示、或没有任何加班时都不占位
+  if (!showPanel || (todayTotals.hours <= 0 && monthTotals.hours <= 0)) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+  if (noteEl) noteEl.textContent = linked ? '' : '· 未计入合计';
+
+  if ((settings.salaryMode || DEFAULTS.salaryMode) === 'compare') {
+    // 顺序与上方卡片一致：先税前、后税后
+    const now = new Date();
+    const grossRate = getGrossHourlyRate();
+    const grossToday = sumOvertime(overtimeOnDay(fmtDateKey(now)), grossRate).money;
+    const grossMonth = sumOvertime(overtimeInMonth(now.getFullYear(), now.getMonth()), grossRate).money;
+    grid.innerHTML = cell('税前 · 今日', formatMoney(grossToday))
+      + cell('税前 · 本月', formatMoney(grossMonth))
+      + cell('税后 · 今日', formatMoney(todayTotals.money), 'compare')
+      + cell('税后 · 本月', formatMoney(monthTotals.money), 'compare');
+    return;
+  }
+  grid.innerHTML = cell('今日', formatMoney(todayTotals.money)) + cell('本月', formatMoney(monthTotals.money));
 }
 
 // ============ Paid Leave ============
@@ -2570,6 +2948,507 @@ function deleteDevice(idx) {
   saveDevices();
   renderDevices();
   showToast('已删除');
+}
+
+// ============ Overtime ============
+const OVERTIME_KEY = 'qianxwk_overtime';
+const LEAVE_USED_KEY = 'qianxwk_leave_used';
+
+function saveOvertime() {
+  localStorage.setItem(OVERTIME_KEY, JSON.stringify(overtimeRecords));
+}
+
+function saveLeaveUsed() {
+  localStorage.setItem(LEAVE_USED_KEY, JSON.stringify(leaveUsedRecords));
+}
+
+// 小时数展示（保留 1 位）
+function formatHours(h) {
+  return (Math.round(h * 10) / 10).toFixed(1) + ' 小时';
+}
+
+// 加班记录的来源口径：'money' 给钱 / 'leave' 调休；历史无标记的记录归为给钱
+function overtimeSettleOf(record) {
+  return record.settle === 'leave' ? 'leave' : 'money';
+}
+
+// 累计「调休模式」加班换来的可调休时长
+function totalLeaveEarned() {
+  let h = 0;
+  overtimeRecords.forEach(r => {
+    if (overtimeSettleOf(r) !== 'leave') return;
+    h += overtimeHours(r);
+  });
+  return h;
+}
+
+// 按日期条件汇总「调休模式」加班换来的时长（小时）
+function sumLeaveEarned(match) {
+  let hours = 0;
+  overtimeRecords.forEach(r => {
+    if (overtimeSettleOf(r) !== 'leave') return;
+    const d = new Date(r.date + 'T00:00:00');
+    if (isNaN(d.getTime()) || !match(d)) return;
+    hours += overtimeHours(r);
+  });
+  return hours;
+}
+
+// 已调休记录折算成小时数：按「天」录入时，一天按当前制度的每日工时算
+function leaveUsedHours(record) {
+  const amount = Math.max(0, parseFloat(record.amount) || 0);
+  return record.unit === 'day' ? amount * getDailyHours() : amount;
+}
+
+// 累计已使用的调休时长
+function totalLeaveUsed() {
+  let h = 0;
+  leaveUsedRecords.forEach(r => { h += leaveUsedHours(r); });
+  return h;
+}
+
+// 按天录入时，时长框固定显示当天的应上班小时数
+function dailyHoursValue() {
+  return String(Math.round(getDailyHours() * 10) / 10);
+}
+
+// 当前选中的加班倍率：预设档位直接取，自定义取输入框
+function currentOvertimeRate() {
+  if (overtimeRateMode === 'custom') {
+    return parseFloat(document.getElementById('overtimeRate').value) || 0;
+  }
+  return parseFloat(overtimeRateMode) || 0;
+}
+
+function selectOvertimeRate(value) {
+  overtimeRateMode = value;
+  document.querySelectorAll('#overtimeRateMode .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.rate === value);
+  });
+  // 只有「自定义」才露出输入框
+  const input = document.getElementById('overtimeRate');
+  const isCustom = value === 'custom';
+  input.style.display = isCustom ? '' : 'none';
+  if (!isCustom) input.value = '';
+  updateOvertimePreview();
+}
+
+function selectOvertimeUnit(unit) {
+  overtimeUnit = unit;
+  document.querySelectorAll('#overtimeUnit .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.unit === unit);
+  });
+  // 按天录入时一次只记一天：自动带入应上班小时数并锁住，不可手改
+  const amountInput = document.getElementById('overtimeAmount');
+  amountInput.disabled = unit === 'day';
+  amountInput.value = unit === 'day' ? dailyHoursValue() : '';
+  updateOvertimePreview();
+}
+
+function selectLeaveUnit(unit) {
+  leaveUnit = unit;
+  document.querySelectorAll('#leaveUnit .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.unit === unit);
+  });
+  // 按天录入时一次只记一天：自动带入应上班小时数并锁住，不可手改
+  const amountInput = document.getElementById('leaveUsedAmount');
+  amountInput.disabled = unit === 'day';
+  amountInput.value = unit === 'day' ? dailyHoursValue() : '';
+}
+
+// 记录折算成小时数：按「天」录入时，一天按当前制度的每日工时算
+function overtimeHours(record) {
+  const amount = Math.max(0, parseFloat(record.amount) || 0);
+  return record.unit === 'day' ? amount * getDailyHours() : amount;
+}
+
+// 应得加班费 = 小时数 × 当前时薪 × 倍率
+function overtimeEarned(record, hourlyRate) {
+  const rate = Math.max(0, parseFloat(record.rate) || 0);
+  const base = typeof hourlyRate === 'number' ? hourlyRate : getHourlyRate();
+  return overtimeHours(record) * base * rate;
+}
+
+// 计时页联动：仅「给钱」且开启联动时，才把加班应得算进首页
+function isOvertimeLinked() {
+  return (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'money' && !!settings.overtimeSync;
+}
+
+// 按日期条件汇总「给钱模式」加班，返回 { money, hours }；不受联动开关影响
+function sumOvertime(match, hourlyRate) {
+  let money = 0;
+  let hours = 0;
+  overtimeRecords.forEach(r => {
+    if (overtimeSettleOf(r) !== 'money') return;
+    const d = new Date(r.date + 'T00:00:00');
+    if (isNaN(d.getTime()) || !match(d)) return;
+    hours += overtimeHours(r);
+    money += overtimeEarned(r, hourlyRate);
+  });
+  return { money: money, hours: hours };
+}
+
+// 计入计时页 / 统计的加班金额（受「给钱 + 计入」开关控制）
+function linkedOvertime(match, hourlyRate) {
+  return isOvertimeLinked() ? sumOvertime(match, hourlyRate).money : 0;
+}
+
+// 常用日期范围
+function overtimeOnDay(dateKey) {
+  return d => fmtDateKey(d) === dateKey;
+}
+
+function overtimeInMonth(year, month) {
+  return d => d.getFullYear() === year && d.getMonth() === month;
+}
+
+function overtimeInYear(year) {
+  return d => d.getFullYear() === year;
+}
+
+// 加班设置已挪到加班页，不再走「保存参数」，改动即时落盘（只覆盖这几个键，避免带上其它未保存的表单改动）
+function persistOvertimeSettings() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('qianxwk_settings')) || {}; } catch (e) { saved = {}; }
+  saved.overtimeSettle = settings.overtimeSettle;
+  saved.overtimeSync = settings.overtimeSync;
+  saved.overtimePanelShow = settings.overtimePanelShow;
+  localStorage.setItem('qianxwk_settings', JSON.stringify(saved));
+}
+
+// 加班页：加班结算方式（给钱 / 调休）
+function selectOvertimeSettle(mode) {
+  settings.overtimeSettle = mode;
+  document.querySelectorAll('#overtimeSettle .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.settle === mode);
+  });
+  const isLeave = mode === 'leave';
+
+  const settleHint = document.getElementById('overtimeSettleHint');
+  if (settleHint) {
+    settleHint.textContent = isLeave
+      ? '加班不计金额，累计的时长用来换调休'
+      : '加班按倍率折算成应得金额';
+  }
+  // 调休不产生金额，自动切到「不计入」并锁住该项
+  if (isLeave) {
+    settings.overtimeSync = false;
+    document.querySelectorAll('#overtimeSync .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.sync === 'off');
+    });
+  }
+  updateOvertimeSyncDisabled();
+  renderOvertime();
+  updateOvertimePreview();
+  persistOvertimeSettings();
+}
+
+// 「加班金额计入计时页」的可用状态：调休模式、或计时页已隐藏卡片时都不可改
+function updateOvertimeSyncDisabled() {
+  const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
+  const panelHidden = settings.overtimePanelShow === false;
+  const syncSeg = document.getElementById('overtimeSync');
+  if (syncSeg) syncSeg.classList.toggle('disabled', isLeave || panelHidden);
+  const syncHint = document.getElementById('overtimeSyncHint');
+  if (syncHint) {
+    if (isLeave) syncHint.textContent = '调休模式不产生金额，无需计入';
+    else if (panelHidden) syncHint.textContent = '计时页已隐藏加班费卡片，无需计入';
+    else syncHint.textContent = '计入后，加班金额会加进计时页的今日 / 本月已赚';
+  }
+}
+
+// 加班页：加班金额是否计入计时页
+function selectOvertimeSync(on) {
+  settings.overtimeSync = !!on;
+  document.querySelectorAll('#overtimeSync .seg-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.sync === 'on') === !!on);
+  });
+  persistOvertimeSettings();
+}
+
+// 加班页：是否在计时页展示加班费卡片
+function selectOvertimePanelShow(on) {
+  settings.overtimePanelShow = !!on;
+  document.querySelectorAll('#overtimePanelShow .seg-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.show === 'on') === !!on);
+  });
+  const hint = document.getElementById('overtimePanelShowHint');
+  if (hint) {
+    hint.textContent = on
+      ? '计时页会显示今日 / 本月加班费小面板'
+      : '计时页不再显示加班费小面板，数据仍可在加班页查看';
+  }
+  // 隐藏卡片后，加班费也就不在计时页体现，自动切到「不计入」并锁住该项
+  if (!on) {
+    settings.overtimeSync = false;
+    document.querySelectorAll('#overtimeSync .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.sync === 'off');
+    });
+  }
+  updateOvertimeSyncDisabled();
+  persistOvertimeSettings();
+}
+
+function updateOvertimePreview() {
+  const preview = document.getElementById('overtimePreview');
+  if (!preview) return;
+  // 调休模式不折算金额，只提示结算方式
+  if ((settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave') {
+    preview.classList.remove('rate-cols');
+    preview.textContent = '调休';
+    return;
+  }
+  const amount = parseFloat(document.getElementById('overtimeAmount').value) || 0;
+  const rate = currentOvertimeRate();
+  // 按天录入时时长框显示的是应上班小时数，折算固定按一天算
+  const hours = overtimeUnit === 'day' ? getDailyHours() : amount;
+  const net = hours * getHourlyRate() * rate;
+
+  // 对比口径：税前、税后都算出来并排展示
+  if ((settings.salaryMode || DEFAULTS.salaryMode) === 'compare') {
+    const gross = hours * getGrossHourlyRate() * rate;
+    preview.innerHTML =
+      `<div class="rate-col"><div class="rate-val">${formatMoney(gross)}</div><div class="rate-cap">税前</div></div>` +
+      `<div class="rate-col"><div class="rate-val">${formatMoney(net)}</div><div class="rate-cap">税后</div></div>`;
+    preview.classList.add('rate-cols');
+    return;
+  }
+  preview.classList.remove('rate-cols');
+  // 单一口径：金额下方标注当期是税前还是税后
+  const tag = (settings.salaryMode || DEFAULTS.salaryMode) === 'gross' ? '税前' : '税后';
+  preview.innerHTML = `${formatMoney(net)}<div class="rate-cap">${tag}</div>`;
+}
+
+function addOvertime() {
+  const isLeaveMode = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
+  // 按天录入时固定记一天
+  const amount = overtimeUnit === 'day' ? 1 : parseFloat(document.getElementById('overtimeAmount').value);
+  const rate = currentOvertimeRate();
+  if (!amount || amount <= 0) { showToast('先填加班时长'); return; }
+  // 调休模式不折算金额，不需要倍率
+  if (!isLeaveMode && (!rate || rate <= 0)) {
+    showToast(overtimeRateMode === 'custom' ? '先填自定义倍率' : '先选加班倍率');
+    return;
+  }
+
+  overtimeRecords.unshift({
+    date: document.getElementById('overtimeDate').value || fmtDateKey(new Date()),
+    amount: amount,
+    unit: overtimeUnit,
+    rate: rate || 1,
+    settle: isLeaveMode ? 'leave' : 'money',
+    ts: Date.now()
+  });
+  saveOvertime();
+  renderOvertime();
+
+  document.getElementById('overtimeAmount').value = overtimeUnit === 'day' ? dailyHoursValue() : '';
+  // 预设档位保留选择，方便连着记几笔；自定义则清空输入框
+  if (overtimeRateMode === 'custom') document.getElementById('overtimeRate').value = '';
+  updateOvertimePreview();
+  showToast('已记下这笔加班');
+}
+
+function deleteOvertime(idx) {
+  overtimeRecords.splice(idx, 1);
+  saveOvertime();
+  renderOvertime();
+  showToast('已删除');
+}
+
+function formatOvertimeDate(key) {
+  const parts = String(key || '').split('-');
+  if (parts.length !== 3) return key || '';
+  return `${parseInt(parts[0])}年${parseInt(parts[1])}月${parseInt(parts[2])}日`;
+}
+
+function renderOvertime() {
+  const list = document.getElementById('overtimeList');
+  if (!list) return;
+
+  const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
+  const isCompare = (settings.salaryMode || DEFAULTS.salaryMode) === 'compare';
+  // 单一口径下的口径标注：税前 / 税后
+  const modeTag = (settings.salaryMode || DEFAULTS.salaryMode) === 'gross' ? '税前' : '税后';
+  const grossRate = getGrossHourlyRate();
+  const summary = document.getElementById('overtimeSummary');
+
+  // 只取当前口径的加班记录（给钱 / 调休），两种来源互不串
+  const modeRecords = overtimeRecords.filter(r => overtimeSettleOf(r) === (isLeave ? 'leave' : 'money'));
+
+  if (!modeRecords.length && !(isLeave && leaveUsedRecords.length)) {
+    summary.textContent = '还没有记录。被留下加班的那天，回来记一笔。';
+  } else if (isLeave) {
+    // 调休口径：加班时长与已调休合并成一本账
+    const earned = totalLeaveEarned();
+    const used = totalLeaveUsed();
+    summary.textContent = `加班 ${formatHours(earned)} · 已调休 ${formatHours(used)} · 剩余 ${formatHours(earned - used)}`;
+  } else if (isCompare) {
+    // 对比口径：税前、税后各算一份
+    let net = 0;
+    let gross = 0;
+    modeRecords.forEach(r => {
+      net += overtimeEarned(r);
+      gross += overtimeEarned(r, grossRate);
+    });
+    summary.textContent = `共 ${modeRecords.length} 笔 · 应得合计 税前 ${formatMoney(gross)} / 税后 ${formatMoney(net)}`;
+  } else {
+    let total = 0;
+    modeRecords.forEach(r => { total += overtimeEarned(r); });
+    summary.textContent = `共 ${modeRecords.length} 笔 · 应得合计 ${formatMoney(total)}（${modeTag}）`;
+  }
+
+  // 把「加班」与「已调休」记录合并成一条列表，按新增顺序倒序（不按类型分组）
+  const recordTs = r => r.ts || Date.parse(r.date + 'T00:00:00') || 0;
+  let rows = [];
+  overtimeRecords.forEach((r, i) => {
+    if (overtimeSettleOf(r) !== (isLeave ? 'leave' : 'money')) return;
+    rows.push({ kind: 'overtime', r: r, i: i, ts: recordTs(r) });
+  });
+  if (isLeave) {
+    leaveUsedRecords.forEach((r, i) => rows.push({ kind: 'leave', r: r, i: i, ts: recordTs(r) }));
+    if (recordFilter === 'overtime') rows = rows.filter(x => x.kind === 'overtime');
+    else if (recordFilter === 'leave') rows = rows.filter(x => x.kind === 'leave');
+  }
+  rows.sort((a, b) => b.ts - a.ts);
+
+  list.innerHTML = '';
+  rows.forEach(row => {
+    const r = row.r;
+    const item = document.createElement('div');
+    item.className = 'overtime-item';
+    let meta;
+    let amountHtml;
+    let extraClass = '';
+    if (row.kind === 'leave') {
+      meta = '已调休';
+      amountHtml = `-${formatHours(leaveUsedHours(r))}`;
+      extraClass = ' used';
+    } else {
+      const duration = r.unit === 'day' ? `${r.amount} 天` : `${r.amount} 小时`;
+      // 调休模式下不折算金额，也不展示倍率
+      meta = isLeave ? duration : `${duration} · ${r.rate} 倍`;
+      if (isLeave) {
+        amountHtml = `+${formatHours(overtimeHours(r))}`;
+      } else if (isCompare) {
+        amountHtml =
+          `<div>税前 ${formatMoney(overtimeEarned(r, grossRate))}</div>` +
+          `<div>税后 ${formatMoney(overtimeEarned(r))}</div>`;
+        extraClass = ' compare';
+      } else {
+        amountHtml = `<span class="overtime-basis">${modeTag}</span>${formatMoney(overtimeEarned(r))}`;
+      }
+    }
+    const delCall = row.kind === 'leave' ? `deleteLeaveUsed(${row.i})` : `deleteOvertime(${row.i})`;
+    item.innerHTML = `
+      <button class="overtime-del" onclick="${delCall}" title="删除">×</button>
+      <div>
+        <div class="overtime-date">${formatOvertimeDate(r.date)}</div>
+        <div class="overtime-meta">${meta}</div>
+      </div>
+      <div class="overtime-amount${extraClass}">${amountHtml}</div>
+    `;
+    list.appendChild(item);
+  });
+
+  syncLeaveUI();
+}
+
+function addLeaveUsed() {
+  // 按天录入时固定记一天
+  const amount = leaveUnit === 'day' ? 1 : parseFloat(document.getElementById('leaveUsedAmount').value);
+  if (!amount || amount <= 0) { showToast('先填调休时长'); return; }
+
+  leaveUsedRecords.unshift({
+    date: document.getElementById('leaveUsedDate').value || fmtDateKey(new Date()),
+    amount: amount,
+    unit: leaveUnit,
+    ts: Date.now()
+  });
+  saveLeaveUsed();
+  renderOvertime();
+  document.getElementById('leaveUsedAmount').value = leaveUnit === 'day' ? dailyHoursValue() : '';
+  showToast('已记下这笔调休');
+}
+
+function deleteLeaveUsed(idx) {
+  leaveUsedRecords.splice(idx, 1);
+  saveLeaveUsed();
+  renderOvertime();
+  showToast('已删除');
+}
+
+// 「记一笔」卡片：切换记加班 / 记调休
+function selectRecordType(type) {
+  recordType = type === 'leave' ? 'leave' : 'overtime';
+  document.querySelectorAll('#recordType .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.type === recordType);
+  });
+  applyRecordType();
+}
+
+// 记录列表筛选：全部 / 只看加班 / 只看调休
+function selectRecordFilter(filter) {
+  recordFilter = (filter === 'overtime' || filter === 'leave') ? filter : 'all';
+  document.querySelectorAll('#recordFilter .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === recordFilter);
+  });
+  renderOvertime();
+}
+
+// 按当前记录类型显示对应表单，并同步卡片标题 / 说明
+function applyRecordType() {
+  const isLeaveType = recordType === 'leave';
+  const isLeaveMode = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
+  const overtimeForm = document.getElementById('overtimeForm');
+  const leaveForm = document.getElementById('leaveForm');
+  if (overtimeForm) overtimeForm.style.display = isLeaveType ? 'none' : '';
+  if (leaveForm) leaveForm.style.display = isLeaveType ? '' : 'none';
+  const title = document.getElementById('recordCardTitle');
+  const desc = document.getElementById('recordCardDesc');
+  if (title) title.textContent = isLeaveType ? '🌴 记一笔调休' : '🌙 记一笔加班';
+  if (desc) {
+    if (isLeaveType) desc.textContent = '调休用掉多少就记多少，用来算还剩多少可调休';
+    else if (isLeaveMode) desc.textContent = '按加班那天填，累计的时长用来换调休';
+    else desc.textContent = '按加班那天填。倍率选工作日 1.5、休息日 2、法定节假日 3，也可自定义';
+  }
+
+  // 调休模式下加班只累计时长、不折算金额，隐藏薪资倍率与金额预览
+  const rateGroup = document.getElementById('overtimeRateGroup');
+  if (rateGroup) rateGroup.style.display = isLeaveMode ? 'none' : '';
+  const previewBox = document.getElementById('overtimePreviewBox');
+  if (previewBox) previewBox.style.display = isLeaveMode ? 'none' : '';
+}
+
+// 加班页：调休模式下才显示「记录类型」切换与记录筛选，并同步记录卡片标题
+function syncLeaveUI() {
+  const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
+
+  const typeFields = document.getElementById('recordTypeFields');
+  if (typeFields) typeFields.style.display = isLeave ? '' : 'none';
+
+  // 非调休模式没有「记调休」入口，强制回到记加班；筛选也回到全部
+  if (!isLeave && recordType !== 'overtime') recordType = 'overtime';
+  selectRecordType(recordType);
+
+  const filterFields = document.getElementById('recordFilterFields');
+  if (filterFields) filterFields.style.display = isLeave ? '' : 'none';
+  if (!isLeave && recordFilter !== 'all') recordFilter = 'all';
+  document.querySelectorAll('#recordFilter .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === recordFilter);
+  });
+
+  const title = document.getElementById('recordListTitle');
+  if (title) title.textContent = isLeave ? '加班 / 调休记录' : '加班记录';
+}
+
+function initOvertime() {
+  const dateInput = document.getElementById('overtimeDate');
+  if (dateInput) dateInput.value = fmtDateKey(new Date());
+  const leaveDateInput = document.getElementById('leaveUsedDate');
+  if (leaveDateInput) leaveDateInput.value = fmtDateKey(new Date());
+  renderOvertime();
+  updateOvertimePreview();
 }
 
 // ============ 生命消耗大盘 ============
@@ -2821,6 +3700,10 @@ function switchScreen(name) {
   if (name === 'timer') updateTimer();
   if (name === 'consumption') updateConsumption();
   if (name === 'stats') updateStats();
+  if (name === 'overtime') {
+    renderOvertime();
+    updateOvertimePreview();
+  }
   if (name === 'settings') fillSettingsForm();
 }
 
@@ -2848,6 +3731,7 @@ try { isFirstRun = !localStorage.getItem('qianxwk_settings'); } catch (e) { isFi
 load();
 fillSettingsForm();
 renderDevices();
+initOvertime();
 updateAll();
 refreshHolidays(); // 异步联网更新节假日，不阻塞首屏渲染
 
