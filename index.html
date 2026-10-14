@@ -237,9 +237,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .stat-card .sub {
-  font-size: 11px;
+  font-size: 12px;
   opacity: .6;
   margin-top: 4px;
+}
+/* 计时页卡片内的外币换算附加行 */
+.stat-card .fx-sub {
+  font-size: 14px;
+  opacity: .65;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 .stat-card .icon {
   position: absolute;
@@ -353,6 +360,22 @@ body {
 }
 .field-group input::placeholder { color: #555; }
 .field-group input:disabled { opacity: .45; cursor: not-allowed; }
+.field-group select {
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 16px; /* 移动端 16px 以下会触发 iOS Safari 聚焦自动放大 */
+  outline: none;
+  min-width: 0;
+  width: 100%;
+  align-self: stretch;
+  transition: border-color .2s;
+  cursor: pointer;
+}
+.field-group select:focus { border-color: var(--accent); }
+.field-group select:disabled { opacity: .45; cursor: not-allowed; }
 
 .btn-row {
   display: flex;
@@ -1172,12 +1195,15 @@ body {
           <div class="label">今日已赚</div>
           <div class="value" id="preTaxEarnedToday">¥0.00</div>
           <div class="sub" id="preTaxHourly">¥0.00/小时</div>
+          <div class="fx-sub" id="preTaxEarnedTodayFx" style="display:none"></div>
+          <div class="fx-sub" id="preTaxHourlyFx" style="display:none"></div>
         </div>
         <div class="stat-card compare-flat">
           <span class="card-note">税前</span>
           <div class="label">本月已赚</div>
           <div class="value" id="preTaxMonthEarned">¥0.00</div>
           <div class="sub" id="preTaxMonthDays">已工作 0 天 / 22 天</div>
+          <div class="fx-sub" id="preTaxMonthEarnedFx" style="display:none"></div>
         </div>
       </div>
       <div class="stats-row" id="mainStatsRow">
@@ -1186,12 +1212,15 @@ body {
           <div class="label">今日已赚</div>
           <div class="value" id="earnedToday">¥0.00</div>
           <div class="sub" id="hourlyRate">¥0.00/小时</div>
+          <div class="fx-sub" id="earnedTodayFx" style="display:none"></div>
+          <div class="fx-sub" id="earnedHourlyFx" style="display:none"></div>
         </div>
         <div class="stat-card gray net">
           <span class="card-note" id="monthTag">税前</span>
           <div class="label">本月已赚</div>
           <div class="value" id="homeMonthEarned">¥0.00</div>
           <div class="sub" id="homeMonthDays">已工作 0 天 / 22 天</div>
+          <div class="fx-sub" id="homeMonthEarnedFx" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -1543,6 +1572,24 @@ body {
         </div>
       </div>
     </div>
+    <div class="settings-card" id="foreignCard">
+      <h3>💱 外币显示</h3>
+      <div class="desc">开启后，计时页会在人民币金额下附加所选外币的换算金额（汇率联网获取，失败时用内置汇率兜底）</div>
+      <div class="settings-grid">
+        <div class="field-group" style="grid-column:1/-1">
+          <label>外币开关</label>
+          <div class="seg-control" id="foreignEnabled">
+            <button type="button" class="seg-btn" data-on="on" onclick="selectForeignEnabled(true)">开启</button>
+            <button type="button" class="seg-btn" data-on="off" onclick="selectForeignEnabled(false)">关闭</button>
+          </div>
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <label>选择外币</label>
+          <select id="foreignCurrencySelect" onchange="selectForeignCurrency(this.value)"></select>
+          <div class="field-hint" id="foreignHint"></div>
+        </div>
+      </div>
+    </div>
     <div class="settings-card" id="taxCard">
       <h3>🧾 税后测算</h3>
       <div class="desc">填得越细估算越准，税后口径的时薪与统计都按这里的参数算出</div>
@@ -1694,7 +1741,9 @@ const DEFAULTS = {
   lunchEnd: '13:00',
   overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 调休
   overtimeSync: false,     // 加班金额是否计入计时页（仅给钱模式有效）
-  overtimePanelShow: 'always' // 计时页加班费卡片展示：always 始终展示 / auto 无数据不展示 / off 隐藏
+  overtimePanelShow: 'always', // 计时页加班费卡片展示：always 始终展示 / auto 无数据不展示 / off 隐藏
+  foreignEnabled: false,   // 计时页是否附加展示外币换算
+  foreignCurrency: 'USD'   // 外币换算币种代码
 };
 
 // 专项附加扣除分项（元/月），key 同时用作设置页输入框 id
@@ -1951,6 +2000,8 @@ function saveSettings() {
   settings.endTime = document.getElementById('endTime').value || DEFAULTS.endTime;
   settings.lunchStart = document.getElementById('lunchStart').value || DEFAULTS.lunchStart;
   settings.lunchEnd = document.getElementById('lunchEnd').value || DEFAULTS.lunchEnd;
+  settings.foreignEnabled = !!settings.foreignEnabled;
+  settings.foreignCurrency = currencyOf(settings.foreignCurrency).code;
   localStorage.setItem('qianxwk_settings', JSON.stringify(settings));
   showToast('参数已保存');
   switchScreen('timer');
@@ -1996,6 +2047,9 @@ function fillSettingsForm() {
   selectOvertimeSync(settings.overtimeSync);
   selectOvertimePanelShow(overtimePanelMode());
   syncProbationFields();
+  // 外币：先选中币种，再按开关同步控件的可用状态
+  selectForeignCurrency(settings.foreignCurrency || DEFAULTS.foreignCurrency);
+  selectForeignEnabled(settings.foreignEnabled);
 }
 
 function getDefaultItems() {
@@ -2242,6 +2296,149 @@ function formatTime(seconds) {
 
 function formatMoney(val) {
   return '¥' + val.toFixed(2);
+}
+
+// ============ 外币换算 ============
+// 币种表：code 用于汇率接口，name 展示，symbol 作为金额前缀
+const CURRENCIES = [
+  { code: 'USD', name: '美元',     symbol: '$' },
+  { code: 'HKD', name: '港币',     symbol: 'HK$' },
+  { code: 'EUR', name: '欧元',     symbol: '€' },
+  { code: 'GBP', name: '英镑',     symbol: '£' },
+  { code: 'JPY', name: '日元',     symbol: '¥' },
+  { code: 'KRW', name: '韩元',     symbol: '₩' },
+  { code: 'SGD', name: '新加坡元', symbol: 'S$' },
+  { code: 'AUD', name: '澳元',     symbol: 'A$' },
+  { code: 'CAD', name: '加元',     symbol: 'C$' },
+  { code: 'TWD', name: '新台币',   symbol: 'NT$' },
+  { code: 'CHF', name: '瑞士法郎', symbol: 'CHF' },
+  { code: 'THB', name: '泰铢',     symbol: '฿' }
+];
+
+// 内置兜底汇率：1 元人民币可兑换的外币数量；联网获取失败时使用
+const FALLBACK_RATES = {
+  USD: 0.14, HKD: 1.09, EUR: 0.13, GBP: 0.11, JPY: 21.5, KRW: 195,
+  SGD: 0.19, AUD: 0.21, CAD: 0.20, TWD: 4.5, CHF: 0.12, THB: 4.8
+};
+
+// 汇率接口：优先 frankfurter（ECB 数据），失败再试 er-api；均返回「1 CNY = x 外币」
+const RATE_APIS = [
+  { url: 'https://api.frankfurter.app/latest?from=CNY', pick: j => j && j.rates },
+  { url: 'https://open.er-api.com/v6/latest/CNY',       pick: j => j && j.rates }
+];
+const RATE_CACHE_KEY = 'qianxwk_fx_rates';
+const RATE_CACHE_TTL = 12 * 60 * 60 * 1000; // 汇率缓存 12 小时
+
+let fxRates = { ...FALLBACK_RATES }; // 运行时汇率表
+let fxRateDate = '';                 // 汇率日期；为空表示用的是内置兜底汇率
+
+function currencyOf(code) {
+  return CURRENCIES.find(c => c.code === code) || CURRENCIES[0];
+}
+
+function rateOf(code) {
+  const r = fxRates[code];
+  return typeof r === 'number' && r > 0 ? r : (FALLBACK_RATES[code] || 1);
+}
+
+// 读取缓存汇率，命中且未过期则直接采用
+function readRateCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RATE_CACHE_KEY));
+    if (!raw || !raw.rates) return false;
+    if (Date.now() - raw.ts > RATE_CACHE_TTL) return false;
+    fxRates = { ...FALLBACK_RATES, ...raw.rates };
+    fxRateDate = raw.date || '';
+    return true;
+  } catch (e) { return false; }
+}
+
+// 联网刷新汇率：任一接口成功即写入缓存并刷新界面，全部失败则沿用内置汇率
+async function refreshRates() {
+  if (readRateCache()) { updateForeignHint(); updateTimer(); return; }
+  for (const api of RATE_APIS) {
+    try {
+      const res = await fetch(api.url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      const rates = api.pick(json);
+      if (!rates) throw new Error('数据格式异常');
+      const merged = { ...FALLBACK_RATES };
+      CURRENCIES.forEach(c => {
+        const v = rates[c.code];
+        if (typeof v === 'number' && v > 0) merged[c.code] = v;
+      });
+      fxRates = merged;
+      fxRateDate = json.date || new Date().toISOString().slice(0, 10);
+      try {
+        localStorage.setItem(RATE_CACHE_KEY, JSON.stringify({ ts: Date.now(), date: fxRateDate, rates: merged }));
+      } catch (e) { /* 缓存写入失败不影响使用 */ }
+      updateForeignHint();
+      updateTimer();
+      return;
+    } catch (e) { /* 换下一个接口重试 */ }
+  }
+  updateForeignHint();
+}
+
+// 把人民币金额换算为所选外币的展示文本；未开启外币时返回空串
+function fxText(cny) {
+  if (!settings.foreignEnabled) return '';
+  const cur = currencyOf(settings.foreignCurrency);
+  const val = cny * rateOf(cur.code);
+  // 日元、韩元金额较大，不显示小数
+  const digits = (cur.code === 'JPY' || cur.code === 'KRW') ? 0 : 2;
+  return `≈ ${cur.symbol}${val.toFixed(digits)}`;
+}
+
+// 写入卡片内的外币附加行；unit 为金额单位（如 '/小时'）；无内容时不占位
+function setFxLine(id, cny, unit) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const t = fxText(cny);
+  el.textContent = t ? t + (unit || '') : '';
+  el.style.display = t ? '' : 'none';
+}
+
+// 设置页：外币开关
+function selectForeignEnabled(on) {
+  settings.foreignEnabled = !!on;
+  document.querySelectorAll('#foreignEnabled .seg-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.on === 'on') === !!on);
+  });
+  const sel = document.getElementById('foreignCurrencySelect');
+  if (sel) sel.disabled = !on;
+  updateForeignHint();
+  updateTimer();
+}
+
+// 设置页：选择外币币种
+function selectForeignCurrency(code) {
+  settings.foreignCurrency = currencyOf(code).code;
+  const sel = document.getElementById('foreignCurrencySelect');
+  if (sel && sel.value !== settings.foreignCurrency) sel.value = settings.foreignCurrency;
+  updateForeignHint();
+  updateTimer();
+}
+
+// 从币种表填充下拉选项（只需在首次进入时调用）
+function populateCurrencySelect() {
+  const sel = document.getElementById('foreignCurrencySelect');
+  if (!sel) return;
+  sel.innerHTML = CURRENCIES.map(c => `<option value="${c.code}">${c.name} ${c.symbol}</option>`).join('');
+}
+
+// 设置页：外币选项提示，含当前汇率与来源
+function updateForeignHint() {
+  const hint = document.getElementById('foreignHint');
+  if (!hint) return;
+  if (!settings.foreignEnabled) {
+    hint.textContent = '开启后，计时页会在人民币金额下方附加所选外币的换算';
+    return;
+  }
+  const cur = currencyOf(settings.foreignCurrency);
+  const src = fxRateDate ? `汇率日期 ${fxRateDate}` : '内置汇率，联网后将自动更新';
+  hint.textContent = `当前 1 元人民币 ≈ ${Number(rateOf(cur.code).toPrecision(4))} ${cur.name}（${cur.symbol}）· ${src}`;
 }
 
 function getTodayKey() {
@@ -2542,14 +2739,17 @@ function updateTimer() {
   const overtimeMonth = linked ? monthOvertimeTotals.money : 0;
 
   document.getElementById('earnedToday').textContent = formatMoney(state.earnedToday + overtimeToday);
+  setFxLine('earnedTodayFx', state.earnedToday + overtimeToday);
   const hourlyRate = getHourlyRate();
   document.getElementById('hourlyRate').textContent = formatMoney(hourlyRate) + '/小时';
+  setFxLine('earnedHourlyFx', hourlyRate, '/小时');
 
   // 本月概览：已完成工作日按整天计，今天的收益按秒实时累计（与今日已赚口径一致）
   const monthWorked = getWorkedDaysThisMonth();
   const monthCompleted = getWorkedDaysThisMonth(true);
   const monthEarned = monthCompleted * getDailyHours() * getHourlyRate() + state.earnedToday + overtimeMonth;
   document.getElementById('homeMonthEarned').textContent = formatMoney(monthEarned);
+  setFxLine('homeMonthEarnedFx', monthEarned);
   document.getElementById('homeMonthDays').textContent = `已工作 ${formatDays(monthWorked)} 天 / ${settings.workDaysPerMonth} 天`;
 
   // 税后口径：额外展示税前对照卡片，口径标签同步显隐
@@ -2610,8 +2810,12 @@ function updatePreTaxCard(state, monthWorked, monthCompleted) {
   const grossNow = new Date();
   const grossOvertimeMonth = linkedOvertime(overtimeInMonth(grossNow.getFullYear(), grossNow.getMonth()), grossRate);
   document.getElementById('preTaxEarnedToday').textContent = formatMoney(grossToday + grossOvertimeToday);
+  setFxLine('preTaxEarnedTodayFx', grossToday + grossOvertimeToday);
   document.getElementById('preTaxHourly').textContent = formatMoney(grossRate) + '/小时';
-  document.getElementById('preTaxMonthEarned').textContent = formatMoney(monthCompleted * getDailyHours() * grossRate + grossToday + grossOvertimeMonth);
+  setFxLine('preTaxHourlyFx', grossRate, '/小时');
+  const preTaxMonthEarned = monthCompleted * getDailyHours() * grossRate + grossToday + grossOvertimeMonth;
+  document.getElementById('preTaxMonthEarned').textContent = formatMoney(preTaxMonthEarned);
+  setFxLine('preTaxMonthEarnedFx', preTaxMonthEarned);
   document.getElementById('preTaxMonthDays').textContent = `已工作 ${formatDays(monthWorked)} 天 / ${settings.workDaysPerMonth} 天`;
 }
 
@@ -3743,11 +3947,13 @@ let isFirstRun = false;
 try { isFirstRun = !localStorage.getItem('qianxwk_settings'); } catch (e) { isFirstRun = false; }
 
 load();
+populateCurrencySelect();
 fillSettingsForm();
 renderDevices();
 initOvertime();
 updateAll();
 refreshHolidays(); // 异步联网更新节假日，不阻塞首屏渲染
+refreshRates();    // 异步联网更新外币汇率，不阻塞首屏渲染
 
 if (isFirstRun) switchScreen('settings');
 
