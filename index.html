@@ -1020,20 +1020,11 @@ body {
 
 /* 生命消耗大盘 */
 .life-card {
-  background: linear-gradient(160deg, #1f1f1f, #141414);
+  background: #1a1a1a;
   border: 1px solid #2a2a2a;
   border-radius: var(--radius);
   padding: 20px;
   margin-bottom: 12px;
-  position: relative;
-  overflow: hidden;
-}
-.life-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--accent), rgba(200, 255, 0, 0));
 }
 .life-card h3 { font-size: 16px; margin-bottom: 4px; }
 .life-card .desc { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; }
@@ -1272,6 +1263,16 @@ body {
 
     <!-- 看一看 -->
     <div class="stats-panel active" data-cat="data">
+      <div class="life-card">
+        <h3>生命消耗大盘</h3>
+        <div class="desc">从入职那天起，你的生命就在按小时计价</div>
+        <div class="field-group">
+          <label>入职日期 <span class="field-hint" style="display:inline">（在「设置」页修改）</span></label>
+          <input type="date" id="hireDateInput" disabled>
+        </div>
+        <div id="lifePanel"></div>
+      </div>
+
       <div class="stats-card">
         <h3>本月概览</h3>
         <div class="big-val" id="monthEarned">¥0.00</div>
@@ -1314,14 +1315,16 @@ body {
 
     <!-- 算一算 -->
     <div class="stats-panel" data-cat="calc">
-      <div class="life-card">
-        <h3>生命消耗大盘</h3>
-        <div class="desc">从入职那天起，你的生命就在按小时计价</div>
-        <div class="field-group">
-          <label>入职日期 <span class="field-hint" style="display:inline">（在「设置」页修改）</span></label>
-          <input type="date" id="hireDateInput" disabled>
+      <div class="paid-leave-card" id="paidLeaveCard">
+        <h3>带薪离席</h3>
+        <div class="desc">离开工位的时间，也是带薪的时间</div>
+        <div class="paid-leave-timer" id="paidLeaveTimer">00:00:00</div>
+        <div class="paid-leave-earned" id="paidLeaveEarned">¥0.00</div>
+        <div class="paid-leave-count" id="paidLeaveCount">已记录 0 次</div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="paidLeaveResetBtn" onclick="resetPaidLeave()">重置</button>
+          <button class="btn btn-primary" id="paidLeaveBtn" onclick="togglePaidLeave()">开始计时</button>
         </div>
-        <div id="lifePanel"></div>
       </div>
 
       <div class="calc-card">
@@ -1339,18 +1342,6 @@ body {
           <div class="rate" id="calcResultValue">¥0.00</div>
           <div class="rate-label" id="calcResultLabel">白拿工资</div>
           <div class="usage" id="calcResultNote"></div>
-        </div>
-      </div>
-
-      <div class="paid-leave-card" id="paidLeaveCard">
-        <h3>带薪离席</h3>
-        <div class="desc">离开工位的时间，也是带薪的时间</div>
-        <div class="paid-leave-timer" id="paidLeaveTimer">00:00:00</div>
-        <div class="paid-leave-earned" id="paidLeaveEarned">¥0.00</div>
-        <div class="paid-leave-count" id="paidLeaveCount">已记录 0 次</div>
-        <div class="btn-row">
-          <button class="btn btn-secondary" id="paidLeaveResetBtn" onclick="resetPaidLeave()">重置</button>
-          <button class="btn btn-primary" id="paidLeaveBtn" onclick="togglePaidLeave()">开始计时</button>
         </div>
       </div>
 
