@@ -1068,7 +1068,7 @@ body {
 
 .life-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   margin-top: 12px;
 }
@@ -3777,6 +3777,11 @@ function updateLifePanel() {
   const totalEarned = totalHours * getHourlyRate();
   const lifeDays = totalHours / 24;
   const lifeYears = lifeDays / 365;
+  // 入职天数：从入职当天（含）算到今天的自然日天数
+  const hireD = new Date(hireDate + 'T00:00:00');
+  const nowD = new Date();
+  const todayD = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate());
+  const tenureDays = Math.floor((todayD - hireD) / 86400000) + 1;
 
   panel.innerHTML = `
     <div class="life-hero">
@@ -3784,6 +3789,7 @@ function updateLifePanel() {
       <div class="life-hours-label">累计卖给工位的时间</div>
     </div>
     <div class="life-grid">
+      <div class="life-stat"><div class="v">${tenureDays.toLocaleString()}<small>天</small></div><div class="k">入职天数</div></div>
       <div class="life-stat"><div class="v">${workDays.toLocaleString()}<small>天</small></div><div class="k">打工天数</div></div>
       <div class="life-stat"><div class="v">${lifeDays.toFixed(1)}<small>天</small></div><div class="k">折合生命</div></div>
       <div class="life-stat"><div class="v">${fmtMoneyCompact(totalEarned)}</div><div class="k">已换工资</div></div>
