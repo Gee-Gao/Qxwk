@@ -1318,8 +1318,8 @@ body {
         <h3>生命消耗大盘</h3>
         <div class="desc">从入职那天起，你的生命就在按小时计价</div>
         <div class="field-group">
-          <label>入职日期</label>
-          <input type="date" id="hireDateInput" onchange="setHireDate(this.value)">
+          <label>入职日期 <span class="field-hint" style="display:inline">（在「设置」页修改）</span></label>
+          <input type="date" id="hireDateInput" disabled>
         </div>
         <div id="lifePanel"></div>
       </div>
@@ -1554,8 +1554,16 @@ body {
           <div class="field-hint" id="workDaysHint"></div>
         </div>
         <div class="field-group">
+          <label>入职日期</label>
+          <input type="date" id="hireDate" onchange="onProbationParamsChange()">
+        </div>
+        <div class="field-group">
+          <label>试用期 (月)</label>
+          <input type="number" id="probationMonths" step="0.1" min="0" oninput="onProbationParamsChange()">
+        </div>
+        <div class="field-group">
           <label>转正日期</label>
-          <input type="date" id="regularDate" onchange="syncProbationFields()">
+          <input type="date" id="regularDate" disabled>
         </div>
         <div class="field-group">
           <label>试用期薪资比例 (%)</label>
@@ -1735,7 +1743,9 @@ const DEFAULTS = {
   unemploymentRate: 0.5,     // 失业保险个人比例（%）
   fundRate: 12,              // 住房公积金个人比例（%）
   workDaysPerMonth: 22,
-  regularDate: '',        // 转正日期，留空表示无试用期，全部按正式期月薪算
+  hireDate: '',           // 入职日期，用于生命消耗大盘 + 自动计算转正日期
+  probationMonths: 3,     // 试用期月数，留空/0 表示无试用期
+  regularDate: '',        // 转正日期（兼容旧数据：仅入职日期+试用期未设置时使用），留空表示无试用期
   probationRatio: 80,     // 试用期薪资比例（%），按正式期月薪折算
   workDayMode: 'double',
   bigSmallWeekStart: '',  // 大小周基准周的周一日期，与 bigSmallWeekType 一起确定每周类型
@@ -1781,7 +1791,6 @@ let consumptionItems = [];
 let devices = [];
 const MAX_DEVICES = 10;
 let paidLeaveSessions = [];
-let hireDate = '';      // 入职日期，用于生命消耗大盘
 let calcMode = 'slack'; // 反向计算器模式：slack 摸鱼白拿 / goal 熬班换钱
 let paidLeaveActive = false;
 let paidLeaveStart = null;
@@ -1801,7 +1810,6 @@ function load() {
     consumptionItems = JSON.parse(localStorage.getItem('qianxwk_items')) || getDefaultItems();
     devices = JSON.parse(localStorage.getItem('qianxwk_devices')) || [];
     paidLeaveSessions = JSON.parse(localStorage.getItem('qianxwk_leave')) || [];
-    hireDate = localStorage.getItem('qianxwk_hire') || '';
     overtimeRecords = JSON.parse(localStorage.getItem('qianxwk_overtime')) || [];
     leaveUsedRecords = JSON.parse(localStorage.getItem('qianxwk_leave_used')) || [];
   } catch(e) {
@@ -1809,7 +1817,6 @@ function load() {
     consumptionItems = getDefaultItems();
     devices = [];
     paidLeaveSessions = [];
-    hireDate = '';
     overtimeRecords = [];
     leaveUsedRecords = [];
   }
@@ -1943,14 +1950,62 @@ function updateTaxHint() {
   hint.textContent = `税后到手 ¥${r.net.toFixed(0)}/月：五险一金 ¥${r.insurance.toFixed(0)}（社保 ¥${r.social.toFixed(0)} + 公积金 ¥${r.fund.toFixed(0)}），个税 ¥${Math.round(r.annualTax / 12)}/月（全年 ¥${Math.round(r.annualTax).toLocaleString()}）。`;
 }
 
-// 未填转正日期时，试用期比例禁用并置空；填写后恢复可编辑
+// 月份加法：按 yyyy-MM-dd 本地日期计算，避免时区与月底溢出（如 1月31日 + 1月 → 2月28/29日）
+// 支持小数月（如 3.5）：小数部分按目标月天数比例折算成天数
+function addMonths(dateStr, months) {
+  if (!dateStr) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!m) return '';
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10) - 1; // 0-based
+  const day = parseInt(m[3], 10);
+  const whole = Math.floor(months);
+  const frac = months - whole;
+  // 先定位到目标月 1 号
+  const base = new Date(year, month + whole, 1);
+  const targetYear = base.getFullYear();
+  const targetMonth = base.getMonth();
+  const daysInTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  // 日对齐：原日期夹逼到目标月最后一天，再加上小数月折算的天数
+  let targetDay = Math.min(day, daysInTargetMonth) + Math.round(frac * daysInTargetMonth);
+  const result = new Date(targetYear, targetMonth, targetDay);
+  const y = result.getFullYear();
+  const mo = String(result.getMonth() + 1).padStart(2, '0');
+  const da = String(result.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${da}`;
+}
+
+// 转正日期：优先由「入职日期 + 试用期月数」自动计算；
+// 若已填入职日期但试用期月数<=0，则无试用期（直接正式）；
+// 仅当未填入职日期时，兼容旧数据返回旧 regularDate
+function getRegularDate() {
+  const hire = settings.hireDate || '';
+  if (hire) {
+    const months = parseFloat(settings.probationMonths);
+    if (!isNaN(months) && months > 0) return addMonths(hire, months);
+    return '';
+  }
+  return settings.regularDate || '';
+}
+
+// 入职日期 / 试用期月数变化时：重算转正日期、同步试用期比例可用状态、刷新提示
+function onProbationParamsChange() {
+  const hireInput = document.getElementById('hireDate');
+  const monthsInput = document.getElementById('probationMonths');
+  const regularInput = document.getElementById('regularDate');
+  if (hireInput) settings.hireDate = hireInput.value || '';
+  if (monthsInput) settings.probationMonths = parseFloat(monthsInput.value) || 0;
+  if (regularInput) regularInput.value = getRegularDate();
+  syncProbationFields();
+}
+
+// 未配置试用期（无入职日期或试用期月数<=0）时，试用期比例禁用并置空；配置后恢复可编辑
 function syncProbationFields() {
-  const dateInput = document.getElementById('regularDate');
   const ratioInput = document.getElementById('probationRatio');
-  if (!dateInput || !ratioInput) return;
-  const hasDate = !!dateInput.value;
-  ratioInput.disabled = !hasDate;
-  if (!hasDate) {
+  if (!ratioInput) return;
+  const hasProbation = !!getRegularDate();
+  ratioInput.disabled = !hasProbation;
+  if (!hasProbation) {
     ratioInput.value = '';
   } else if (ratioInput.value === '') {
     const saved = settings.probationRatio;
@@ -1963,13 +2018,14 @@ function syncProbationFields() {
 function updateProbationHint() {
   const hint = document.getElementById('probationHint');
   if (!hint) return;
-  const dateStr = document.getElementById('regularDate').value;
+  const dateStr = getRegularDate();
   const ratioInput = parseFloat(document.getElementById('probationRatio').value);
   const ratio = isNaN(ratioInput) ? 100 : Math.min(100, Math.max(0, ratioInput));
   const salary = parseFloat(document.getElementById('monthlySalary').value) || 0;
+  const months = parseFloat(document.getElementById('probationMonths').value);
 
   if (!dateStr) {
-    hint.textContent = '留空表示无试用期，全部按正式期月薪计算';
+    hint.textContent = '留空入职日期或试用期月数表示无试用期，全部按正式期月薪计算';
     return;
   }
   const regular = new Date(dateStr + 'T00:00:00');
@@ -1978,7 +2034,8 @@ function updateProbationHint() {
   if (isNaN(regular.getTime()) || day >= regular) {
     hint.textContent = `${dateStr} 起已转正，按正式期月薪 ¥${salary.toFixed(0)}/月计算`;
   } else {
-    hint.textContent = `试用期至 ${dateStr} 前，月薪按正式期的 ${ratio}% 计算（¥${(salary * ratio / 100).toFixed(0)}/月）`;
+    const mLabel = (isNaN(months) || months <= 0) ? '' : `（${months} 个月）`;
+    hint.textContent = `试用期至 ${dateStr}${mLabel} 前，月薪按正式期的 ${ratio}% 计算（¥${(salary * ratio / 100).toFixed(0)}/月）`;
   }
 }
 
@@ -1997,7 +2054,9 @@ function persistSettings() {
   settings.unemploymentRate = num('unemploymentRate', DEFAULTS.unemploymentRate);
   settings.fundRate = num('fundRate', DEFAULTS.fundRate);
   SPECIAL_ITEMS.forEach(it => { settings[it.key] = num(it.key, 0); });
-  settings.regularDate = document.getElementById('regularDate').value || '';
+  settings.hireDate = document.getElementById('hireDate').value || '';
+  settings.probationMonths = num('probationMonths', 0);
+  settings.regularDate = document.getElementById('regularDate').value || getRegularDate();
   settings.probationRatio = num('probationRatio', DEFAULTS.probationRatio);
   settings.workDaysPerMonth = parseFloat(document.getElementById('workDaysPerMonth').value) || DEFAULTS.workDaysPerMonth;
   settings.workDayMode = settings.workDayMode || 'double';
@@ -2023,7 +2082,9 @@ function saveLeave() {
 function fillSettingsForm() {
   const set = (id, v) => { document.getElementById(id).value = v; };
   set('monthlySalary', settings.monthlySalary);
-  set('regularDate', settings.regularDate || '');
+  set('hireDate', settings.hireDate || '');
+  set('probationMonths', settings.probationMonths || '');
+  set('regularDate', getRegularDate());
   set('probationRatio', settings.probationRatio);
   set('socialBase', settings.socialBase > 0 ? settings.socialBase : '');
   set('fundBase', settings.fundBase > 0 ? settings.fundBase : '');
@@ -2125,8 +2186,9 @@ function taxParamsFromSettings() {
 
 // 转正日期之前为试用期：返回当天的薪资系数（试用期比例/100），已转正或未设置试用期为 1
 function salaryFactorFor(date) {
-  if (!settings.regularDate) return 1;
-  const regular = new Date(settings.regularDate + 'T00:00:00');
+  const regularDate = getRegularDate();
+  if (!regularDate) return 1;
+  const regular = new Date(regularDate + 'T00:00:00');
   if (isNaN(regular.getTime())) return 1;
   const d = date || new Date();
   const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -2681,7 +2743,7 @@ function getWorkedDaysThisYear() {
 function updatePeriodBadge() {
   const el = document.getElementById('periodBadge');
   if (!el) return;
-  if (!settings.regularDate) { el.style.display = 'none'; return; }
+  if (!getRegularDate()) { el.style.display = 'none'; return; }
   const factor = salaryFactorFor(new Date());
   el.style.display = '';
   if (factor < 1) {
@@ -3678,11 +3740,7 @@ function initOvertime() {
 }
 
 // ============ 生命消耗大盘 ============
-function setHireDate(value) {
-  hireDate = value || '';
-  try { localStorage.setItem('qianxwk_hire', hireDate); } catch (e) { /* 存储失败不影响展示 */ }
-  updateLifePanel();
-}
+// 入职日期统一存于 settings.hireDate，大盘自动从设置读取
 
 // 从某天（含）到今天（含）之间的工作日数，按当前休息制度与节假日折算
 function getWorkdaysSince(dateStr) {
@@ -3711,6 +3769,7 @@ function fmtMoneyCompact(val) {
 function updateLifePanel() {
   const panel = document.getElementById('lifePanel');
   if (!panel) return;
+  const hireDate = settings.hireDate || '';
   const input = document.getElementById('hireDateInput');
   if (input) {
     if (input.value !== hireDate) input.value = hireDate;
@@ -3719,7 +3778,7 @@ function updateLifePanel() {
 
   const workDays = getWorkdaysSince(hireDate);
   if (!hireDate || workDays <= 0) {
-    panel.innerHTML = '<div class="life-empty">填上入职日期，看看这些年你把多少生命换成了工资。</div>';
+    panel.innerHTML = '<div class="life-empty">去「设置」页填上入职日期，看看这些年你把多少生命换成了工资。</div>';
     return;
   }
 
