@@ -817,6 +817,54 @@ body {
   margin-bottom: 16px;
 }
 
+/* 自定义工作日：当月日历 */
+.cal-head {
+  display: flex;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #777;
+  text-align: center;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-day {
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 0;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  background: #222;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.cal-day.empty { border: none; background: none; cursor: default; }
+.cal-day .cal-tag { font-size: 9px; opacity: .7; }
+.cal-day.work {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+.cal-day.work .cal-tag { opacity: .8; }
+
 /* Emoji picker */
 .emoji-picker {
   display: grid;
@@ -1505,7 +1553,7 @@ body {
             <button type="button" class="seg-btn" data-mode="double" onclick="selectWorkDayMode('double')">双休</button>
             <button type="button" class="seg-btn" data-mode="single" onclick="selectWorkDayMode('single')">单休</button>
             <button type="button" class="seg-btn" data-mode="bigsmall" onclick="selectWorkDayMode('bigsmall')">大小周</button>
-            <button type="button" class="seg-btn" data-mode="custom" onclick="selectWorkDayMode('custom')">自定义</button>
+            <button type="button" class="seg-btn" data-mode="custom" onclick="selectWorkDayMode('custom', true)">自定义</button>
           </div>
           <div class="field-hint" id="workDayModeHint"></div>
         </div>
@@ -1718,6 +1766,26 @@ body {
     </div>
   </div>
 
+  <!-- Custom Workday Modal -->
+  <div class="modal-overlay" id="customWorkdayModal">
+    <div class="modal">
+      <h3><span>自定义工作日</span> <button class="close" onclick="closeCustomWorkdayModal()">×</button></h3>
+      <div style="font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:12px">
+        点击日期切换上班 / 休息，默认按双休预填。每月工作天数将按日历自动计算。
+      </div>
+      <div class="cal-head" id="customCalendarTitle"></div>
+      <div class="cal-weekdays">
+        <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+      </div>
+      <div class="calendar-grid" id="customCalendarGrid"></div>
+      <div class="field-hint" id="customWorkdayHint" style="margin-top:12px;font-size:11px;color:#777;line-height:1.45"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="closeCustomWorkdayModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveCustomCalendar()">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast" id="toast"></div>
 </div>
@@ -1739,6 +1807,9 @@ const DEFAULTS = {
   regularDate: '',        // 转正日期（兼容旧数据：仅入职日期+试用期未设置时使用），留空表示无试用期
   probationRatio: 80,     // 试用期薪资比例（%），按正式期月薪折算
   workDayMode: 'double',
+  customWorkMonth: '',     // 自定义日历生效的月份（YYYY-MM）
+  customWorkDates: [],     // 该月上班的具体日期（YYYY-MM-DD），空表示未选择，按双休计算
+  customWorkdayPromptMonth: '', // 最近一次自动弹窗的月份（YYYY-MM），用于每月只弹一次
   bigSmallWeekStart: '',  // 大小周基准周的周一日期，与 bigSmallWeekType 一起确定每周类型
   bigSmallWeekType: 'big', // 基准周类型：big 双休周（大周）/ small 单休周（小周）
   workedDaysDecimals: 0, // 已工作天数小数位：0 今天按整天计 / 1、2 今天按已工作时长折算并保留对应位数
@@ -1819,16 +1890,33 @@ function load() {
   for (const k in DEFAULTS) {
     if (settings[k] === undefined || settings[k] === '') settings[k] = DEFAULTS[k];
   }
+  // 自定义日历：月份非法或与日期不匹配时按「未选择」处理
+  if (!/^\d{4}-\d{2}$/.test(settings.customWorkMonth || '')) settings.customWorkMonth = '';
+  if (!Array.isArray(settings.customWorkDates)) settings.customWorkDates = [];
+  if (!settings.customWorkMonth) {
+    settings.customWorkDates = [];
+  } else {
+    settings.customWorkDates = [...new Set(settings.customWorkDates
+      .filter(k => typeof k === 'string' && k.slice(0, 7) === settings.customWorkMonth))].sort();
+  }
 }
 
-function selectWorkDayMode(mode) {
+function selectWorkDayMode(mode, openPicker) {
   settings.workDayMode = mode;
   const input = document.getElementById('workDaysPerMonth');
   const hint = document.getElementById('workDaysHint');
   if (mode === 'custom') {
-    // 自定义：每月工作天数手动填
-    input.disabled = false;
-    if (hint) hint.textContent = '';
+    // 自定义：每月工作天数由当月日历自动计算，不允许手改
+    const days = autoWorkDaysPerMonth('custom');
+    input.value = days;
+    settings.workDaysPerMonth = days;
+    input.disabled = true;
+    if (hint) {
+      hint.textContent = hasCustomWorkDates(currentMonthKey())
+        ? `按本月日历自动计算：本月 ${days} 天上班`
+        : '未调整本月日历，暂按双休（周一至周五）自动计算';
+    }
+    if (openPicker) openCustomWorkdayModal();
   } else {
     // 双休/单休/大小周：按当月实际工作日自动取值，不允许手改
     const days = autoWorkDaysPerMonth(mode);
@@ -1853,6 +1941,125 @@ function selectWorkDayMode(mode) {
   document.querySelectorAll('#workDayMode .seg-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.mode === mode);
   });
+}
+
+// ============ 自定义工作日（当月日历） ============
+let customCalendarMonth = ''; // 弹窗展示的月份（YYYY-MM）
+let customDateDraft = null;   // 弹窗内临时选择（Set<YYYY-MM-DD>）
+
+function monthKeyOf(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function currentMonthKey() {
+  return monthKeyOf(new Date());
+}
+
+// 指定月份是否已有自定义日历（无则按双休兜底）
+function hasCustomWorkDates(monthKey) {
+  const mk = monthKey || currentMonthKey();
+  return settings.customWorkMonth === mk
+    && Array.isArray(settings.customWorkDates)
+    && settings.customWorkDates.length > 0;
+}
+
+// 按双休预填某月上班日（法定节假日除外，调休补班计入）
+function defaultWorkDatesOfMonth(year, month) {
+  const days = new Date(year, month + 1, 0).getDate();
+  const list = [];
+  for (let i = 1; i <= days; i++) {
+    const d = new Date(year, month, i);
+    if (isWorkday(d, 'double')) list.push(fmtDateKey(d));
+  }
+  return list;
+}
+
+// 打开弹窗：已保存过本月则带入，否则按双休预填
+function openCustomWorkdayModal() {
+  const now = new Date();
+  customCalendarMonth = monthKeyOf(now);
+  const seed = hasCustomWorkDates(customCalendarMonth)
+    ? settings.customWorkDates
+    : defaultWorkDatesOfMonth(now.getFullYear(), now.getMonth());
+  customDateDraft = new Set(seed);
+  renderCustomCalendar();
+  document.getElementById('customWorkdayModal').classList.add('show');
+}
+
+function closeCustomWorkdayModal() {
+  const overlay = document.getElementById('customWorkdayModal');
+  if (overlay) overlay.classList.remove('show');
+  customDateDraft = null;
+  customCalendarMonth = '';
+}
+
+function renderCustomCalendar() {
+  const grid = document.getElementById('customCalendarGrid');
+  const title = document.getElementById('customCalendarTitle');
+  if (!grid || !customDateDraft || !customCalendarMonth) return;
+
+  const [y, m] = customCalendarMonth.split('-').map(Number);
+  if (title) title.textContent = `${y} 年 ${m} 月`;
+
+  const offset = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 周一排第一列
+  const days = new Date(y, m, 0).getDate();
+  let html = '';
+  for (let i = 0; i < offset; i++) html += '<span class="cal-day empty"></span>';
+  for (let day = 1; day <= days; day++) {
+    const key = `${customCalendarMonth}-${String(day).padStart(2, '0')}`;
+    const work = customDateDraft.has(key);
+    html += `<button type="button" class="cal-day${work ? ' work' : ''}" data-date="${key}" onclick="toggleCustomDate('${key}')">
+      <span class="cal-num">${day}</span>
+      <span class="cal-tag">${work ? '班' : '休'}</span>
+    </button>`;
+  }
+  grid.innerHTML = html;
+  updateCustomWorkdayHint();
+}
+
+function updateCustomWorkdayHint() {
+  const hint = document.getElementById('customWorkdayHint');
+  if (!hint || !customDateDraft) return;
+  hint.textContent = customDateDraft.size
+    ? `本月上班 ${customDateDraft.size} 天 · 每月工作天数将同步为 ${customDateDraft.size}`
+    : '至少选择一天上班；未选择时按双休（周一至周五）计算';
+}
+
+function toggleCustomDate(key) {
+  if (!customDateDraft) return;
+  if (customDateDraft.has(key)) customDateDraft.delete(key);
+  else customDateDraft.add(key);
+  renderCustomCalendar();
+}
+
+// 保存本月具体上班日期，月工作天数自动同步
+function saveCustomCalendar() {
+  if (!customDateDraft || !customDateDraft.size) {
+    showToast('至少选择一天上班');
+    return;
+  }
+  settings.workDayMode = 'custom';
+  settings.customWorkMonth = customCalendarMonth || currentMonthKey();
+  settings.customWorkDates = [...customDateDraft].sort();
+  settings.customWorkdayPromptMonth = settings.customWorkMonth;
+  const days = customDateDraft.size;
+  settings.workDaysPerMonth = days;
+  const input = document.getElementById('workDaysPerMonth');
+  if (input) input.value = days;
+  persistSettings();
+  closeCustomWorkdayModal();
+  selectWorkDayMode('custom');
+  updateAll();
+}
+
+// 自定义模式下每月自动弹窗一次；未选择时保持双休兜底
+function maybePromptCustomWorkday() {
+  if (settings.workDayMode !== 'custom') return;
+  const mk = currentMonthKey();
+  if (settings.customWorkdayPromptMonth === mk) return;
+  settings.customWorkdayPromptMonth = mk;
+  try { localStorage.setItem('qianxwk_settings', JSON.stringify(settings)); } catch (e) { /* 写入失败不影响使用 */ }
+  openCustomWorkdayModal();
 }
 
 // 取某天所在自然周的周一（零点），用于大小周按周交替
@@ -2380,6 +2587,7 @@ const RATE_CACHE_KEY = 'qianxwk_fx_rates';
 let fxRates = { ...FALLBACK_RATES }; // 运行时汇率表
 let fxRateDate = '';                 // 汇率日期；为空表示用的是内置兜底汇率
 let fxDay = fmtDateKey(new Date());  // 上次检查汇率的自然日，用于跨天自动刷新
+let fxMonthKey = currentMonthKey();  // 上次检查自定义工作日弹窗的月份，用于每月自动弹窗
 
 function currencyOf(code) {
   return CURRENCIES.find(c => c.code === code) || CURRENCIES[0];
@@ -2628,18 +2836,22 @@ function dayType(date) {
 }
 
 function isWorkday(date, mode) {
+  const m = mode || settings.workDayMode;
+  // 自定义：当月日历里的上班日期为准（含手动把节假日改成上班）
+  if (m === 'custom' && hasCustomWorkDates(monthKeyOf(date))) {
+    return settings.customWorkDates.includes(fmtDateKey(date));
+  }
   const t = dayType(date);
   if (t === 'makeup') return true;   // 调休补班日：按工作日计
   if (t === 'holiday') return false;  // 法定放假日：不计工作日
   const dow = date.getDay();
-  const m = mode || settings.workDayMode;
   // 单休：仅周日休息（周一至周六上班）
   if (m === 'single') return dow !== 0;
   // 大小周：双休周按周一至周五，单休周按周一至周六
   if (m === 'bigsmall') {
     return bigSmallWeekTypeOf(date) === 'big' ? (dow !== 0 && dow !== 6) : dow !== 0;
   }
-  // 双休 / 自定义：按周一至周五计
+  // 双休 / 自定义未选择时：按周一至周五计
   return dow !== 0 && dow !== 6;
 }
 
@@ -2670,14 +2882,12 @@ function autoWorkDaysPerMonth(mode) {
   return Math.max(1, countWorkdaysInMonth(now.getFullYear(), now.getMonth(), mode));
 }
 
-// 联网/缓存更新节假日数据后，同步「每月工作天数」的自动值（自定义模式不覆盖）
+// 联网/缓存更新节假日数据后，同步「每月工作天数」的自动值（自定义也自动计算）
 function syncAutoWorkDays() {
-  const mode = settings.workDayMode;
-  if (mode === 'custom') return;
-  const days = autoWorkDaysPerMonth(mode);
+  const days = autoWorkDaysPerMonth(settings.workDayMode);
   settings.workDaysPerMonth = days;
   const input = document.getElementById('workDaysPerMonth');
-  if (!input || !input.disabled) return;
+  if (!input) return;
   input.value = days;
 }
 
@@ -4018,6 +4228,7 @@ initOvertime();
 updateAll();
 refreshHolidays(); // 异步联网更新节假日，不阻塞首屏渲染
 refreshRates();    // 异步联网更新外币汇率，不阻塞首屏渲染
+maybePromptCustomWorkday(); // 自定义模式下每月首次打开时弹窗确认
 
 if (isFirstRun) switchScreen('settings');
 
@@ -4031,6 +4242,9 @@ setInterval(() => {
   // 跨过零点后自动重新拉取汇率，避免应用长期开着仍沿用昨天的汇率
   const today = fmtDateKey(new Date());
   if (today !== fxDay) { fxDay = today; refreshRates(); }
+  // 跨月后重新检查：自定义模式每月自动弹窗一次
+  const monthKey = today.slice(0, 7);
+  if (monthKey !== fxMonthKey) { fxMonthKey = monthKey; maybePromptCustomWorkday(); }
 
   const activeScreen = document.querySelector('.screen.active');
   if (activeScreen) {
@@ -4047,11 +4261,15 @@ setInterval(() => {
 document.getElementById('addModal').addEventListener('click', function(e) {
   if (e.target === this) closeAddModal();
 });
+document.getElementById('customWorkdayModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCustomWorkdayModal();
+});
 
 // Keyboard
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     closeAddModal();
+    closeCustomWorkdayModal();
     switchScreen('timer');
   }
 });
