@@ -100,6 +100,16 @@ body {
   border-color: #46520f;
   background: rgba(200, 255, 0, .08);
 }
+/* 计时卡片顶部：时薪已含通勤时间的标识 */
+.commute-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #3a3a3a;
+  background: #1d1d1d;
+  color: var(--accent-dim);
+  white-space: nowrap;
+}
 .header .icon-btn {
   width: 36px; height: 36px;
   border-radius: 50%;
@@ -125,6 +135,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
   font-size: 12px;
   color: var(--text-dim);
   margin-bottom: 16px;
@@ -1220,6 +1232,7 @@ body {
         <span class="dot"></span>
         <span id="statusText">工作中</span>
         <span class="period-badge" id="periodBadge" style="display:none"></span>
+        <span class="commute-badge" id="commuteBadge" style="display:none"></span>
       </div>
       <div class="timer-display" id="countdownDisplay">00:00:00</div>
       <div class="timer-label" id="countdownLabel">距离今天下班</div>
@@ -1629,6 +1642,26 @@ body {
         </div>
       </div>
     </div>
+    <div class="settings-card" id="commuteCard">
+      <h3>🚌 通勤时间</h3>
+      <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
+      <div class="settings-grid">
+        <div class="field-group">
+          <label>每日通勤 (分钟)</label>
+          <input type="number" id="commuteMinutes" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group">
+          <label>纳入时薪计算</label>
+          <div class="seg-control" id="commuteInHourly">
+            <button type="button" class="seg-btn" data-on="on" onclick="selectCommuteInHourly(true)">开启</button>
+            <button type="button" class="seg-btn" data-on="off" onclick="selectCommuteInHourly(false)">关闭</button>
+          </div>
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <div class="field-hint" id="commuteHint"></div>
+        </div>
+      </div>
+    </div>
     <div class="settings-card" id="taxCard">
       <h3>🧾 税后测算</h3>
       <div class="desc">填得越细估算越准，税后口径的时薪与统计都按这里的参数算出</div>
@@ -1820,6 +1853,8 @@ const DEFAULTS = {
   endTime: '18:00',
   lunchStart: '12:00',
   lunchEnd: '13:00',
+  commuteMinutes: 0,      // 每日通勤时长（分钟，往返合计）
+  commuteInHourly: false, // 通勤时间是否纳入时薪折算
   overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 调休
   overtimeSync: false,     // 加班金额是否计入计时页（仅给钱模式有效）
   overtimePanelShow: 'always', // 计时页加班费卡片展示：always 始终展示 / auto 无数据不展示 / off 隐藏
@@ -2267,6 +2302,8 @@ function persistSettings() {
   settings.endTime = document.getElementById('endTime').value || DEFAULTS.endTime;
   settings.lunchStart = document.getElementById('lunchStart').value || DEFAULTS.lunchStart;
   settings.lunchEnd = document.getElementById('lunchEnd').value || DEFAULTS.lunchEnd;
+  settings.commuteMinutes = Math.max(0, num('commuteMinutes', 0));
+  settings.commuteInHourly = !!settings.commuteInHourly;
   settings.foreignEnabled = !!settings.foreignEnabled;
   settings.foreignCurrency = currencyOf(settings.foreignCurrency).code;
   localStorage.setItem('qianxwk_settings', JSON.stringify(settings));
@@ -2304,6 +2341,8 @@ function fillSettingsForm() {
   document.getElementById('endTime').value = settings.endTime;
   document.getElementById('lunchStart').value = settings.lunchStart;
   document.getElementById('lunchEnd').value = settings.lunchEnd;
+  document.getElementById('commuteMinutes').value = settings.commuteMinutes > 0 ? settings.commuteMinutes : '';
+  selectCommuteInHourly(settings.commuteInHourly);
   selectOvertimeSettle(settings.overtimeSettle || DEFAULTS.overtimeSettle);
   selectOvertimeSync(settings.overtimeSync);
   selectOvertimePanelShow(overtimePanelMode());
@@ -2413,7 +2452,7 @@ function getMonthlyGross() {
   return settings.monthlySalary * salaryFactorFor(new Date());
 }
 
-// 月薪 -> 时薪，按每日实际工作时长与月工作天数折算
+// 月薪 -> 时薪，按每日实际工作时长与月工作天数折算（开启后通勤时长一并计入分母）
 function calcHourlyRate(salary) {
   const workDays = settings.workDaysPerMonth;
   const startH = parseInt(settings.startTime.split(':')[0]);
@@ -2428,7 +2467,10 @@ function calcHourlyRate(salary) {
   const workMinutes = (endH * 60 + endM) - (startH * 60 + startM);
   const lunchMinutes = (lunchEndH * 60 + lunchEndM) - (lunchStartH * 60 + lunchStartM);
   const actualWorkMinutes = Math.max(0, workMinutes - lunchMinutes);
-  const dailyHours = actualWorkMinutes / 60;
+  const commuteMinutes = settings.commuteInHourly
+    ? Math.max(0, parseFloat(settings.commuteMinutes) || 0)
+    : 0;
+  const dailyHours = (actualWorkMinutes + commuteMinutes) / 60;
   const monthlyHours = dailyHours * workDays;
   return monthlyHours > 0 ? salary / monthlyHours : 0;
 }
@@ -2707,6 +2749,61 @@ function updateForeignHint() {
   const cur = currencyOf(settings.foreignCurrency);
   const src = fxRateDate ? `汇率日期 ${fxRateDate}` : '内置汇率，联网后将自动更新';
   hint.textContent = `当前 1 元人民币 ≈ ${Number(rateOf(cur.code).toPrecision(4))} ${cur.name}（${cur.symbol}）· ${src}`;
+}
+
+// 设置页：通勤时间是否纳入时薪折算（关闭时通勤时长禁用并清零）
+function selectCommuteInHourly(on) {
+  settings.commuteInHourly = !!on;
+  document.querySelectorAll('#commuteInHourly .seg-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.on === 'on') === !!on);
+  });
+  const input = document.getElementById('commuteMinutes');
+  if (input) {
+    input.disabled = !on;
+    if (!on) {
+      input.value = 0;
+      settings.commuteMinutes = 0;
+    }
+  }
+  updateCommuteHint();
+}
+
+// 分钟 -> 「X 小时 Y 分钟」文本
+function fmtDurationMinutes(mins) {
+  const total = Math.max(0, Math.round(mins));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h <= 0) return `${m} 分钟`;
+  return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
+}
+
+// 计时卡片顶部：时薪已含通勤时间的标识（仅开启且通勤 > 0 时展示）
+function updateCommuteBadge() {
+  const el = document.getElementById('commuteBadge');
+  if (!el) return;
+  const active = !!settings.commuteInHourly && (parseFloat(settings.commuteMinutes) || 0) > 0;
+  el.textContent = active ? `🚌 含通勤 ${fmtDurationMinutes(settings.commuteMinutes)}` : '';
+  el.style.display = active ? '' : 'none';
+}
+
+// 设置页：通勤提示，实时展示当前折算口径
+function updateCommuteHint() {
+  const hint = document.getElementById('commuteHint');
+  if (!hint) return;
+  const input = document.getElementById('commuteMinutes');
+  const commute = Math.max(0, parseFloat(input && input.value) || 0);
+  const workHours = getDailyHours();
+  if (!settings.commuteInHourly) {
+    hint.textContent = commute > 0
+      ? `按往返合计填写；当前未纳入时薪：只按每日工作 ${fmtDurationMinutes(workHours * 60)} 折算`
+      : '按往返合计填写（如单程 30 分钟填 60）；开启后时薪按「每日工作 + 通勤」的总时长折算';
+    return;
+  }
+  if (commute <= 0) {
+    hint.textContent = '按往返合计填写；已开启，但每日通勤为 0 分钟，暂不影响时薪';
+    return;
+  }
+  hint.textContent = `按往返合计填写；已纳入：每天按 ${fmtDurationMinutes(workHours * 60)} 工作 + ${fmtDurationMinutes(commute)} 通勤折算时薪`;
 }
 
 function getTodayKey() {
@@ -3014,6 +3111,7 @@ function updateTimer() {
   const hourlyRate = getHourlyRate();
   document.getElementById('hourlyRate').textContent = formatMoney(hourlyRate) + '/小时';
   setFxLine('earnedHourlyFx', hourlyRate, '/小时');
+  updateCommuteBadge();
 
   // 本月概览：已完成工作日按整天计，今天的收益按秒实时累计（与今日已赚口径一致）
   const monthWorked = getWorkedDaysThisMonth();
