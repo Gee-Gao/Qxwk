@@ -1633,12 +1633,15 @@ body {
           <input type="time" id="endTime" value="18:00">
         </div>
         <div class="field-group">
-          <label>午休开始</label>
+          <label id="lunchStartLabel">午休开始</label>
           <input type="time" id="lunchStart" value="12:00">
         </div>
         <div class="field-group">
-          <label>午休结束</label>
+          <label id="lunchEndLabel">午休结束</label>
           <input type="time" id="lunchEnd" value="13:00">
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <div class="field-hint" id="shiftTimeHint"></div>
         </div>
       </div>
     </div>
@@ -2306,6 +2309,7 @@ function persistSettings() {
   settings.commuteInHourly = !!settings.commuteInHourly;
   settings.foreignEnabled = !!settings.foreignEnabled;
   settings.foreignCurrency = currencyOf(settings.foreignCurrency).code;
+  updateShiftHint();
   localStorage.setItem('qianxwk_settings', JSON.stringify(settings));
 }
 
@@ -2341,6 +2345,7 @@ function fillSettingsForm() {
   document.getElementById('endTime').value = settings.endTime;
   document.getElementById('lunchStart').value = settings.lunchStart;
   document.getElementById('lunchEnd').value = settings.lunchEnd;
+  updateShiftHint();
   document.getElementById('commuteMinutes').value = settings.commuteMinutes > 0 ? settings.commuteMinutes : '';
   selectCommuteInHourly(settings.commuteInHourly);
   selectOvertimeSettle(settings.overtimeSettle || DEFAULTS.overtimeSettle);
@@ -2452,25 +2457,65 @@ function getMonthlyGross() {
   return settings.monthlySalary * salaryFactorFor(new Date());
 }
 
+// 「HH:MM」-> 当天分钟数
+function timeToMinutes(t) {
+  const parts = String(t || '').split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+}
+
+// 班次时间轴：下班时间早于上班时间时视为跨天夜班，
+// 下班与午休统一换算成「距上班当天 0 点」的分钟数（可能超过 1440）
+function getShiftTimes() {
+  const start = timeToMinutes(settings.startTime);
+  let end = timeToMinutes(settings.endTime);
+  const crossDay = end < start;
+  if (crossDay) end += 1440;
+
+  let lunchStart = timeToMinutes(settings.lunchStart);
+  let lunchEnd = timeToMinutes(settings.lunchEnd);
+  if (lunchEnd < lunchStart) lunchEnd += 1440; // 午休本身跨天（如 23:00-00:00）
+  // 夜班午休常落在凌晨（如 02:00-03:00），平移对齐到上班之后的那一次
+  while (lunchEnd <= start) {
+    lunchStart += 1440;
+    lunchEnd += 1440;
+  }
+
+  // 只扣完全/部分落在班次内的午休，避免沿用白班午休时间时误扣
+  const lunchMinutes = Math.max(0, Math.min(lunchEnd, end) - Math.max(lunchStart, start));
+  const duration = Math.max(0, end - start);
+  return {
+    start,
+    end,
+    crossDay,
+    duration,
+    lunchStart,
+    lunchEnd,
+    lunchMinutes,
+    workMinutes: Math.max(0, duration - lunchMinutes)
+  };
+}
+
+// 计时口径下的「当前班次归属日」：跨天夜班的凌晨时段仍算前一天
+function getShiftAnchorDate(now) {
+  const d = now || new Date();
+  const shift = getShiftTimes();
+  const anchor = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const nowMinutes = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+  // 下班时刻之前的凌晨，属于昨天开始的那一班
+  if (shift.crossDay && nowMinutes < shift.end % 1440) anchor.setDate(anchor.getDate() - 1);
+  return anchor;
+}
+
 // 月薪 -> 时薪，按每日实际工作时长与月工作天数折算（开启后通勤时长一并计入分母）
 function calcHourlyRate(salary) {
   const workDays = settings.workDaysPerMonth;
-  const startH = parseInt(settings.startTime.split(':')[0]);
-  const startM = parseInt(settings.startTime.split(':')[1]);
-  const endH = parseInt(settings.endTime.split(':')[0]);
-  const endM = parseInt(settings.endTime.split(':')[1]);
-  const lunchStartH = parseInt(settings.lunchStart.split(':')[0]);
-  const lunchStartM = parseInt(settings.lunchStart.split(':')[1]);
-  const lunchEndH = parseInt(settings.lunchEnd.split(':')[0]);
-  const lunchEndM = parseInt(settings.lunchEnd.split(':')[1]);
-
-  const workMinutes = (endH * 60 + endM) - (startH * 60 + startM);
-  const lunchMinutes = (lunchEndH * 60 + lunchEndM) - (lunchStartH * 60 + lunchStartM);
-  const actualWorkMinutes = Math.max(0, workMinutes - lunchMinutes);
+  const shift = getShiftTimes();
   const commuteMinutes = settings.commuteInHourly
     ? Math.max(0, parseFloat(settings.commuteMinutes) || 0)
     : 0;
-  const dailyHours = (actualWorkMinutes + commuteMinutes) / 60;
+  const dailyHours = (shift.workMinutes + commuteMinutes) / 60;
   const monthlyHours = dailyHours * workDays;
   return monthlyHours > 0 ? salary / monthlyHours : 0;
 }
@@ -2489,22 +2534,23 @@ function getMinuteRate() {
   return getHourlyRate() / 60;
 }
 
-// 每个工作日的实际工作时长（小时，已扣除午休）
+// 每个工作日的实际工作时长（小时，已扣除午休；跨天夜班按完整班次计）
 function getDailyHours() {
-  const start = settings.startTime.split(':');
-  const end = settings.endTime.split(':');
-  const lunchS = settings.lunchStart.split(':');
-  const lunchE = settings.lunchEnd.split(':');
-  const workMins = (parseInt(end[0])*60+parseInt(end[1])) - (parseInt(start[0])*60+parseInt(start[1]));
-  const lunchMins = (parseInt(lunchE[0])*60+parseInt(lunchE[1])) - (parseInt(lunchS[0])*60+parseInt(lunchS[1]));
-  return Math.max(0, workMins - lunchMins) / 60;
+  return getShiftTimes().workMinutes / 60;
 }
 
 function getCurrentWorkState() {
   const now = new Date();
+  const shift = getShiftTimes();
+  // 跨天夜班的凌晨时段仍属于前一天开始的班次
+  const anchor = getShiftAnchorDate(now);
+  const prevDayShift = fmtDateKey(anchor) !== fmtDateKey(now);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+  // 当前时刻距本班次上班的分钟数；负数表示还没上班
+  const pos = (prevDayShift ? nowMinutes + 1440 : nowMinutes) - shift.start;
 
   // 非工作日（周末/法定节假日）不计时，避免休息日仍在累计工时与收益
-  if (!isWorkday(now)) {
+  if (!isWorkday(anchor)) {
     return {
       workedMinutes: 0,
       remainingMinutes: 0,
@@ -2514,80 +2560,57 @@ function getCurrentWorkState() {
       isRest: true,
       progress: 0,
       earnedToday: 0,
-      remainingValue: 0
+      remainingValue: 0,
+      crossDay: shift.crossDay,
+      shiftDate: anchor
     };
   }
 
-  const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
-
-  const startH = parseInt(settings.startTime.split(':')[0]);
-  const startM = parseInt(settings.startTime.split(':')[1]);
-  const endH = parseInt(settings.endTime.split(':')[0]);
-  const endM = parseInt(settings.endTime.split(':')[1]);
-  const lunchStartH = parseInt(settings.lunchStart.split(':')[0]);
-  const lunchStartM = parseInt(settings.lunchStart.split(':')[1]);
-  const lunchEndH = parseInt(settings.lunchEnd.split(':')[0]);
-  const lunchEndM = parseInt(settings.lunchEnd.split(':')[1]);
-
-  const start = startH * 60 + startM;
-  const end = endH * 60 + endM;
-  const lunchS = lunchStartH * 60 + lunchStartM;
-  const lunchE = lunchEndH * 60 + lunchEndM;
+  // 班次内的午休区间（相对上班时间）；午休部分落在班次外时只按重叠部分处理
+  const lunchS = Math.max(shift.lunchStart, shift.start) - shift.start;
+  const lunchE = Math.min(shift.lunchEnd, shift.end) - shift.start;
+  const hasLunch = shift.lunchMinutes > 0 && lunchE > lunchS;
 
   let workedMinutes = 0;
   let isWorking = false;
   let isLunch = false;
   let remainingMinutes = 0;
 
-  if (nowMinutes < start) {
-    isWorking = false;
-    workedMinutes = 0;
-    remainingMinutes = (end - start) - (lunchE - lunchS);
-  } else if (nowMinutes >= end) {
-    isWorking = false;
-    // Calculate total worked
-    if (lunchS >= start && lunchE <= end) {
-      workedMinutes = (end - start) - (lunchE - lunchS);
-    } else {
-      workedMinutes = end - start;
-    }
-    remainingMinutes = 0;
-  } else if (nowMinutes >= lunchS && nowMinutes < lunchE) {
-    isWorking = false;
-    isLunch = true;
-    // Worked before lunch
-    workedMinutes = nowMinutes - start;
-    // Remaining after lunch
-    remainingMinutes = end - lunchE;
-  } else if (nowMinutes >= lunchE) {
+  if (pos < 0) {
+    // 还没上班：剩余为完整工作时长
+    remainingMinutes = shift.workMinutes;
+  } else if (pos >= shift.duration) {
+    // 已下班：按上满整个班次计
+    workedMinutes = shift.workMinutes;
+  } else if (hasLunch && pos < lunchS) {
     isWorking = true;
-    // Before lunch + after lunch start
-    workedMinutes = (lunchS - start) + (nowMinutes - lunchE);
-    remainingMinutes = end - nowMinutes;
+    workedMinutes = pos;
+    remainingMinutes = shift.duration - pos - shift.lunchMinutes;
+  } else if (hasLunch && pos < lunchE) {
+    isLunch = true;
+    workedMinutes = lunchS;
+    remainingMinutes = shift.duration - lunchE;
   } else {
     isWorking = true;
-    workedMinutes = nowMinutes - start;
-    remainingMinutes = end - nowMinutes - (lunchE - lunchS);
+    workedMinutes = pos - shift.lunchMinutes;
+    remainingMinutes = shift.duration - pos;
   }
 
-  workedMinutes = Math.max(0, workedMinutes);
+  workedMinutes = Math.max(0, Math.min(shift.workMinutes, workedMinutes));
   remainingMinutes = Math.max(0, remainingMinutes);
-
-  const totalWorkMinutes = (() => {
-    if (lunchS >= start && lunchE <= end) return (end - start) - (lunchE - lunchS);
-    return end - start;
-  })();
 
   return {
     workedMinutes,
     remainingMinutes,
-    totalWorkMinutes,
+    totalWorkMinutes: shift.workMinutes,
     isWorking,
     isLunch,
     isRest: false,
-    progress: totalWorkMinutes > 0 ? (workedMinutes / totalWorkMinutes) * 100 : 0,
+    progress: shift.workMinutes > 0 ? (workedMinutes / shift.workMinutes) * 100 : 0,
     earnedToday: workedMinutes * getMinuteRate(),
-    remainingValue: remainingMinutes * getMinuteRate()
+    remainingValue: remainingMinutes * getMinuteRate(),
+    crossDay: shift.crossDay,
+    shiftDate: anchor
   };
 }
 
@@ -2784,6 +2807,20 @@ function updateCommuteBadge() {
   const active = !!settings.commuteInHourly && (parseFloat(settings.commuteMinutes) || 0) > 0;
   el.textContent = active ? `🚌 含通勤 ${fmtDurationMinutes(settings.commuteMinutes)}` : '';
   el.style.display = active ? '' : 'none';
+}
+
+// 设置页：班次提示，下班早于上班时按跨天夜班解释
+function updateShiftHint() {
+  const el = document.getElementById('shiftTimeHint');
+  const startLabel = document.getElementById('lunchStartLabel');
+  const endLabel = document.getElementById('lunchEndLabel');
+  const shift = getShiftTimes();
+  // 跨天夜班里这段休息常落在凌晨，名称改为「休息」更贴切
+  if (startLabel) startLabel.textContent = shift.crossDay ? '休息开始' : '午休开始';
+  if (endLabel) endLabel.textContent = shift.crossDay ? '休息结束' : '午休结束';
+  if (!el) return;
+  if (!shift.crossDay) { el.textContent = ''; return; }
+  el.textContent = `下班早于上班，按跨天夜班计算：${settings.startTime} 上班，次日 ${settings.endTime} 下班，每天工作 ${fmtDurationMinutes(shift.workMinutes)}。`;
 }
 
 // 设置页：通勤提示，实时展示当前折算口径
@@ -2991,14 +3028,13 @@ function syncAutoWorkDays() {
   input.value = days;
 }
 
-// 今天按已工作时长折算的小数天：非工作日/未开始为 0，上满班为 1
+// 今天按已工作时长折算的小数天：休息日/未开始为 0，上满班为 1
 function getTodayWorkedDayFraction() {
-  const now = new Date();
-  if (!isWorkday(now)) return 0;
+  const state = getCurrentWorkState();
+  if (state.isRest) return 0;
   const dailyMinutes = getDailyHours() * 60;
   if (dailyMinutes <= 0) return 0;
-  const workedMinutes = getCurrentWorkState().workedMinutes;
-  return Math.min(1, Math.max(0, workedMinutes / dailyMinutes));
+  return Math.min(1, Math.max(0, state.workedMinutes / dailyMinutes));
 }
 
 // 已工作天数小数位：0 今天按整天计，1/2 今天按已工作时长折算并保留对应位数
@@ -3009,15 +3045,18 @@ function getWorkedDaysDecimals() {
 
 // excludeToday=true 时只统计今天之前的完整工作日，用于本月收益按整天累计
 // 否则把今天计入：小数位为 0 时按一整天，否则按已工作时长折算小数天
+// 跨天夜班在凌晨仍按「班次归属日」统计，避免昨天的班次被重复算成整天
 function getWorkedDaysThisMonth(excludeToday) {
-  const now = new Date();
+  const anchor = getShiftAnchorDate(new Date());
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth();
   let count = 0;
-  for (let i = 1; i < now.getDate(); i++) {
-    if (isWorkday(new Date(now.getFullYear(), now.getMonth(), i))) count++;
+  for (let i = 1; i < anchor.getDate(); i++) {
+    if (isWorkday(new Date(year, month, i))) count++;
   }
   if (!excludeToday) {
     if (getWorkedDaysDecimals() > 0) count += getTodayWorkedDayFraction();
-    else if (isWorkday(now)) count += 1;
+    else if (isWorkday(anchor)) count += 1;
   }
   return Math.min(count, settings.workDaysPerMonth);
 }
@@ -3070,7 +3109,7 @@ function updateTimer() {
     countdownLabel.textContent = '今天休息，不计时';
   } else {
     countdownEl.textContent = formatTime(remainingSeconds);
-    countdownLabel.textContent = '距离今天下班';
+    countdownLabel.textContent = state.crossDay ? '距离下班' : '距离今天下班';
   }
   document.getElementById('progressFill').style.width = state.progress.toFixed(1) + '%';
 
@@ -3095,7 +3134,7 @@ function updateTimer() {
   }
 
   document.getElementById('startTimeLabel').textContent = settings.startTime;
-  document.getElementById('endTimeLabel').textContent = settings.endTime;
+  document.getElementById('endTimeLabel').textContent = state.crossDay ? '次日 ' + settings.endTime : settings.endTime;
 
   // Earnings（开启联动时，加班应得一并计入；加班费另起一行单独展示）
   const now = new Date();
