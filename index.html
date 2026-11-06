@@ -961,6 +961,27 @@ body {
   font-size: 13px;
   color: var(--text-dim);
 }
+.stats-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+/* 扣缴明细：左右两列的键值行 */
+.deduct-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #242424;
+}
+.deduct-row:last-child { border-bottom: none; }
+.deduct-row .lbl { color: var(--text-dim); }
+.deduct-row .val { font-variant-numeric: tabular-nums; }
+.deduct-row.total { font-weight: 600; }
+.deduct-row.total .lbl { color: var(--text); }
+.deduct-row.total .val { color: var(--accent); }
 /* 统计页：加班费与加班总时长明细行 */
 .overtime-line {
   font-size: 12px;
@@ -1355,6 +1376,17 @@ body {
         </div>
       </div>
 
+      <div class="stats-card" id="monthTaxCard">
+        <h3>本月扣缴明细</h3>
+        <div class="desc" id="monthTaxDesc">按当前参数计算，个税为累计预扣法下的当月应扣</div>
+        <div class="deduct-row"><span class="lbl">应发工资</span><span class="val" id="monthTaxGross">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">社保个人</span><span class="val" id="monthTaxSocial">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">公积金个人</span><span class="val" id="monthTaxFund">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">个税（当月）</span><span class="val" id="monthTaxTax">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">个税（累计已缴）</span><span class="val" id="monthTaxCum">¥0.00</span></div>
+        <div class="deduct-row total"><span class="lbl">实发工资</span><span class="val" id="monthTaxNet">¥0.00</span></div>
+      </div>
+
       <div class="trajectory-card">
         <h3>年度工资轨迹</h3>
         <div class="desc">今年你已通过上班换来了多少</div>
@@ -1600,7 +1632,7 @@ body {
         </div>
         <div class="field-group">
           <label>税前月薪 (¥)</label>
-          <input type="number" id="monthlySalary" placeholder="3000" value="3000" oninput="updateTaxHint(); updateProbationHint()">
+          <input type="number" id="monthlySalary" placeholder="3000" value="3000" oninput="updateProbationHint()">
         </div>
         <div class="field-group">
           <label>每月工作天数</label>
@@ -1621,7 +1653,7 @@ body {
         </div>
         <div class="field-group">
           <label>试用期薪资比例 (%)</label>
-          <input type="number" id="probationRatio" step="1" oninput="updateProbationHint(); updateTaxHint()" disabled>
+          <input type="number" id="probationRatio" step="1" oninput="updateProbationHint()" disabled>
         </div>
         <div class="field-group" style="grid-column:1/-1">
           <div class="field-hint" id="probationHint"></div>
@@ -1674,32 +1706,32 @@ body {
         <div class="settings-subhead">缴费基数</div>
         <div class="field-group">
           <label>社保基数（元）</label>
-          <input type="number" id="socialBase" placeholder="留空=税前月薪" oninput="updateTaxHint()">
+          <input type="number" id="socialBase" placeholder="留空=税前月薪">
         </div>
         <div class="field-group">
           <label>公积金基数（元）</label>
-          <input type="number" id="fundBase" placeholder="留空=税前月薪" oninput="updateTaxHint()">
+          <input type="number" id="fundBase" placeholder="留空=税前月薪">
         </div>
         <div class="settings-subhead">五险一金个人比例</div>
         <div class="field-group">
           <label>养老（%）</label>
-          <input type="number" id="pensionRate" step="0.5" placeholder="8" oninput="updateTaxHint()">
+          <input type="number" id="pensionRate" step="0.5" placeholder="8">
         </div>
         <div class="field-group">
           <label>医疗（%）</label>
-          <input type="number" id="medicalRate" step="0.5" placeholder="2" oninput="updateTaxHint()">
+          <input type="number" id="medicalRate" step="0.5" placeholder="2">
         </div>
         <div class="field-group">
           <label>失业（%）</label>
-          <input type="number" id="unemploymentRate" step="0.1" placeholder="0.5" oninput="updateTaxHint()">
+          <input type="number" id="unemploymentRate" step="0.1" placeholder="0.5">
         </div>
         <div class="field-group">
           <label>住房公积金（%）</label>
-          <input type="number" id="fundRate" step="0.5" placeholder="12" oninput="updateTaxHint()">
+          <input type="number" id="fundRate" step="0.5" placeholder="12">
         </div>
         <div class="field-group">
           <label>大额医疗互助（元）</label>
-          <input type="number" id="medicalExtra" placeholder="0" oninput="updateTaxHint()">
+          <input type="number" id="medicalExtra" placeholder="0">
         </div>
         <div class="field-group" style="grid-column:1/-1">
           <div class="field-hint">大额医疗互助为地方医保政策，非全国统一；部分城市（如北京）每月代扣 3 元，请按实际填写</div>
@@ -1707,30 +1739,27 @@ body {
         <div class="settings-subhead">专项附加扣除</div>
         <div class="field-group">
           <label>子女教育（元）</label>
-          <input type="number" id="specialChild" placeholder="0" oninput="updateTaxHint()">
+          <input type="number" id="specialChild" placeholder="0">
         </div>
         <div class="field-group">
           <label>3岁以下婴幼儿照护（元）</label>
-          <input type="number" id="specialBaby" placeholder="0" oninput="updateTaxHint()">
+          <input type="number" id="specialBaby" placeholder="0">
         </div>
         <div class="field-group">
           <label>继续教育（元）</label>
-          <input type="number" id="specialEducation" placeholder="0" oninput="updateTaxHint()">
+          <input type="number" id="specialEducation" placeholder="0">
         </div>
         <div class="field-group">
           <label>住房贷款利息（元）</label>
-          <input type="number" id="specialLoan" placeholder="0" oninput="updateTaxHint()">
+          <input type="number" id="specialLoan" placeholder="0">
         </div>
         <div class="field-group">
           <label>住房租金（元）</label>
-          <input type="number" id="specialRent" placeholder="0" oninput="updateTaxHint()">
+          <input type="number" id="specialRent" placeholder="0">
         </div>
         <div class="field-group">
           <label>赡养老人（元）</label>
-          <input type="number" id="specialElder" placeholder="0" oninput="updateTaxHint()">
-        </div>
-        <div class="field-group" style="grid-column:1/-1">
-          <div class="field-hint" id="taxHint"></div>
+          <input type="number" id="specialElder" placeholder="0">
         </div>
       </div>
     </div>
@@ -2185,23 +2214,13 @@ function selectSalaryMode(mode) {
       modeHint.textContent = '只统计税前数据，不做五险一金与个税扣除';
     }
   }
-  updateTaxHint();
 }
 
-// 税后测算提示：直接读表单当前值，改动时实时反馈
-function updateTaxHint() {
-  const hint = document.getElementById('taxHint');
-  if (!hint) return;
-  const p = taxParamsFromForm();
-  if (p.gross <= 0) { hint.textContent = ''; return; }
-
-  p.probationRatio = probationRatioFromForm();
-  // 只展示当前月的实际扣缴：当月所在月份的五险一金与累计预扣个税
+// 当前月的到手明细：当月五险一金、累计预扣个税与累计已缴
+function currentMonthTax(p) {
   const rows = buildMonthlySchedule(p);
   const month = new Date().getMonth();
-  const row = rows.find(r => r.month === month) || rows[rows.length - 1];
-  const phase = row.probation ? '（试用期）' : '';
-  hint.textContent = `税后到手 ${formatMoney(row.net)}/月${phase}：五险一金 ${formatMoney(row.insurance)}（社保 ${formatMoney(row.social)} + 公积金 ${formatMoney(row.fund)}），个税 ${formatMoney(row.tax)}/月（累计已缴 ${formatMoney(row.cumTax)}）。`;
+  return rows.find(r => r.month === month) || rows[rows.length - 1];
 }
 
 // 月份加法：按 yyyy-MM-dd 本地日期计算，避免时区与月底溢出（如 1月31日 + 1月 → 2月28/29日）
@@ -2251,7 +2270,6 @@ function onProbationParamsChange() {
   if (monthsInput) settings.probationMonths = parseFloat(monthsInput.value) || 0;
   if (regularInput) regularInput.value = getRegularDate();
   syncProbationFields();
-  updateTaxHint();
 }
 
 // 未配置试用期（无入职日期或试用期月数<=0）时，试用期比例禁用并置空；配置后恢复可编辑
@@ -2516,13 +2534,6 @@ function readTaxParams(read) {
   };
 }
 
-function taxParamsFromForm() {
-  return readTaxParams(id => {
-    const v = parseFloat(document.getElementById(id).value);
-    return isNaN(v) ? 0 : v;
-  });
-}
-
 function taxParamsFromSettings() {
   return readTaxParams(key => {
     const v = parseFloat(settings[key]);
@@ -2531,8 +2542,7 @@ function taxParamsFromSettings() {
 }
 
 // 转正日期之前为试用期：返回当天的薪资系数（试用期比例/100），已转正或未设置试用期为 1
-// ratioOverride 传入时优先使用（设置页表单尚未保存时也能实时折算）
-function salaryFactorFor(date, ratioOverride) {
+function salaryFactorFor(date) {
   const regularDate = getRegularDate();
   if (!regularDate) return 1;
   const regular = new Date(regularDate + 'T00:00:00');
@@ -2540,17 +2550,8 @@ function salaryFactorFor(date, ratioOverride) {
   const d = date || new Date();
   const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   if (day >= regular) return 1;
-  const ratio = ratioOverride === undefined ? parseFloat(settings.probationRatio) : ratioOverride;
+  const ratio = parseFloat(settings.probationRatio);
   return (isNaN(ratio) ? 100 : Math.min(100, Math.max(0, ratio))) / 100;
-}
-
-// 试用期薪资比例：优先读表单当前值，未填时回退到已保存设置
-function probationRatioFromForm() {
-  const input = document.getElementById('probationRatio');
-  const v = parseFloat(input ? input.value : '');
-  if (!isNaN(v)) return v;
-  const saved = parseFloat(settings.probationRatio);
-  return isNaN(saved) ? 100 : saved;
 }
 
 // 统计口径：税前模式只算税前月薪；税后与对比模式按入职起的逐月明细取当前阶段（试用期/转正后）月均到手
@@ -3437,6 +3438,24 @@ function updateStats() {
   document.getElementById('monthEarnedVal').textContent = formatMoney(monthEarned);
   document.getElementById('monthProgress').style.width = monthProgress.toFixed(0) + '%';
   document.getElementById('monthProgressVal').textContent = monthProgress.toFixed(0) + '%';
+
+  // 本月扣缴明细卡片：税前口径不做扣除，故整卡隐藏
+  const taxCard = document.getElementById('monthTaxCard');
+  if (taxCard) {
+    const showTax = (settings.salaryMode || DEFAULTS.salaryMode) !== 'gross';
+    taxCard.style.display = showTax ? '' : 'none';
+    if (showTax) {
+      const row = currentMonthTax(taxParamsFromSettings());
+      document.getElementById('monthTaxDesc').textContent =
+        `${row.probation ? '试用期' : '正式期'}计薪，个税为累计预扣法下的当月应扣`;
+      document.getElementById('monthTaxGross').textContent = formatMoney(row.gross);
+      document.getElementById('monthTaxSocial').textContent = formatMoney(row.social);
+      document.getElementById('monthTaxFund').textContent = formatMoney(row.fund);
+      document.getElementById('monthTaxTax').textContent = formatMoney(row.tax);
+      document.getElementById('monthTaxCum').textContent = formatMoney(row.cumTax);
+      document.getElementById('monthTaxNet').textContent = formatMoney(row.net);
+    }
+  }
   renderOvertimeLine('monthOvertimeLine', overtimeInMonth(now.getFullYear(), now.getMonth()));
 }
 
