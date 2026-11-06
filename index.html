@@ -1673,53 +1673,60 @@ body {
       <div class="settings-grid">
         <div class="settings-subhead">缴费基数</div>
         <div class="field-group">
-          <label>社保基数 (¥/月)</label>
+          <label>社保基数（元）</label>
           <input type="number" id="socialBase" placeholder="留空=税前月薪" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>公积金基数 (¥/月)</label>
+          <label>公积金基数（元）</label>
           <input type="number" id="fundBase" placeholder="留空=税前月薪" oninput="updateTaxHint()">
         </div>
-        <div class="settings-subhead">五险一金个人比例 (%)</div>
+        <div class="settings-subhead">五险一金个人比例</div>
         <div class="field-group">
-          <label>养老</label>
+          <label>养老（%）</label>
           <input type="number" id="pensionRate" step="0.5" placeholder="8" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>医疗</label>
+          <label>医疗（%）</label>
           <input type="number" id="medicalRate" step="0.5" placeholder="2" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>失业</label>
+          <label>失业（%）</label>
           <input type="number" id="unemploymentRate" step="0.1" placeholder="0.5" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>住房公积金</label>
+          <label>住房公积金（%）</label>
           <input type="number" id="fundRate" step="0.5" placeholder="12" oninput="updateTaxHint()">
         </div>
-        <div class="settings-subhead">专项附加扣除 (¥/月)</div>
         <div class="field-group">
-          <label>子女教育</label>
+          <label>大额医疗互助（元）</label>
+          <input type="number" id="medicalExtra" placeholder="0" oninput="updateTaxHint()">
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <div class="field-hint">大额医疗互助为地方医保政策，非全国统一；部分城市（如北京）每月代扣 3 元，请按实际填写</div>
+        </div>
+        <div class="settings-subhead">专项附加扣除</div>
+        <div class="field-group">
+          <label>子女教育（元）</label>
           <input type="number" id="specialChild" placeholder="0" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>3岁以下婴幼儿照护</label>
+          <label>3岁以下婴幼儿照护（元）</label>
           <input type="number" id="specialBaby" placeholder="0" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>继续教育</label>
+          <label>继续教育（元）</label>
           <input type="number" id="specialEducation" placeholder="0" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>住房贷款利息</label>
+          <label>住房贷款利息（元）</label>
           <input type="number" id="specialLoan" placeholder="0" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>住房租金</label>
+          <label>住房租金（元）</label>
           <input type="number" id="specialRent" placeholder="0" oninput="updateTaxHint()">
         </div>
         <div class="field-group">
-          <label>赡养老人</label>
+          <label>赡养老人（元）</label>
           <input type="number" id="specialElder" placeholder="0" oninput="updateTaxHint()">
         </div>
         <div class="field-group" style="grid-column:1/-1">
@@ -1842,6 +1849,7 @@ const DEFAULTS = {
   medicalRate: 2,            // 医疗保险个人比例（%）
   unemploymentRate: 0.5,     // 失业保险个人比例（%）
   fundRate: 12,              // 住房公积金个人比例（%）
+  medicalExtra: 0,           // 大额医疗互助个人固定金额（元/月），部分城市按「医疗 2% + 3 元」缴纳
   workDaysPerMonth: 22,
   hireDate: '',           // 入职日期，用于生命消耗大盘 + 自动计算转正日期
   probationMonths: 3,     // 试用期月数，留空/0 表示无试用期
@@ -2294,6 +2302,7 @@ function persistSettings() {
   settings.medicalRate = num('medicalRate', DEFAULTS.medicalRate);
   settings.unemploymentRate = num('unemploymentRate', DEFAULTS.unemploymentRate);
   settings.fundRate = num('fundRate', DEFAULTS.fundRate);
+  settings.medicalExtra = Math.max(0, num('medicalExtra', 0));
   SPECIAL_ITEMS.forEach(it => { settings[it.key] = num(it.key, 0); });
   settings.hireDate = document.getElementById('hireDate').value || '';
   settings.probationMonths = num('probationMonths', 0);
@@ -2336,6 +2345,7 @@ function fillSettingsForm() {
   set('medicalRate', settings.medicalRate);
   set('unemploymentRate', settings.unemploymentRate);
   set('fundRate', settings.fundRate);
+  set('medicalExtra', settings.medicalExtra > 0 ? settings.medicalExtra : '');
   SPECIAL_ITEMS.forEach(it => set(it.key, settings[it.key] > 0 ? settings[it.key] : ''));
   // 放在赋值之后：口径开关会顺带刷新字段显隐、补默认到手值并重算提示
   selectSalaryMode(settings.salaryMode || DEFAULTS.salaryMode);
@@ -2394,7 +2404,9 @@ function calcNetFromGross(o) {
   const gross = Math.max(0, o.gross || 0);
   const socialBase = o.socialBase > 0 ? o.socialBase : gross;
   const fundBase = o.fundBase > 0 ? o.fundBase : gross;
-  const social = socialBase * (o.pensionRate + o.medicalRate + o.unemploymentRate) / 100;
+  // 大额医疗互助是固定金额，不与缴费基数挂钩（如北京按医疗 2% + 3 元）
+  const social = socialBase * (o.pensionRate + o.medicalRate + o.unemploymentRate) / 100
+    + Math.max(0, o.medicalExtra || 0);
   const fund = fundBase * o.fundRate / 100;
   const insurance = social + fund; // 五险一金个人部分
   const special = o.special || 0;  // 专项附加扣除合计（元/月）
@@ -2413,6 +2425,7 @@ function readTaxParams(read) {
     medicalRate: read('medicalRate'),
     unemploymentRate: read('unemploymentRate'),
     fundRate: read('fundRate'),
+    medicalExtra: read('medicalExtra'),
     special: SPECIAL_ITEMS.reduce((sum, it) => sum + read(it.key), 0)
   };
 }
