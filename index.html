@@ -713,45 +713,6 @@ body {
 }
 .overtime-item .overtime-del:hover { background: #3a3a3a; color: #fff; }
 
-/* Annual Trajectory */
-.trajectory-card {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 12px;
-}
-.trajectory-card h3 {
-  font-size: 16px;
-  margin-bottom: 4px;
-}
-.trajectory-card .desc {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin-bottom: 14px;
-}
-.trajectory-stats {
-  display: flex;
-  gap: 12px;
-}
-.trajectory-stat {
-  flex: 1;
-  text-align: center;
-  padding: 10px;
-  background: #222;
-  border-radius: var(--radius-sm);
-}
-.trajectory-stat .val {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--accent);
-}
-.trajectory-stat .lbl {
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-top: 2px;
-}
-
 /* Bottom Nav */
 .bottom-nav {
   position: absolute;
@@ -951,6 +912,13 @@ body {
   margin-bottom: 12px;
   color: var(--text-dim);
 }
+/* 本月扣缴明细：右上角放阶段标签 */
+#monthTaxCard { position: relative; }
+#monthTaxCard .period-badge {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+}
 .stats-card .big-val {
   font-size: 36px;
   font-weight: 700;
@@ -1139,16 +1107,6 @@ body {
   color: var(--text-dim);
   margin-top: 6px;
 }
-.life-roast {
-  font-size: 13px;
-  color: #bbb;
-  line-height: 1.7;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px dashed #333;
-}
-.life-roast .hl { color: var(--accent); font-weight: 700; }
-
 .life-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1357,6 +1315,18 @@ body {
         <div id="lifePanel"></div>
       </div>
 
+      <div class="stats-card" id="monthTaxCard">
+        <span class="period-badge" id="monthTaxBadge">正式期</span>
+        <h3>本月扣缴明细</h3>
+        <div class="desc" id="monthTaxDesc">按当前参数计算，个税为累计预扣法下的当月应扣</div>
+        <div class="deduct-row"><span class="lbl">应发工资</span><span class="val" id="monthTaxGross">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">社保个人</span><span class="val" id="monthTaxSocial">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">公积金个人</span><span class="val" id="monthTaxFund">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">个税（当月）</span><span class="val" id="monthTaxTax">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">个税（累计已缴）</span><span class="val" id="monthTaxCum">¥0.00</span></div>
+        <div class="deduct-row total"><span class="lbl">实发工资</span><span class="val" id="monthTaxNet">¥0.00</span></div>
+      </div>
+
       <div class="stats-card">
         <h3>本月概览</h3>
         <div class="big-val" id="monthEarned">¥0.00</div>
@@ -1376,33 +1346,26 @@ body {
         </div>
       </div>
 
-      <div class="stats-card" id="monthTaxCard">
-        <h3>本月扣缴明细</h3>
-        <div class="desc" id="monthTaxDesc">按当前参数计算，个税为累计预扣法下的当月应扣</div>
-        <div class="deduct-row"><span class="lbl">应发工资</span><span class="val" id="monthTaxGross">¥0.00</span></div>
-        <div class="deduct-row"><span class="lbl">社保个人</span><span class="val" id="monthTaxSocial">¥0.00</span></div>
-        <div class="deduct-row"><span class="lbl">公积金个人</span><span class="val" id="monthTaxFund">¥0.00</span></div>
-        <div class="deduct-row"><span class="lbl">个税（当月）</span><span class="val" id="monthTaxTax">¥0.00</span></div>
-        <div class="deduct-row"><span class="lbl">个税（累计已缴）</span><span class="val" id="monthTaxCum">¥0.00</span></div>
-        <div class="deduct-row total"><span class="lbl">实发工资</span><span class="val" id="monthTaxNet">¥0.00</span></div>
-      </div>
-
-      <div class="trajectory-card">
-        <h3>年度工资轨迹</h3>
-        <div class="desc">今年你已通过上班换来了多少</div>
+      <div class="stats-card">
+        <h3>年度概览</h3>
+        <div class="big-val" id="annualEarned">¥0.00</div>
+        <div class="sub-val" id="annualDays">已过 0 天 / 0 天</div>
         <div class="overtime-line" id="annualOvertimeLine" style="display:none"></div>
-        <div class="trajectory-stats">
-          <div class="trajectory-stat">
-            <div class="val" id="annualEarned">¥0</div>
-            <div class="lbl">年度已赚</div>
+        <div style="margin-top:16px">
+          <div class="stats-bar-row">
+            <span class="lbl">已赚</span>
+            <div class="bar"><div class="bar-fill" id="annualEarnedBar" style="width:0%"></div></div>
+            <span class="val" id="annualEarnedVal">¥0</span>
           </div>
-          <div class="trajectory-stat">
-            <div class="val" id="annualDays">0天</div>
-            <div class="lbl">已过工作日</div>
+          <div class="stats-bar-row">
+            <span class="lbl">进度</span>
+            <div class="bar"><div class="bar-fill" id="annualProgress" style="width:0%"></div></div>
+            <span class="val" id="annualProgressVal">0%</span>
           </div>
-          <div class="trajectory-stat">
-            <div class="val" id="annualRemain">¥0</div>
-            <div class="lbl">剩余预计</div>
+          <div class="stats-bar-row">
+            <span class="lbl">剩余预计</span>
+            <div class="bar"><div class="bar-fill" id="annualRemainBar" style="width:0%"></div></div>
+            <span class="val" id="annualRemainVal">¥0</span>
           </div>
         </div>
       </div>
@@ -3185,9 +3148,13 @@ function formatDays(days) {
 }
 
 // 本年度已工作 / 剩余的工作日：以入职日为起点，并按转正日期拆成试用期与正式期两段
-function getYearWorkdaySplit(year) {
+// excludeDay 传入时跳过该天（今天单独按实时工时折算），并以它为「已过 / 剩余」的分界
+function getYearWorkdaySplit(year, excludeDay) {
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const today = excludeDay
+    ? new Date(excludeDay.getFullYear(), excludeDay.getMonth(), excludeDay.getDate())
+    : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const excludeKey = excludeDay ? fmtDateKey(today) : null;
   const hire = parseDateKey(settings.hireDate || '');
   // 入职日期晚于年初（含当年入职、尚未入职）时从入职日起算，否则按整年算
   let start = new Date(year, 0, 1);
@@ -3196,6 +3163,7 @@ function getYearWorkdaySplit(year) {
   const split = { workedProbation: 0, workedRegular: 0, remainProbation: 0, remainRegular: 0 };
   for (let d = new Date(start); d.getFullYear() === year; d.setDate(d.getDate() + 1)) {
     if (!isWorkday(d)) continue;
+    if (excludeKey && fmtDateKey(d) === excludeKey) continue;
     const probation = !!regular && d < regular;
     const key = (d <= today ? 'worked' : 'remain') + (probation ? 'Probation' : 'Regular');
     split[key]++;
@@ -3400,30 +3368,54 @@ function updateStats() {
   updateLifePanel();
   updateCalculator();
 
-  // Annual trajectory（开启联动时，加班应得一并计入）
+  // Annual trajectory（开启联动时，加班应得一并计入；今天的收益按秒实时累计）
   const dailyHours = getDailyHours();
   const thisYear = new Date().getFullYear();
   const now = new Date();
+  const workState = getCurrentWorkState();
+  const shiftAnchor = workState.shiftDate;
 
   const yearTotals = sumOvertime(overtimeInYear(thisYear));
   const monthTotals = sumOvertime(overtimeInMonth(now.getFullYear(), now.getMonth()));
   const yearOvertime = isOvertimeLinked() ? yearTotals.money : 0;
   const monthOvertime = isOvertimeLinked() ? monthTotals.money : 0;
 
-  // 从入职日起算，试用期工作日按试用期时薪、转正后按正式时薪分别累计
-  const yearSplit = getYearWorkdaySplit(thisYear);
+  // 从入职日起算，试用期工作日按试用期时薪、转正后按正式时薪分别累计；
+  // 今天跳过整天累计，单独按已工作时长实时折算（跨天夜班归属到班次开始那天）
+  const yearSplit = getYearWorkdaySplit(thisYear, shiftAnchor);
   const rates = getPhaseHourlyRates();
   const probationRate = rates.probation === null ? rates.regular : rates.probation;
   const regularRate = rates.regular === null ? probationRate : rates.regular;
+  const hire = parseDateKey(settings.hireDate || '');
+  const todayCounted = !workState.isRest && shiftAnchor.getFullYear() === thisYear
+    && (!hire || shiftAnchor >= hire);
+  const todayFraction = todayCounted && dailyHours > 0
+    ? Math.min(1, Math.max(0, workState.workedMinutes / (dailyHours * 60))) : 0;
   const yearlyWorkDays = yearSplit.workedProbation + yearSplit.workedRegular;
+  const yearlyRemainDays = yearSplit.remainProbation + yearSplit.remainRegular;
+  const yearlyTotalDays = yearlyWorkDays + (todayCounted ? 1 : 0) + yearlyRemainDays;
   const annualEarned = (yearSplit.workedProbation * probationRate
-    + yearSplit.workedRegular * regularRate) * dailyHours + yearOvertime;
+    + yearSplit.workedRegular * regularRate) * dailyHours
+    + (todayCounted ? workState.earnedToday : 0) + yearOvertime;
   const annualRemain = (yearSplit.remainProbation * probationRate
-    + yearSplit.remainRegular * regularRate) * dailyHours;
+    + yearSplit.remainRegular * regularRate) * dailyHours
+    + (todayCounted ? workState.remainingValue : 0);
+  const workedDaysDisplay = yearlyWorkDays
+    + (todayCounted ? (getWorkedDaysDecimals() > 0 ? todayFraction : 1) : 0);
+  const annualProgress = yearlyTotalDays > 0 ? (workedDaysDisplay / yearlyTotalDays) * 100 : 0;
 
-  document.getElementById('annualEarned').textContent = '¥' + Math.round(annualEarned).toLocaleString();
-  document.getElementById('annualDays').textContent = yearlyWorkDays + '天';
-  document.getElementById('annualRemain').textContent = '¥' + Math.round(annualRemain).toLocaleString();
+  const annualTotal = annualEarned + annualRemain;
+  document.getElementById('annualEarned').textContent = formatMoney(annualEarned);
+  document.getElementById('annualDays').textContent =
+    `已过 ${formatDays(workedDaysDisplay)} 天 / ${yearlyTotalDays} 天`;
+  document.getElementById('annualEarnedBar').style.width =
+    (annualTotal > 0 ? Math.min(100, annualEarned / annualTotal * 100) : 0) + '%';
+  document.getElementById('annualEarnedVal').textContent = formatMoney(annualEarned);
+  document.getElementById('annualProgress').style.width = annualProgress.toFixed(0) + '%';
+  document.getElementById('annualProgressVal').textContent = annualProgress.toFixed(0) + '%';
+  document.getElementById('annualRemainBar').style.width =
+    (annualTotal > 0 ? Math.min(100, annualRemain / annualTotal * 100) : 0) + '%';
+  document.getElementById('annualRemainVal').textContent = formatMoney(annualRemain);
   renderOvertimeLine('annualOvertimeLine', overtimeInYear(thisYear));
 
   // Monthly overview
@@ -3446,8 +3438,11 @@ function updateStats() {
     taxCard.style.display = showTax ? '' : 'none';
     if (showTax) {
       const row = currentMonthTax(taxParamsFromSettings());
-      document.getElementById('monthTaxDesc').textContent =
-        `${row.probation ? '试用期' : '正式期'}计薪，个税为累计预扣法下的当月应扣`;
+      const badge = document.getElementById('monthTaxBadge');
+      badge.textContent = row.probation ? '试用期' : '正式期';
+      badge.className = 'period-badge' + (row.probation ? ' probation' : '');
+      document.getElementById('monthTaxDesc').innerHTML =
+        (!settings.hireDate ? '未填入职日期，按全年在职估算' : '') + '个税为累计预扣法下的当月应扣';
       document.getElementById('monthTaxGross').textContent = formatMoney(row.gross);
       document.getElementById('monthTaxSocial').textContent = formatMoney(row.social);
       document.getElementById('monthTaxFund').textContent = formatMoney(row.fund);
@@ -4275,7 +4270,6 @@ function updateLifePanel() {
   const totalHours = workDays * getDailyHours();
   const totalEarned = totalHours * getHourlyRate();
   const lifeDays = totalHours / 24;
-  const lifeYears = lifeDays / 365;
   // 入职天数：从入职当天（含）算到今天的自然日天数
   const hireD = new Date(hireDate + 'T00:00:00');
   const nowD = new Date();
@@ -4292,11 +4286,6 @@ function updateLifePanel() {
       <div class="life-stat"><div class="v">${workDays.toLocaleString()}<small>天</small></div><div class="k">打工天数</div></div>
       <div class="life-stat"><div class="v">${lifeDays.toFixed(1)}<small>天</small></div><div class="k">折合生命</div></div>
       <div class="life-stat"><div class="v">${fmtMoneyCompact(totalEarned)}</div><div class="k">已换工资</div></div>
-    </div>
-    <div class="life-roast">
-      从 <span class="hl">${hireDate}</span> 至今，你已把 <span class="hl">${lifeDays.toFixed(1)} 天</span>
-      （约 <span class="hl">${lifeYears.toFixed(1)} 年</span>）的生命典当给了工位。<br>
-      这些时间不会回来，但工资到账了 —— 这就是交易的全部内容。
     </div>
   `;
 }
