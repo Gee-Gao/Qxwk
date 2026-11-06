@@ -1621,7 +1621,7 @@ body {
         </div>
         <div class="field-group">
           <label>试用期薪资比例 (%)</label>
-          <input type="number" id="probationRatio" step="1" oninput="updateProbationHint()" disabled>
+          <input type="number" id="probationRatio" step="1" oninput="updateProbationHint(); updateTaxHint()" disabled>
         </div>
         <div class="field-group" style="grid-column:1/-1">
           <div class="field-hint" id="probationHint"></div>
@@ -2195,8 +2195,13 @@ function updateTaxHint() {
   const p = taxParamsFromForm();
   if (p.gross <= 0) { hint.textContent = ''; return; }
 
-  const r = calcNetFromGross(p);
-  hint.textContent = `税后到手 ¥${r.net.toFixed(0)}/月：五险一金 ¥${r.insurance.toFixed(0)}（社保 ¥${r.social.toFixed(0)} + 公积金 ¥${r.fund.toFixed(0)}），个税 ¥${Math.round(r.annualTax / 12)}/月（全年 ¥${Math.round(r.annualTax).toLocaleString()}）。`;
+  p.probationRatio = probationRatioFromForm();
+  // 只展示当前月的实际扣缴：当月所在月份的五险一金与累计预扣个税
+  const rows = buildMonthlySchedule(p);
+  const month = new Date().getMonth();
+  const row = rows.find(r => r.month === month) || rows[rows.length - 1];
+  const phase = row.probation ? '（试用期）' : '';
+  hint.textContent = `税后到手 ${formatMoney(row.net)}/月${phase}：五险一金 ${formatMoney(row.insurance)}（社保 ${formatMoney(row.social)} + 公积金 ${formatMoney(row.fund)}），个税 ${formatMoney(row.tax)}/月（累计已缴 ${formatMoney(row.cumTax)}）。`;
 }
 
 // 月份加法：按 yyyy-MM-dd 本地日期计算，避免时区与月底溢出（如 1月31日 + 1月 → 2月28/29日）
@@ -2246,6 +2251,7 @@ function onProbationParamsChange() {
   if (monthsInput) settings.probationMonths = parseFloat(monthsInput.value) || 0;
   if (regularInput) regularInput.value = getRegularDate();
   syncProbationFields();
+  updateTaxHint();
 }
 
 // 未配置试用期（无入职日期或试用期月数<=0）时，试用期比例禁用并置空；配置后恢复可编辑
@@ -2392,6 +2398,7 @@ const IIT_BRACKETS = [
   { limit: Infinity, rate: 0.45, quick: 181920 }
 ];
 const IIT_THRESHOLD_MONTHLY = 5000; // 个税起征点（元/月）
+const STANDARD_MONTH_DAYS = 21.75;  // 首月工资折算用的月计薪天数
 
 function calcIIT(annualTaxable) {
   if (!(annualTaxable > 0)) return 0;
@@ -2399,20 +2406,98 @@ function calcIIT(annualTaxable) {
   return annualTaxable * b.rate - b.quick;
 }
 
-// 税前月薪 -> 月均到手：五险一金按各自缴费基数与分项比例，个税按累计预扣法折算全年
-function calcNetFromGross(o) {
-  const gross = Math.max(0, o.gross || 0);
-  const socialBase = o.socialBase > 0 ? o.socialBase : gross;
-  const fundBase = o.fundBase > 0 ? o.fundBase : gross;
+// 单月五险一金个人部分：缴费基数留空（<=0）时按整月工资计算（首月折算不影响缴费基数）
+function calcMonthlyInsurance(gross, o, baseGross) {
+  const base = baseGross === undefined ? gross : baseGross;
+  const socialBase = o.socialBase > 0 ? o.socialBase : base;
+  const fundBase = o.fundBase > 0 ? o.fundBase : base;
   // 大额医疗互助是固定金额，不与缴费基数挂钩（如北京按医疗 2% + 3 元）
   const social = socialBase * (o.pensionRate + o.medicalRate + o.unemploymentRate) / 100
     + Math.max(0, o.medicalExtra || 0);
   const fund = fundBase * o.fundRate / 100;
-  const insurance = social + fund; // 五险一金个人部分
-  const special = o.special || 0;  // 专项附加扣除合计（元/月）
-  const annualTaxable = Math.max(0, (gross - insurance - special - IIT_THRESHOLD_MONTHLY) * 12);
-  const annualTax = calcIIT(annualTaxable);
-  return { social, fund, insurance, annualTax, net: (gross * 12 - insurance * 12 - annualTax) / 12 };
+  return { social, fund, insurance: social + fund };
+}
+
+// 「yyyy-MM-dd」-> 本地日期，非法返回 null
+function parseDateKey(str) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || '');
+  if (!m) return null;
+  const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// 以入职时间为起点生成当年的逐月明细：入职前不计收入，转正前按试用期比例计薪，
+// 入职当月按 21.75 天折算实际出勤工资，个税按累计预扣法逐月计算
+// （累计应纳所得额 × 年税率 - 速算扣除数，再减去已预扣部分）
+function buildMonthlySchedule(o) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const grossFull = Math.max(0, o.gross || 0);
+  const special = o.special || 0;
+  const ratioPct = parseFloat(o.probationRatio);
+  const ratio = (isNaN(ratioPct) || ratioPct <= 0 ? 100 : Math.min(100, ratioPct)) / 100;
+
+  const hire = parseDateKey(settings.hireDate || '');
+  // 入职日期在当前年份则从入职当月起算；跨年或未填则按整年处理
+  const startMonth = (hire && hire.getFullYear() === year) ? hire.getMonth() : 0;
+  const regular = parseDateKey(getRegularDate());
+
+  const rows = [];
+  let cumTaxable = 0;
+  let prevTax = 0;
+  for (let m = startMonth; m < 12; m++) {
+    const probation = !!regular && new Date(year, m, 1) < regular;
+    const monthPay = probation ? grossFull * ratio : grossFull;
+    // 入职当月按 21.75 天折算：只计入职日到月底的工作日；五险一金仍按整月工资作基数
+    let gross = monthPay;
+    if (hire && hire.getFullYear() === year && hire.getMonth() === m) {
+      const monthEnd = new Date(year, m + 1, 0);
+      let attended = 0;
+      for (let d = new Date(hire); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+        if (isWorkday(d)) attended++;
+      }
+      gross = monthPay * Math.min(1, attended / STANDARD_MONTH_DAYS);
+    }
+    const ins = calcMonthlyInsurance(gross, o, monthPay);
+    const taxable = gross - ins.insurance - special - IIT_THRESHOLD_MONTHLY;
+    cumTaxable += taxable;
+    const cumTax = calcIIT(cumTaxable);
+    const tax = Math.max(0, cumTax - prevTax);
+    prevTax = cumTax;
+    rows.push({
+      month: m, probation, gross,
+      social: ins.social, fund: ins.fund, insurance: ins.insurance,
+      tax, cumTax, net: gross - ins.insurance - tax
+    });
+  }
+  return rows;
+}
+
+// 汇总试用期 / 转正后两个阶段的月均到手，并返回全年个税
+function calcNetProfile(o) {
+  const rows = buildMonthlySchedule(o);
+  const avg = (arr, key) => arr.reduce((s, x) => s + x[key], 0) / arr.length;
+  const summarize = arr => arr.length ? {
+    months: arr.length,
+    net: avg(arr, 'net'),
+    social: avg(arr, 'social'),
+    fund: avg(arr, 'fund'),
+    insurance: avg(arr, 'insurance'),
+    tax: avg(arr, 'tax')
+  } : null;
+  return {
+    probation: summarize(rows.filter(r => r.probation)),
+    regular: summarize(rows.filter(r => !r.probation)),
+    annualTax: rows.reduce((s, r) => s + r.tax, 0)
+  };
+}
+
+// 当前是否仍处于试用期（未配置试用期时视为已转正）
+function isInProbationNow() {
+  const regular = parseDateKey(getRegularDate());
+  if (!regular) return false;
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()) < regular;
 }
 
 // 收集测算参数，read(id) 决定数据来自设置页表单还是已保存的 settings
@@ -2426,6 +2511,7 @@ function readTaxParams(read) {
     unemploymentRate: read('unemploymentRate'),
     fundRate: read('fundRate'),
     medicalExtra: read('medicalExtra'),
+    probationRatio: read('probationRatio'),
     special: SPECIAL_ITEMS.reduce((sum, it) => sum + read(it.key), 0)
   };
 }
@@ -2445,7 +2531,8 @@ function taxParamsFromSettings() {
 }
 
 // 转正日期之前为试用期：返回当天的薪资系数（试用期比例/100），已转正或未设置试用期为 1
-function salaryFactorFor(date) {
+// ratioOverride 传入时优先使用（设置页表单尚未保存时也能实时折算）
+function salaryFactorFor(date, ratioOverride) {
   const regularDate = getRegularDate();
   if (!regularDate) return 1;
   const regular = new Date(regularDate + 'T00:00:00');
@@ -2453,18 +2540,28 @@ function salaryFactorFor(date) {
   const d = date || new Date();
   const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   if (day >= regular) return 1;
-  const ratio = parseFloat(settings.probationRatio);
+  const ratio = ratioOverride === undefined ? parseFloat(settings.probationRatio) : ratioOverride;
   return (isNaN(ratio) ? 100 : Math.min(100, Math.max(0, ratio))) / 100;
 }
 
-// 统计口径：税前模式只算税前月薪；税后与对比模式按缴费参数折算到手金额（均含试用期折算）
+// 试用期薪资比例：优先读表单当前值，未填时回退到已保存设置
+function probationRatioFromForm() {
+  const input = document.getElementById('probationRatio');
+  const v = parseFloat(input ? input.value : '');
+  if (!isNaN(v)) return v;
+  const saved = parseFloat(settings.probationRatio);
+  return isNaN(saved) ? 100 : saved;
+}
+
+// 统计口径：税前模式只算税前月薪；税后与对比模式按入职起的逐月明细取当前阶段（试用期/转正后）月均到手
 function getMonthlyNet() {
   const mode = settings.salaryMode || DEFAULTS.salaryMode;
-  const factor = salaryFactorFor(new Date());
-  if (mode === 'gross') return settings.monthlySalary * factor;
-  const params = taxParamsFromSettings();
-  params.gross = params.gross * factor;
-  return calcNetFromGross(params).net;
+  if (mode === 'gross') return settings.monthlySalary * salaryFactorFor(new Date());
+  const profile = calcNetProfile(taxParamsFromSettings());
+  const phase = isInProbationNow()
+    ? (profile.probation || profile.regular)
+    : (profile.regular || profile.probation);
+  return phase ? phase.net : settings.monthlySalary * salaryFactorFor(new Date());
 }
 
 // 税前月薪（不扣五险一金与个税），用于税后/对比口径下的对照展示（含试用期折算）
@@ -2543,6 +2640,22 @@ function getHourlyRate() {
 // 税前时薪，用于税后口径下的对照展示
 function getGrossHourlyRate() {
   return calcHourlyRate(getMonthlyGross());
+}
+
+// 试用期 / 正式期各自的时薪（未配置试用期时两者相同）
+function getPhaseHourlyRates() {
+  const mode = settings.salaryMode || DEFAULTS.salaryMode;
+  if (mode === 'gross') {
+    const ratioPct = parseFloat(settings.probationRatio);
+    const ratio = (isNaN(ratioPct) || ratioPct <= 0 ? 100 : Math.min(100, ratioPct)) / 100;
+    const full = calcHourlyRate(settings.monthlySalary);
+    return { probation: full * ratio, regular: full };
+  }
+  const profile = calcNetProfile(taxParamsFromSettings());
+  return {
+    probation: profile.probation ? calcHourlyRate(profile.probation.net) : null,
+    regular: profile.regular ? calcHourlyRate(profile.regular.net) : null
+  };
 }
 
 function getMinuteRate() {
@@ -3007,17 +3120,6 @@ function isWorkday(date, mode) {
   return dow !== 0 && dow !== 6;
 }
 
-// 全年实际工作日数（已含法定节假日与调休补班）
-function countWorkdaysInYear(year, mode) {
-  let count = 0;
-  const d = new Date(year, 0, 1);
-  while (d.getFullYear() === year) {
-    if (isWorkday(d, mode)) count++;
-    d.setDate(d.getDate() + 1);
-  }
-  return count;
-}
-
 // 某年某月的实际工作日数（已含法定节假日与调休补班）
 function countWorkdaysInMonth(year, month, mode) {
   const days = new Date(year, month + 1, 0).getDate();
@@ -3081,16 +3183,23 @@ function formatDays(days) {
   return String(Number(days.toFixed(getWorkedDaysDecimals())));
 }
 
-function getWorkedDaysThisYear() {
+// 本年度已工作 / 剩余的工作日：以入职日为起点，并按转正日期拆成试用期与正式期两段
+function getYearWorkdaySplit(year) {
   const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 1);
-  let count = 0;
-  for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
-    if (isWorkday(d)) count++;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const hire = parseDateKey(settings.hireDate || '');
+  // 入职日期晚于年初（含当年入职、尚未入职）时从入职日起算，否则按整年算
+  let start = new Date(year, 0, 1);
+  if (hire && hire > start) start = hire;
+  const regular = parseDateKey(getRegularDate());
+  const split = { workedProbation: 0, workedRegular: 0, remainProbation: 0, remainRegular: 0 };
+  for (let d = new Date(start); d.getFullYear() === year; d.setDate(d.getDate() + 1)) {
+    if (!isWorkday(d)) continue;
+    const probation = !!regular && d < regular;
+    const key = (d <= today ? 'worked' : 'remain') + (probation ? 'Probation' : 'Regular');
+    split[key]++;
   }
-  // 以全年实际工作日为上限，避免统计超出
-  const annualTotal = countWorkdaysInYear(now.getFullYear());
-  return Math.min(count, annualTotal);
+  return split;
 }
 
 // ============ UI Updates ============
@@ -3291,7 +3400,6 @@ function updateStats() {
   updateCalculator();
 
   // Annual trajectory（开启联动时，加班应得一并计入）
-  const yearlyWorkDays = getWorkedDaysThisYear();
   const dailyHours = getDailyHours();
   const thisYear = new Date().getFullYear();
   const now = new Date();
@@ -3301,9 +3409,16 @@ function updateStats() {
   const yearOvertime = isOvertimeLinked() ? yearTotals.money : 0;
   const monthOvertime = isOvertimeLinked() ? monthTotals.money : 0;
 
-  const annualEarned = yearlyWorkDays * dailyHours * getHourlyRate() + yearOvertime;
-  const annualTotalDays = countWorkdaysInYear(thisYear);
-  const annualRemain = (annualTotalDays - yearlyWorkDays) * dailyHours * getHourlyRate();
+  // 从入职日起算，试用期工作日按试用期时薪、转正后按正式时薪分别累计
+  const yearSplit = getYearWorkdaySplit(thisYear);
+  const rates = getPhaseHourlyRates();
+  const probationRate = rates.probation === null ? rates.regular : rates.probation;
+  const regularRate = rates.regular === null ? probationRate : rates.regular;
+  const yearlyWorkDays = yearSplit.workedProbation + yearSplit.workedRegular;
+  const annualEarned = (yearSplit.workedProbation * probationRate
+    + yearSplit.workedRegular * regularRate) * dailyHours + yearOvertime;
+  const annualRemain = (yearSplit.remainProbation * probationRate
+    + yearSplit.remainRegular * regularRate) * dailyHours;
 
   document.getElementById('annualEarned').textContent = '¥' + Math.round(annualEarned).toLocaleString();
   document.getElementById('annualDays').textContent = yearlyWorkDays + '天';
