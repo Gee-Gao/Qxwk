@@ -1908,7 +1908,7 @@ body {
           <strong id="ledgerMonthTotal">¥0.00</strong>
         </div>
         <div class="ledger-sum-item">
-          <span>折算工时</span>
+          <span>折算自然日</span>
           <strong id="ledgerMonthTime">—</strong>
         </div>
         <div class="ledger-sum-item">
@@ -4958,7 +4958,7 @@ function ledgerDateLabel(key) {
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日 · ${weekdays[d.getDay()]}`;
 }
 
-// 金额 -> 需要不停工作的秒数；未配置有效时薪时返回 null
+// 金额 -> 折算自然日所需的秒数；未配置有效时薪时返回 null
 function ledgerWorkSeconds(amount) {
   const rate = getHourlyRate();
   if (!(rate > 0)) return null;
@@ -5063,7 +5063,7 @@ function renderLedgerRecordList() {
       <span class="ledger-record-icon">${escapeLedgerText(r.icon || '📦')}</span>
       <span class="ledger-record-info">
         <span class="ledger-record-name">${escapeLedgerText(r.name)}${note}</span>
-        <span class="ledger-record-meta">需要不停工作 ${work}</span>
+        <span class="ledger-record-meta">折算自然日 ${work}</span>
       </span>
       <span class="ledger-record-amount">${formatMoney(Number(r.amount) || 0)}</span>
       <button type="button" class="ledger-del" title="删除" onclick="event.stopPropagation(); deleteLedgerRecord('${r.id}')">×</button>
@@ -5104,7 +5104,7 @@ function renderLedgerStats() {
   totalEl.textContent = formatMoney(total);
   document.getElementById('ledgerStatsTime').textContent = seconds === null
     ? '按当前时薪折算：先在「设置」里填好月薪'
-    : `需要不停工作 ${formatLedgerWork(seconds)} · 按当前时薪折算`;
+    : `折算自然日 ${formatLedgerWork(seconds)} · 按当前时薪折算`;
   document.getElementById('ledgerStatsSalary').textContent = formatMoney(salary);
   const remainingEl = document.getElementById('ledgerStatsRemaining');
   remainingEl.textContent = (remaining < 0 ? '-¥' : '¥') + Math.abs(remaining).toFixed(2);
@@ -5165,7 +5165,7 @@ function renderLedgerStats() {
     <div class="ledger-top-row">
       <span class="lbl">最贵的一笔</span>
       <span class="val">${escapeLedgerText(maxRecord.icon || '📦')} ${escapeLedgerText(maxRecord.name)} ${formatMoney(Number(maxRecord.amount) || 0)}
-        <em>需要不停工作 ${formatLedgerWork(ledgerWorkSeconds(maxRecord.amount))}</em></span>
+        <em>折算自然日 ${formatLedgerWork(ledgerWorkSeconds(maxRecord.amount))}</em></span>
     </div>
     <div class="ledger-top-row">
       <span class="lbl">最常记</span>
@@ -5435,10 +5435,10 @@ function updateLedgerWorkPreview() {
   const seconds = ledgerWorkSeconds(amount);
   box.classList.add('show');
   if (seconds === null) {
-    box.innerHTML = '<span>先在「设置」里填好月薪，就能看到这笔钱需要不停工作多久</span>';
+    box.innerHTML = '<span>先在「设置」里填好月薪，就能看到这笔钱折算成多少自然日</span>';
     return;
   }
-  box.innerHTML = `<span>这笔钱 ≈ 需要不停工作 <strong>${formatLedgerWork(seconds)}</strong></span>
+  box.innerHTML = `<span>这笔钱折算自然日 <strong>${formatLedgerWork(seconds)}</strong></span>
     <span class="ledger-work-precise">精确 ${Math.round(seconds).toLocaleString()} 秒</span>`;
 }
 
