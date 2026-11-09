@@ -148,6 +148,7 @@ body {
   animation: pulse 2s infinite;
 }
 .timer-status.paused .dot { background: #ff6b6b; animation: none; }
+.timer-status.commuting .dot { background: #4da3ff; }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .4; }
@@ -1647,15 +1648,30 @@ body {
       <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
       <div class="settings-grid">
         <div class="field-group">
-          <label>每日通勤 (分钟)</label>
-          <input type="number" id="commuteMinutes" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
-        </div>
-        <div class="field-group">
           <label>纳入时薪计算</label>
           <div class="seg-control" id="commuteInHourly">
             <button type="button" class="seg-btn" data-on="on" onclick="selectCommuteInHourly(true)">开启</button>
             <button type="button" class="seg-btn" data-on="off" onclick="selectCommuteInHourly(false)">关闭</button>
           </div>
+        </div>
+        <div class="field-group">
+          <label>计时方式</label>
+          <div class="seg-control" id="commuteInputMode">
+            <button type="button" class="seg-btn" data-mode="total" onclick="selectCommuteInputMode('total')">合计</button>
+            <button type="button" class="seg-btn" data-mode="split" onclick="selectCommuteInputMode('split')">往返</button>
+          </div>
+        </div>
+        <div class="field-group" id="commuteTotalField" style="grid-column:1/-1">
+          <label>每日通勤合计 (分钟)</label>
+          <input type="number" id="commuteMinutes" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group" id="commuteMorningField" style="display:none">
+          <label>去程 (分钟)</label>
+          <input type="number" id="commuteMorning" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group" id="commuteEveningField" style="display:none">
+          <label>返程 (分钟)</label>
+          <input type="number" id="commuteEvening" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
         </div>
         <div class="field-group" style="grid-column:1/-1">
           <div class="field-hint" id="commuteHint"></div>
@@ -1858,7 +1874,10 @@ const DEFAULTS = {
   endTime: '18:00',
   lunchStart: '12:00',
   lunchEnd: '13:00',
-  commuteMinutes: 0,      // 每日通勤时长（分钟，往返合计）
+  commuteMinutes: 0,      // 每日通勤合计（分钟，往返）；纳入时薪时按往返各半拆分
+  commuteInputMode: 'total', // 通勤计时方式：total 一天合计自动÷2 / split 往返分开填
+  commuteMorning: 0,      // 早通勤（去程，分钟），仅 split 模式使用
+  commuteEvening: 0,      // 晚通勤（返程，分钟），仅 split 模式使用
   commuteInHourly: false, // 通勤时间是否纳入时薪折算
   overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 调休
   overtimeSync: false,     // 加班金额是否计入计时页（仅给钱模式有效）
@@ -2303,7 +2322,14 @@ function persistSettings() {
   settings.endTime = document.getElementById('endTime').value || DEFAULTS.endTime;
   settings.lunchStart = document.getElementById('lunchStart').value || DEFAULTS.lunchStart;
   settings.lunchEnd = document.getElementById('lunchEnd').value || DEFAULTS.lunchEnd;
-  settings.commuteMinutes = Math.max(0, num('commuteMinutes', 0));
+  // 通勤：两种录入方式各自保存，合计始终同步，供计时与时薪折算使用
+  settings.commuteInputMode = settings.commuteInputMode === 'split' ? 'split' : 'total';
+  settings.commuteMorning = Math.max(0, num('commuteMorning', 0));
+  settings.commuteEvening = Math.max(0, num('commuteEvening', 0));
+  const commuteTotalInput = Math.max(0, num('commuteMinutes', 0));
+  settings.commuteMinutes = settings.commuteInputMode === 'split'
+    ? settings.commuteMorning + settings.commuteEvening
+    : commuteTotalInput;
   settings.commuteInHourly = !!settings.commuteInHourly;
   settings.foreignEnabled = !!settings.foreignEnabled;
   settings.foreignCurrency = currencyOf(settings.foreignCurrency).code;
@@ -2346,6 +2372,9 @@ function fillSettingsForm() {
   document.getElementById('lunchEnd').value = settings.lunchEnd;
   updateShiftHint();
   document.getElementById('commuteMinutes').value = settings.commuteMinutes > 0 ? settings.commuteMinutes : '';
+  document.getElementById('commuteMorning').value = settings.commuteMorning > 0 ? settings.commuteMorning : '';
+  document.getElementById('commuteEvening').value = settings.commuteEvening > 0 ? settings.commuteEvening : '';
+  selectCommuteInputMode(settings.commuteInputMode || DEFAULTS.commuteInputMode);
   selectCommuteInHourly(settings.commuteInHourly);
   selectOvertimeSettle(settings.overtimeSettle || DEFAULTS.overtimeSettle);
   selectOvertimeSync(settings.overtimeSync);
@@ -2579,19 +2608,42 @@ function getShiftAnchorDate(now) {
   const shift = getShiftTimes();
   const anchor = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const nowMinutes = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
-  // 下班时刻之前的凌晨，属于昨天开始的那一班
-  if (shift.crossDay && nowMinutes < shift.end % 1440) anchor.setDate(anchor.getDate() - 1);
+  // 下班时刻（含返程通勤）之前的凌晨，属于昨天开始的那一班
+  const paidEnd = shift.end + getCommuteSplit().after;
+  if (shift.crossDay && nowMinutes < paidEnd % 1440) anchor.setDate(anchor.getDate() - 1);
   return anchor;
+}
+
+// 每日通勤分钟数：仅在「纳入时薪折算」开启时计入计时
+function getCommuteMinutes() {
+  if (!settings.commuteInHourly) return 0;
+  if ((settings.commuteInputMode || DEFAULTS.commuteInputMode) === 'split') {
+    return Math.max(0, parseFloat(settings.commuteMorning) || 0)
+      + Math.max(0, parseFloat(settings.commuteEvening) || 0);
+  }
+  return Math.max(0, parseFloat(settings.commuteMinutes) || 0);
+}
+
+// 通勤拆分：split 模式按往返分别取，total 模式往返各半
+function getCommuteSplit() {
+  const total = getCommuteMinutes();
+  if ((settings.commuteInputMode || DEFAULTS.commuteInputMode) === 'split') {
+    const before = Math.max(0, parseFloat(settings.commuteMorning) || 0);
+    const after = Math.max(0, parseFloat(settings.commuteEvening) || 0);
+    return { before, after, total: before + after };
+  }
+  return { before: total / 2, after: total / 2, total };
+}
+
+// 计入通勤后的每日计时总长（小时），按天折算收益时使用
+function getPaidDailyHours() {
+  return (getShiftTimes().workMinutes + getCommuteMinutes()) / 60;
 }
 
 // 月薪 -> 时薪，按每日实际工作时长与月工作天数折算（开启后通勤时长一并计入分母）
 function calcHourlyRate(salary) {
   const workDays = settings.workDaysPerMonth;
-  const shift = getShiftTimes();
-  const commuteMinutes = settings.commuteInHourly
-    ? Math.max(0, parseFloat(settings.commuteMinutes) || 0)
-    : 0;
-  const dailyHours = (shift.workMinutes + commuteMinutes) / 60;
+  const dailyHours = getPaidDailyHours();
   const monthlyHours = dailyHours * workDays;
   return monthlyHours > 0 ? salary / monthlyHours : 0;
 }
@@ -2641,6 +2693,14 @@ function getCurrentWorkState() {
   // 当前时刻距本班次上班的分钟数；负数表示还没上班
   const pos = (prevDayShift ? nowMinutes + 1440 : nowMinutes) - shift.start;
 
+  // 纳入时薪折算的通勤时间：total 模式往返各半，split 模式按往返分别取
+  const commuteSplit = getCommuteSplit();
+  const commuteBefore = commuteSplit.before;
+  const commuteAfter = commuteSplit.after;
+  const totalWorkMinutes = shift.workMinutes + commuteSplit.total;
+  const paidStart = -commuteBefore;
+  const paidEnd = shift.duration + commuteAfter;
+
   // 非工作日（周末/法定节假日）不计时，避免休息日仍在累计工时与收益
   if (!isWorkday(anchor)) {
     return {
@@ -2649,12 +2709,15 @@ function getCurrentWorkState() {
       totalWorkMinutes: 0,
       isWorking: false,
       isLunch: false,
+      isCommuting: false,
       isRest: true,
       progress: 0,
       earnedToday: 0,
       remainingValue: 0,
       crossDay: shift.crossDay,
-      shiftDate: anchor
+      shiftDate: anchor,
+      commuteBefore,
+      commuteAfter
     };
   }
 
@@ -2666,43 +2729,50 @@ function getCurrentWorkState() {
   let workedMinutes = 0;
   let isWorking = false;
   let isLunch = false;
-  let remainingMinutes = 0;
+  let isCommuting = false;
 
-  if (pos < 0) {
-    // 还没上班：剩余为完整工作时长
-    remainingMinutes = shift.workMinutes;
+  if (pos < paidStart) {
+    // 还没出发通勤：剩余为完整计时时长（工作 + 通勤）
+  } else if (pos < 0) {
+    // 去程通勤中
+    isCommuting = true;
+    workedMinutes = pos - paidStart;
+  } else if (pos >= paidEnd) {
+    // 已下班（含返程通勤）：按上满整个计时时长计
+    workedMinutes = totalWorkMinutes;
   } else if (pos >= shift.duration) {
-    // 已下班：按上满整个班次计
-    workedMinutes = shift.workMinutes;
+    // 返程通勤中
+    isCommuting = true;
+    workedMinutes = commuteBefore + shift.workMinutes + (pos - shift.duration);
   } else if (hasLunch && pos < lunchS) {
     isWorking = true;
-    workedMinutes = pos;
-    remainingMinutes = shift.duration - pos - shift.lunchMinutes;
+    workedMinutes = commuteBefore + pos;
   } else if (hasLunch && pos < lunchE) {
     isLunch = true;
-    workedMinutes = lunchS;
-    remainingMinutes = shift.duration - lunchE;
+    workedMinutes = commuteBefore + lunchS;
   } else {
     isWorking = true;
-    workedMinutes = pos - shift.lunchMinutes;
-    remainingMinutes = shift.duration - pos;
+    workedMinutes = commuteBefore + pos - shift.lunchMinutes;
   }
 
-  workedMinutes = Math.max(0, Math.min(shift.workMinutes, workedMinutes));
-  remainingMinutes = Math.max(0, remainingMinutes);
+  workedMinutes = Math.max(0, Math.min(totalWorkMinutes, workedMinutes));
+  const remainingMinutes = Math.max(0, totalWorkMinutes - workedMinutes);
 
   return {
     workedMinutes,
     remainingMinutes,
-    totalWorkMinutes: shift.workMinutes,
+    totalWorkMinutes,
     isWorking,
     isLunch,
+    isCommuting,
     isRest: false,
-    progress: shift.workMinutes > 0 ? (workedMinutes / shift.workMinutes) * 100 : 0,
+    progress: totalWorkMinutes > 0 ? (workedMinutes / totalWorkMinutes) * 100 : 0,
     earnedToday: workedMinutes * getMinuteRate(),
     remainingValue: remainingMinutes * getMinuteRate(),
     crossDay: shift.crossDay,
-    shiftDate: anchor
+    shiftDate: anchor,
+    commuteBefore,
+    commuteAfter
   };
 }
 
@@ -2711,6 +2781,12 @@ function formatTime(seconds) {
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+// 分钟数 -> 「HH:MM」，支持跨天回绕
+function minutesToClock(mins) {
+  const m = ((Math.round(mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
 function formatMoney(val) {
@@ -2866,19 +2942,59 @@ function updateForeignHint() {
   hint.textContent = `当前 1 元人民币 ≈ ${Number(rateOf(cur.code).toPrecision(4))} ${cur.name}（${cur.symbol}）· ${src}`;
 }
 
+// 设置页：通勤计时方式（合计自动÷2 / 往返分开填），切换时用已有数据互填
+function selectCommuteInputMode(mode) {
+  const next = mode === 'split' ? 'split' : 'total';
+  const prev = settings.commuteInputMode || DEFAULTS.commuteInputMode;
+  settings.commuteInputMode = next;
+  document.querySelectorAll('#commuteInputMode .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === next);
+  });
+  const split = next === 'split';
+  document.getElementById('commuteTotalField').style.display = split ? 'none' : '';
+  document.getElementById('commuteMorningField').style.display = split ? '' : 'none';
+  document.getElementById('commuteEveningField').style.display = split ? '' : 'none';
+
+  // 仅在用户主动切换时互填，避免进入设置页时覆盖已保存的值
+  if (split !== (prev === 'split')) {
+    if (split) {
+      // 切到往返分开：用当前合计按各半预填，可再单独调整
+      const total = Math.max(0, parseFloat(settings.commuteMinutes) || 0);
+      const half = Math.round(total / 2);
+      settings.commuteMorning = half;
+      settings.commuteEvening = Math.max(0, total - half);
+      document.getElementById('commuteMorning').value = settings.commuteMorning || '';
+      document.getElementById('commuteEvening').value = settings.commuteEvening || '';
+    } else {
+      // 切到一天合计：用往返之和预填
+      const total = Math.max(0, parseFloat(settings.commuteMorning) || 0)
+        + Math.max(0, parseFloat(settings.commuteEvening) || 0);
+      settings.commuteMinutes = total;
+      document.getElementById('commuteMinutes').value = total > 0 ? total : '';
+    }
+  }
+  updateCommuteHint();
+}
+
 // 设置页：通勤时间是否纳入时薪折算（关闭时通勤时长禁用并清零）
 function selectCommuteInHourly(on) {
   settings.commuteInHourly = !!on;
   document.querySelectorAll('#commuteInHourly .seg-btn').forEach(b => {
     b.classList.toggle('active', (b.dataset.on === 'on') === !!on);
   });
-  const input = document.getElementById('commuteMinutes');
-  if (input) {
+  // 关闭通勤时，计时方式不可切换
+  const modeControl = document.getElementById('commuteInputMode');
+  if (modeControl) modeControl.classList.toggle('disabled', !on);
+  ['commuteMinutes', 'commuteMorning', 'commuteEvening'].forEach(id => {
+    const input = document.getElementById(id);
+    if (!input) return;
     input.disabled = !on;
-    if (!on) {
-      input.value = 0;
-      settings.commuteMinutes = 0;
-    }
+    if (!on) input.value = '';
+  });
+  if (!on) {
+    settings.commuteMinutes = 0;
+    settings.commuteMorning = 0;
+    settings.commuteEvening = 0;
   }
   updateCommuteHint();
 }
@@ -2896,8 +3012,9 @@ function fmtDurationMinutes(mins) {
 function updateCommuteBadge() {
   const el = document.getElementById('commuteBadge');
   if (!el) return;
-  const active = !!settings.commuteInHourly && (parseFloat(settings.commuteMinutes) || 0) > 0;
-  el.textContent = active ? `🚌 含通勤 ${fmtDurationMinutes(settings.commuteMinutes)}` : '';
+  const commute = getCommuteMinutes();
+  const active = commute > 0;
+  el.textContent = active ? `🚌 含通勤 ${fmtDurationMinutes(commute)}` : '';
   el.style.display = active ? '' : 'none';
 }
 
@@ -2915,24 +3032,36 @@ function updateShiftHint() {
   el.textContent = `下班早于上班，按跨天夜班计算：${settings.startTime} 上班，次日 ${settings.endTime} 下班，每天工作 ${fmtDurationMinutes(shift.workMinutes)}。`;
 }
 
-// 设置页：通勤提示，实时展示当前折算口径
+// 设置页：通勤提示，按「关闭 / 合计 / 往返」合并成一条
 function updateCommuteHint() {
   const hint = document.getElementById('commuteHint');
   if (!hint) return;
-  const input = document.getElementById('commuteMinutes');
-  const commute = Math.max(0, parseFloat(input && input.value) || 0);
-  const workHours = getDailyHours();
+  const workMinutes = getShiftTimes().workMinutes;
+  const split = (settings.commuteInputMode || DEFAULTS.commuteInputMode) === 'split';
+  const readVal = id => {
+    const input = document.getElementById(id);
+    return Math.max(0, parseFloat(input && input.value) || 0);
+  };
+
   if (!settings.commuteInHourly) {
-    hint.textContent = commute > 0
-      ? `按往返合计填写；当前未纳入时薪：只按每日工作 ${fmtDurationMinutes(workHours * 60)} 折算`
-      : '按往返合计填写（如单程 30 分钟填 60）；开启后时薪按「每日工作 + 通勤」的总时长折算';
+    hint.textContent = `未纳入计时：只按每日工作 ${fmtDurationMinutes(workMinutes)} 折算；开启后通勤会一并计入计时与时薪`;
     return;
   }
-  if (commute <= 0) {
-    hint.textContent = '按往返合计填写；已开启，但每日通勤为 0 分钟，暂不影响时薪';
+
+  if (split) {
+    const morning = readVal('commuteMorning');
+    const evening = readVal('commuteEvening');
+    const total = morning + evening;
+    hint.textContent = total > 0
+      ? `往返：分别填去程、返程分钟；当前每天 ${fmtDurationMinutes(workMinutes)} 工作 + ${fmtDurationMinutes(morning)} 去程 + ${fmtDurationMinutes(evening)} 返程，共 ${fmtDurationMinutes(workMinutes + total)} 折算时薪`
+      : '往返：分别填去程、返程分钟；当前通勤为 0，暂不影响时薪与计时';
     return;
   }
-  hint.textContent = `按往返合计填写；已纳入：每天按 ${fmtDurationMinutes(workHours * 60)} 工作 + ${fmtDurationMinutes(commute)} 通勤折算时薪`;
+
+  const total = readVal('commuteMinutes');
+  hint.textContent = total > 0
+    ? `合计：填一天往返总分钟，自动往返各半；当前每天 ${fmtDurationMinutes(workMinutes)} 工作 + ${fmtDurationMinutes(total)} 通勤，共 ${fmtDurationMinutes(workMinutes + total)} 折算时薪`
+    : '合计：填一天往返总分钟，自动往返各半；当前通勤为 0，暂不影响时薪与计时';
 }
 
 function getTodayKey() {
@@ -3113,7 +3242,7 @@ function syncAutoWorkDays() {
 function getTodayWorkedDayFraction() {
   const state = getCurrentWorkState();
   if (state.isRest) return 0;
-  const dailyMinutes = getDailyHours() * 60;
+  const dailyMinutes = getPaidDailyHours() * 60;
   if (dailyMinutes <= 0) return 0;
   return Math.min(1, Math.max(0, state.workedMinutes / dailyMinutes));
 }
@@ -3208,12 +3337,16 @@ function updateTimer() {
 
   const statusEl = document.getElementById('workStatus');
   const statusText = document.getElementById('statusText');
+  statusEl.classList.toggle('commuting', !!state.isCommuting);
   if (state.isRest) {
     statusText.textContent = '休息日';
     statusEl.classList.add('paused');
   } else if (state.isLunch) {
     statusText.textContent = '午休中';
     statusEl.classList.add('paused');
+  } else if (state.isCommuting) {
+    statusText.textContent = '通勤中';
+    statusEl.classList.remove('paused');
   } else if (state.isWorking) {
     statusText.textContent = '工作中';
     statusEl.classList.remove('paused');
@@ -3226,8 +3359,14 @@ function updateTimer() {
     statusEl.classList.add('paused');
   }
 
-  document.getElementById('startTimeLabel').textContent = settings.startTime;
-  document.getElementById('endTimeLabel').textContent = state.crossDay ? '次日 ' + settings.endTime : settings.endTime;
+  // 计时区间：纳入通勤时，开始 / 结束时间随去程、返程通勤一起延展
+  const shift = getShiftTimes();
+  const startWithCommute = shift.start - state.commuteBefore;
+  const endWithCommute = shift.end + state.commuteAfter;
+  document.getElementById('startTimeLabel').textContent =
+    (startWithCommute < 0 ? '前日 ' : '') + minutesToClock(startWithCommute);
+  document.getElementById('endTimeLabel').textContent =
+    ((state.crossDay || endWithCommute >= 1440) ? '次日 ' : '') + minutesToClock(endWithCommute);
 
   // Earnings（开启联动时，加班应得一并计入；加班费另起一行单独展示）
   const now = new Date();
@@ -3248,7 +3387,7 @@ function updateTimer() {
   // 本月概览：已完成工作日按整天计，今天的收益按秒实时累计（与今日已赚口径一致）
   const monthWorked = getWorkedDaysThisMonth();
   const monthCompleted = getWorkedDaysThisMonth(true);
-  const monthEarned = monthCompleted * getDailyHours() * getHourlyRate() + state.earnedToday + overtimeMonth;
+  const monthEarned = monthCompleted * getPaidDailyHours() * getHourlyRate() + state.earnedToday + overtimeMonth;
   document.getElementById('homeMonthEarned').textContent = formatMoney(monthEarned);
   setFxName('homeMonthFxName');
   setFxLine('homeMonthEarnedFx', monthEarned);
@@ -3316,7 +3455,7 @@ function updatePreTaxCard(state, monthWorked, monthCompleted) {
   setFxLine('preTaxEarnedTodayFx', grossToday + grossOvertimeToday);
   document.getElementById('preTaxHourly').textContent = formatMoney(grossRate) + '/小时';
   setFxLine('preTaxHourlyFx', grossRate, '/小时');
-  const preTaxMonthEarned = monthCompleted * getDailyHours() * grossRate + grossToday + grossOvertimeMonth;
+  const preTaxMonthEarned = monthCompleted * getPaidDailyHours() * grossRate + grossToday + grossOvertimeMonth;
   document.getElementById('preTaxMonthEarned').textContent = formatMoney(preTaxMonthEarned);
   setFxName('preTaxMonthFxName');
   setFxLine('preTaxMonthEarnedFx', preTaxMonthEarned);
@@ -3369,7 +3508,7 @@ function updateStats() {
   updateCalculator();
 
   // Annual trajectory（开启联动时，加班应得一并计入；今天的收益按秒实时累计）
-  const dailyHours = getDailyHours();
+  const dailyHours = getPaidDailyHours();
   const thisYear = new Date().getFullYear();
   const now = new Date();
   const workState = getCurrentWorkState();
@@ -4267,7 +4406,7 @@ function updateLifePanel() {
     return;
   }
 
-  const totalHours = workDays * getDailyHours();
+  const totalHours = workDays * getPaidDailyHours();
   const totalEarned = totalHours * getHourlyRate();
   const lifeDays = totalHours / 24;
   // 入职天数：从入职当天（含）算到今天的自然日天数
