@@ -1908,7 +1908,7 @@ body {
           <strong id="ledgerMonthTotal">¥0.00</strong>
         </div>
         <div class="ledger-sum-item">
-          <span>折算自然日</span>
+          <span>折算工作日</span>
           <strong id="ledgerMonthTime">—</strong>
         </div>
         <div class="ledger-sum-item">
@@ -4958,24 +4958,29 @@ function ledgerDateLabel(key) {
   return `${d.getMonth() + 1} 月 ${d.getDate()} 日 · ${weekdays[d.getDay()]}`;
 }
 
-// 金额 -> 折算自然日所需的秒数；未配置有效时薪时返回 null
+// 金额 -> 折算工作日所需的秒数；未配置有效时薪时返回 null
 function ledgerWorkSeconds(amount) {
   const rate = getHourlyRate();
   if (!(rate > 0)) return null;
   return Math.max(0, Number(amount) || 0) / rate * 3600;
 }
 
-// 统一展示为 秒 / 分钟 / 小时 / 天，最大到天
+// 统一展示为 秒 / 分钟 / 小时 / 天，1 天按一个工作日的收入折算
 function formatLedgerWork(seconds) {
   if (seconds === null || !isFinite(seconds)) return '—';
   if (seconds <= 0) return '0 秒';
   if (seconds < 60) return Math.max(1, Math.round(seconds)) + ' 秒';
   if (seconds < 3600) return Math.round(seconds / 60) + ' 分钟';
-  if (seconds < 86400) {
+  const dailySeconds = getPaidDailyHours() * 3600;
+  if (!(dailySeconds > 0)) {
+    const fallback = seconds / 86400;
+    return (fallback < 10 ? fallback.toFixed(1) : Math.round(fallback)) + ' 天';
+  }
+  if (seconds < dailySeconds) {
     const h = seconds / 3600;
     return (h < 10 ? h.toFixed(1) : Math.round(h)) + ' 小时';
   }
-  const d = seconds / 86400;
+  const d = seconds / dailySeconds;
   return (d < 10 ? d.toFixed(1) : Math.round(d)) + ' 天';
 }
 
@@ -5063,7 +5068,7 @@ function renderLedgerRecordList() {
       <span class="ledger-record-icon">${escapeLedgerText(r.icon || '📦')}</span>
       <span class="ledger-record-info">
         <span class="ledger-record-name">${escapeLedgerText(r.name)}${note}</span>
-        <span class="ledger-record-meta">折算自然日 ${work}</span>
+        <span class="ledger-record-meta">折算工作日 ${work}</span>
       </span>
       <span class="ledger-record-amount">${formatMoney(Number(r.amount) || 0)}</span>
       <button type="button" class="ledger-del" title="删除" onclick="event.stopPropagation(); deleteLedgerRecord('${r.id}')">×</button>
@@ -5104,7 +5109,7 @@ function renderLedgerStats() {
   totalEl.textContent = formatMoney(total);
   document.getElementById('ledgerStatsTime').textContent = seconds === null
     ? '按当前时薪折算：先在「设置」里填好月薪'
-    : `折算自然日 ${formatLedgerWork(seconds)} · 按当前时薪折算`;
+    : `折算工作日 ${formatLedgerWork(seconds)} · 按当前时薪折算`;
   document.getElementById('ledgerStatsSalary').textContent = formatMoney(salary);
   const remainingEl = document.getElementById('ledgerStatsRemaining');
   remainingEl.textContent = (remaining < 0 ? '-¥' : '¥') + Math.abs(remaining).toFixed(2);
@@ -5165,7 +5170,7 @@ function renderLedgerStats() {
     <div class="ledger-top-row">
       <span class="lbl">最贵的一笔</span>
       <span class="val">${escapeLedgerText(maxRecord.icon || '📦')} ${escapeLedgerText(maxRecord.name)} ${formatMoney(Number(maxRecord.amount) || 0)}
-        <em>折算自然日 ${formatLedgerWork(ledgerWorkSeconds(maxRecord.amount))}</em></span>
+        <em>折算工作日 ${formatLedgerWork(ledgerWorkSeconds(maxRecord.amount))}</em></span>
     </div>
     <div class="ledger-top-row">
       <span class="lbl">最常记</span>
@@ -5435,10 +5440,10 @@ function updateLedgerWorkPreview() {
   const seconds = ledgerWorkSeconds(amount);
   box.classList.add('show');
   if (seconds === null) {
-    box.innerHTML = '<span>先在「设置」里填好月薪，就能看到这笔钱折算成多少自然日</span>';
+    box.innerHTML = '<span>先在「设置」里填好月薪，就能看到这笔钱折算成多少个工作日</span>';
     return;
   }
-  box.innerHTML = `<span>这笔钱折算自然日 <strong>${formatLedgerWork(seconds)}</strong></span>
+  box.innerHTML = `<span>这笔钱折算工作日 <strong>${formatLedgerWork(seconds)}</strong></span>
     <span class="ledger-work-precise">精确 ${Math.round(seconds).toLocaleString()} 秒</span>`;
 }
 
@@ -5502,7 +5507,6 @@ function qxwkBackupKeys() {
 function exportQxwkData() {
   const data = {};
   qxwkBackupKeys().forEach(k => { data[k] = localStorage.getItem(k); });
-  const count = Object.keys(data).length;
   const payload = {
     app: 'qianxwk',
     version: 1,
@@ -5520,7 +5524,7 @@ function exportQxwkData() {
     if (a.parentNode) a.parentNode.removeChild(a);
     URL.revokeObjectURL(url);
   }, 1000);
-  showToast(`已导出数据备份（共 ${count} 项）`);
+  showToast('已导出数据备份');
 }
 
 function triggerQxwkImport() {
@@ -5568,7 +5572,7 @@ function importQxwkData(event) {
       showToast('备份文件中没有可导入的数据');
       return;
     }
-    if (!confirm(`导入备份将覆盖当前本地数据（共 ${entries.length} 项），确定继续吗？`)) return;
+    if (!confirm('导入备份将覆盖当前本地数据，确定继续吗？')) return;
 
     const backup = {};
     qxwkDataKeys().forEach(k => { backup[k] = localStorage.getItem(k); });
