@@ -429,105 +429,6 @@ body {
 }
 .btn-dark:hover { background: #222; }
 
-/* Consumption Screen */
-.consumption-hero {
-  text-align: center;
-  padding: 24px 16px;
-  margin-bottom: 16px;
-}
-.consumption-hero h2 {
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.4;
-  margin-bottom: 8px;
-}
-.consumption-hero h2 span { color: var(--accent); }
-.consumption-hero p {
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
-.consumption-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.consumption-card {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  position: relative;
-  cursor: pointer;
-  transition: transform .15s, border-color .15s;
-}
-.consumption-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--accent);
-}
-.consumption-card .item-name {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-.consumption-card .item-price {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--accent);
-  margin-bottom: 4px;
-}
-.consumption-card .item-time {
-  font-size: 12px;
-  color: var(--text-dim);
-}
-.consumption-card .item-time .mins {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text);
-  margin-right: 4px;
-}
-.consumption-card .item-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid #262626;
-}
-.consumption-card .item-action {
-  flex: 1;
-  padding: 8px 0;
-  border: none;
-  border-radius: 8px;
-  background: #262626;
-  color: var(--text-dim);
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background .2s, color .2s;
-}
-.consumption-card .item-action:hover { background: #333; color: var(--text); }
-.consumption-card .item-action.danger { color: #d98a8a; }
-.consumption-card .item-action.danger:hover { background: #3a1f1f; color: #ff7b7b; }
-.consumption-card .item-icon {
-  font-size: 24px;
-  margin-bottom: 8px;
-}
-
-.add-card {
-  border: 2px dashed #333;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  color: var(--text-dim);
-  cursor: pointer;
-  min-height: 100px;
-  transition: border-color .2s;
-}
-.add-card:hover { border-color: var(--accent); color: var(--accent); }
-
 /* Paid Leave Timer */
 .paid-leave-card {
   background: #1a1a1a;
@@ -786,12 +687,6 @@ body {
   background: none;
   border: none;
 }
-.modal-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-}
 
 /* 自定义工作日：当月日历 */
 .cal-head {
@@ -840,33 +735,6 @@ body {
   color: #000;
 }
 .cal-day.work .cal-tag { opacity: .8; }
-
-/* Emoji picker */
-.emoji-picker {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 6px;
-  margin-top: 2px;
-}
-.emoji-option {
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 20px;
-  line-height: 1;
-  background: #222;
-  border: 1px solid #333;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: border-color .2s, background .2s;
-}
-.emoji-option:hover { border-color: var(--accent-dim); }
-.emoji-option.active {
-  border-color: var(--accent);
-  background: rgba(200, 255, 0, .12);
-}
 
 /* Toast */
 .toast {
@@ -1188,7 +1056,6 @@ body {
   .cost-fields { grid-template-columns: 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
   .timer-display { font-size: 48px; letter-spacing: 1px; }
-  .consumption-card { padding: 12px; }
   /* 金额位数多时 28px 会顶出卡片，窄屏缩小并收紧内边距 */
   .stat-card { padding: 12px; }
   .stat-card .value { font-size: 22px; }
@@ -1273,22 +1140,6 @@ body {
       <div class="overtime-panel-grid" id="homeOvertimeGrid"></div>
     </div>
     <div class="stats-more" onclick="selectStatsTab('data'); switchScreen('stats')">查看更多数据 →</div>
-  </div>
-
-  <!-- Consumption Screen -->
-  <div class="screen" id="screen-consumption">
-    <div class="header">
-      <div class="logo">千<span>薪</span>万苦</div>
-      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
-    </div>
-    <div class="consumption-hero">
-      <h2>你买的不是东西<br>是<span>上班时间</span>。</h2>
-      <p>每一笔消费，都等于你用生命换来的工作时间</p>
-    </div>
-    <div class="consumption-grid" id="consumptionGrid"></div>
-    <div class="add-card" id="addCard" onclick="openAddModal()">
-      + 添加新消费项目
-    </div>
   </div>
 
   <!-- Stats Screen -->
@@ -1787,38 +1638,9 @@ body {
       <div class="nav-icon">📊</div>
       <div class="nav-label">统计</div>
     </div>
-    <div class="nav-item" data-screen="consumption" onclick="switchScreen('consumption')">
-      <div class="nav-icon">🛍️</div>
-      <div class="nav-label">消费</div>
-    </div>
     <div class="nav-item" data-screen="settings" onclick="switchScreen('settings')">
       <div class="nav-icon">⚙️</div>
       <div class="nav-label">设置</div>
-    </div>
-  </div>
-
-  <!-- Add / Edit Consumption Modal -->
-  <div class="modal-overlay" id="addModal">
-    <div class="modal">
-      <h3><span id="modalTitle">添加消费项目</span> <button class="close" onclick="closeAddModal()">×</button></h3>
-      <div class="modal-fields">
-        <div class="field-group">
-          <label>项目名称</label>
-          <input type="text" id="newItemName" placeholder="例如：一杯奶茶">
-        </div>
-        <div class="field-group">
-          <label>价格 (¥)</label>
-          <input type="number" id="newItemPrice" placeholder="20">
-        </div>
-        <div class="field-group">
-          <label>图标 (emoji)</label>
-          <div class="emoji-picker" id="emojiPicker"></div>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" onclick="closeAddModal()">取消</button>
-        <button class="btn btn-primary" id="modalSubmitBtn" onclick="submitConsumptionItem()">添加</button>
-      </div>
     </div>
   </div>
 
@@ -1911,7 +1733,6 @@ const QUOTES = [
 ];
 
 let settings = {};
-let consumptionItems = [];
 let devices = [];
 const MAX_DEVICES = 10;
 let paidLeaveSessions = [];
@@ -1925,20 +1746,17 @@ let overtimeRateMode = '1.5'; // 录入倍率档位：'1.5' | '2' | '3' | 'custo
 let leaveUnit = 'hour';    // 调休录入时长单位：hour 小时 / day 天
 let recordType = 'overtime'; // 「记一笔」卡片的记录类型：overtime 记加班 / leave 记调休
 let recordFilter = 'all';   // 记录列表筛选：all 全部 / overtime 只看加班 / leave 只看调休
-let editingItemIndex = null; // null = adding, otherwise index of the item being edited
 
 // ============ Persistence ============
 function load() {
   try {
     settings = JSON.parse(localStorage.getItem('qianxwk_settings')) || {...DEFAULTS};
-    consumptionItems = JSON.parse(localStorage.getItem('qianxwk_items')) || getDefaultItems();
     devices = JSON.parse(localStorage.getItem('qianxwk_devices')) || [];
     paidLeaveSessions = JSON.parse(localStorage.getItem('qianxwk_leave')) || [];
     overtimeRecords = JSON.parse(localStorage.getItem('qianxwk_overtime')) || [];
     leaveUsedRecords = JSON.parse(localStorage.getItem('qianxwk_leave_used')) || [];
   } catch(e) {
     settings = {...DEFAULTS};
-    consumptionItems = getDefaultItems();
     devices = [];
     paidLeaveSessions = [];
     overtimeRecords = [];
@@ -2337,10 +2155,6 @@ function persistSettings() {
   localStorage.setItem('qianxwk_settings', JSON.stringify(settings));
 }
 
-function saveItems() {
-  localStorage.setItem('qianxwk_items', JSON.stringify(consumptionItems));
-}
-
 function saveLeave() {
   localStorage.setItem('qianxwk_leave', JSON.stringify(paidLeaveSessions));
 }
@@ -2383,17 +2197,6 @@ function fillSettingsForm() {
   // 外币：先选中币种，再按开关同步控件的可用状态
   selectForeignCurrency(settings.foreignCurrency || DEFAULTS.foreignCurrency);
   selectForeignEnabled(settings.foreignEnabled);
-}
-
-function getDefaultItems() {
-  return [
-    {name:'一杯咖啡', price:15, icon:'☕'},
-    {name:'一顿午饭', price:35, icon:'🍱'},
-    {name:'一张电影票', price:55, icon:'🎬'},
-    {name:'一场演出', price:680, icon:'🎤'},
-    {name:'一双球鞋', price:899, icon:'👟'},
-    {name:'一杯奶茶', price:20, icon:'🧋'}
-  ];
 }
 
 // ============ Calculations ============
@@ -3462,40 +3265,6 @@ function updatePreTaxCard(state, monthWorked, monthCompleted) {
   document.getElementById('preTaxMonthDays').textContent = `已工作 ${formatDays(monthWorked)} 天 / ${settings.workDaysPerMonth} 天`;
 }
 
-function updateConsumption() {
-  const grid = document.getElementById('consumptionGrid');
-  grid.innerHTML = '';
-  const minuteRate = getMinuteRate();
-
-  consumptionItems.forEach((item, idx) => {
-    const minutes = minuteRate > 0 ? item.price / minuteRate : 0;
-    const hours = minutes / 60;
-    const card = document.createElement('div');
-    card.className = 'consumption-card';
-
-    let timeStr;
-    if (minutes < 60) {
-      timeStr = Math.round(minutes) + ' 分钟';
-    } else if (minutes < 1440) {
-      timeStr = hours.toFixed(1) + ' 小时';
-    } else {
-      timeStr = (minutes / 60 / 24).toFixed(1) + ' 天';
-    }
-
-    card.innerHTML = `
-      <div class="item-icon">${item.icon || '📦'}</div>
-      <div class="item-name">${item.name}</div>
-      <div class="item-price">¥${item.price}</div>
-      <div class="item-time"><span class="mins">${Math.round(minutes)}</span>分钟<br><span style="font-size:11px;opacity:.6">${timeStr}</span></div>
-      <div class="item-actions">
-        <button class="item-action" onclick="openEditModal(${idx})">编辑</button>
-        <button class="item-action danger" onclick="deleteItem(${idx})">删除</button>
-      </div>
-    `;
-    grid.appendChild(card);
-  });
-}
-
 function updateStats() {
   // Paid leave
   updatePaidLeave();
@@ -4494,94 +4263,6 @@ function updateCalculator() {
   }
 }
 
-// ============ Emoji Picker ============
-const EMOJI_OPTIONS = ['📦','☕','🍱','🧋','🍔','🍜','🍺','🎬','🎤','🎮','📱','💻','👟','👕','👗','🎧','🚗','🏨','🚲','🐱','🐶','🎁','📚','🛒'];
-
-let selectedIcon = '📦';
-
-function renderEmojiPicker() {
-  const picker = document.getElementById('emojiPicker');
-  const list = EMOJI_OPTIONS.slice();
-  // 老数据里的图标可能不在预设里，临时补进列表，避免当前选中项看不到
-  if (selectedIcon && list.indexOf(selectedIcon) === -1) list.unshift(selectedIcon);
-  picker.innerHTML = '';
-  list.forEach(function (emoji) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'emoji-option' + (emoji === selectedIcon ? ' active' : '');
-    btn.textContent = emoji;
-    btn.onclick = function () {
-      selectedIcon = emoji;
-      renderEmojiPicker();
-    };
-    picker.appendChild(btn);
-  });
-}
-
-// ============ Consumption Items ============
-// add and edit share one modal; editingItemIndex tells them apart
-function submitConsumptionItem() {
-  const name = document.getElementById('newItemName').value.trim();
-  const price = parseFloat(document.getElementById('newItemPrice').value);
-  const icon = selectedIcon || '📦';
-
-  if (!name || !price || price <= 0) {
-    showToast('请填写名称和价格');
-    return;
-  }
-
-  if (editingItemIndex === null) {
-    consumptionItems.push({name, price, icon});
-    showToast('已添加：' + name);
-  } else {
-    consumptionItems[editingItemIndex] = {name, price, icon};
-    showToast('已保存：' + name);
-  }
-  saveItems();
-  updateConsumption();
-  closeAddModal();
-}
-
-function deleteItem(idx) {
-  consumptionItems.splice(idx, 1);
-  saveItems();
-  updateConsumption();
-  showToast('已删除');
-}
-
-function openAddModal() {
-  editingItemIndex = null;
-  document.getElementById('modalTitle').textContent = '添加消费项目';
-  document.getElementById('modalSubmitBtn').textContent = '添加';
-  document.getElementById('newItemName').value = '';
-  document.getElementById('newItemPrice').value = '';
-  selectedIcon = '📦';
-  renderEmojiPicker();
-  document.getElementById('addModal').classList.add('show');
-  document.getElementById('newItemName').focus();
-}
-
-function openEditModal(idx) {
-  const item = consumptionItems[idx];
-  if (!item) return;
-  editingItemIndex = idx;
-  document.getElementById('modalTitle').textContent = '编辑消费项目';
-  document.getElementById('modalSubmitBtn').textContent = '保存';
-  document.getElementById('newItemName').value = item.name;
-  document.getElementById('newItemPrice').value = item.price;
-  selectedIcon = item.icon || '📦';
-  renderEmojiPicker();
-  document.getElementById('addModal').classList.add('show');
-  document.getElementById('newItemName').focus();
-}
-
-function closeAddModal() {
-  document.getElementById('addModal').classList.remove('show');
-  editingItemIndex = null;
-  document.getElementById('newItemName').value = '';
-  document.getElementById('newItemPrice').value = '';
-}
-
 // ============ 统计页分类 ============
 // 统计卡片按「看一看 / 算一算」分组展示；新增卡片时只需放进对应 panel，
 // 需要新增分类时在 #statsTabs 里补一个 .stats-tab 即可。
@@ -4607,7 +4288,6 @@ function switchScreen(name) {
   if (navItem) navItem.classList.add('active');
 
   if (name === 'timer') updateTimer();
-  if (name === 'consumption') updateConsumption();
   if (name === 'stats') updateStats();
   if (name === 'overtime') {
     renderOvertime();
@@ -4628,7 +4308,6 @@ function showToast(msg) {
 // ============ Update All ============
 function updateAll() {
   updateTimer();
-  updateConsumption();
   updateStats();
 }
 
@@ -4675,9 +4354,6 @@ setInterval(() => {
 }, 1000);
 
 // Close modal on overlay click
-document.getElementById('addModal').addEventListener('click', function(e) {
-  if (e.target === this) closeAddModal();
-});
 document.getElementById('customWorkdayModal').addEventListener('click', function(e) {
   if (e.target === this) closeCustomWorkdayModal();
 });
@@ -4685,7 +4361,6 @@ document.getElementById('customWorkdayModal').addEventListener('click', function
 // Keyboard
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    closeAddModal();
     closeCustomWorkdayModal();
     switchScreen('timer');
   }
