@@ -760,6 +760,36 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+/* 分享卡片 */
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.header .icon-btn svg { width: 18px; height: 18px; display: block; }
+.share-modal { max-width: 440px; }
+.share-preview {
+  background: #000;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+/* 9:16 长图在矮屏上按视口高度缩放，保证下方按钮始终可见 */
+.share-preview img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 56vh;
+  object-fit: contain;
+}
+.share-actions { display: flex; gap: 10px; margin-top: 16px; }
+.share-actions .btn { flex: 1; }
+.share-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #777;
+  line-height: 1.5;
+  text-align: center;
+}
+
 /* Section title */
 .section-title {
   font-size: 14px;
@@ -1540,7 +1570,16 @@ body {
   <div class="screen active" id="screen-timer">
     <div class="header">
       <div class="logo">千<span>薪</span>万苦</div>
-      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="openShareModal()" aria-label="分享">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
+            <path d="M12 16V3"/>
+            <path d="m7 8 5-5 5 5"/>
+          </svg>
+        </button>
+        <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      </div>
     </div>
     <div class="timer-card">
       <div class="timer-status" id="workStatus">
@@ -1612,7 +1651,16 @@ body {
   <div class="screen" id="screen-stats">
     <div class="header">
       <div class="logo">千<span>薪</span>万苦</div>
-      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="openShareModal()" aria-label="分享">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
+            <path d="M12 16V3"/>
+            <path d="m7 8 5-5 5 5"/>
+          </svg>
+        </button>
+        <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      </div>
     </div>
     <div class="section-title">一些不必严肃的统计</div>
 
@@ -1744,7 +1792,16 @@ body {
   <div class="screen" id="screen-overtime">
     <div class="header">
       <div class="logo">千<span>薪</span>万苦</div>
-      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="openShareModal()" aria-label="分享">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
+            <path d="M12 16V3"/>
+            <path d="m7 8 5-5 5 5"/>
+          </svg>
+        </button>
+        <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      </div>
     </div>
     <div class="section-title">你的加班，换回来了多少</div>
 
@@ -1880,7 +1937,16 @@ body {
   <div class="screen" id="screen-ledger">
     <div class="header">
       <div class="logo">千<span>薪</span>万苦</div>
-      <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="openShareModal()" aria-label="分享">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
+            <path d="M12 16V3"/>
+            <path d="m7 8 5-5 5 5"/>
+          </svg>
+        </button>
+        <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      </div>
     </div>
 
     <div class="ledger-tabs" id="ledgerTabs">
@@ -2269,6 +2335,19 @@ body {
 
       <div class="ledger-work-preview" id="ledgerWorkPreview"></div>
       <button type="button" class="btn btn-primary ledger-submit" id="ledgerSubmitBtn" onclick="submitLedgerRecord()">记账</button>
+    </div>
+  </div>
+
+  <!-- Share Modal -->
+  <div class="modal-overlay" id="shareModal">
+    <div class="modal share-modal">
+      <h3><span>分享今日战绩</span> <button class="close" onclick="closeShareModal()">×</button></h3>
+      <div class="share-preview"><img id="sharePreviewImg" alt="今日战绩分享图"></div>
+      <div class="share-actions">
+        <button type="button" class="btn btn-secondary" onclick="saveShareCard()">保存图片</button>
+        <button type="button" class="btn btn-primary" id="shareNativeBtn" onclick="shareNativeCard()">分享</button>
+      </div>
+      <div class="share-hint" id="shareHint">手机上可长按图片保存到相册</div>
     </div>
   </div>
 
@@ -5489,6 +5568,407 @@ function updateLedgerWorkPreview() {
     <span class="ledger-work-precise">精确 ${Math.round(seconds).toLocaleString()} 秒</span>`;
 }
 
+// ============ 分享卡片 ============
+// 用 Canvas 纯手绘分享图，不依赖第三方库，离线也能生成
+const SHARE_FONT = '"PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif';
+const SHARE_MONO = '"SF Mono", "Consolas", monospace';
+let shareCardBlob = null;
+let shareCardUrl = '';
+
+function shareRoundRect(ctx, x, y, w, h, r) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function shareCardName() {
+  return 'qianxwk-' + fmtDateKey(new Date()) + '.png';
+}
+
+// 取值直接读计时页当前展示的文案，保证分享图与屏幕上一致
+function getShareData() {
+  updateTimer();
+  const txt = id => {
+    const el = document.getElementById(id);
+    return el ? (el.textContent || '').trim() : '';
+  };
+  const now = new Date();
+  const todayKey = fmtDateKey(now);
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const progressEl = document.getElementById('progressFill');
+
+  // 加班：给钱口径看金额与时长，调休口径看剩余调休
+  const otToday = sumOvertime(overtimeOnDay(todayKey));
+  const otMonth = sumOvertime(overtimeInMonth(now.getFullYear(), now.getMonth()));
+  const allOvertimeHours = overtimeRecords.reduce((sum, r) => sum + overtimeHours(r), 0);
+  const leaveEarned = totalLeaveEarned();
+  const leaveUsed = totalLeaveUsed();
+
+  // 记账：本月支出与折算工作日、今日支出
+  const monthRecords = ledgerMonthRecords(monthKeyOf(now));
+  const todayRecords = ledgerRecords.filter(r => r && r.date === todayKey);
+  const monthSpend = ledgerTotal(monthRecords);
+  const spentSeconds = ledgerWorkSeconds(monthSpend);
+  const ledgerDays = new Set(monthRecords.map(r => r.date)).size;
+
+  // 通勤：去程 / 返程 / 每日合计
+  const commute = getCommuteSplit();
+
+  return {
+    earned: txt('earnedToday'),
+    monthEarned: txt('homeMonthEarned'),
+    monthDays: txt('homeMonthDays'),
+    hourly: txt('hourlyRate'),
+    countdown: txt('countdownDisplay'),
+    countdownLabel: txt('countdownLabel'),
+    status: txt('statusText'),
+    range: txt('startTimeLabel') + ' — ' + txt('endTimeLabel'),
+    progress: Math.min(100, Math.max(0, parseFloat(progressEl && progressEl.style.width) || 0)),
+    date: `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`,
+    weekday: weekdays[now.getDay()],
+    overtimeSettle: (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave' ? 'leave' : 'money',
+    otTodayMoney: formatMoney(otToday.money),
+    otTodayHours: otToday.hours,
+    otMonthMoney: formatMoney(otMonth.money),
+    otMonthHours: otMonth.hours,
+    otAllHours: allOvertimeHours,
+    otCount: overtimeRecords.length,
+    leaveEarned,
+    leaveUsed,
+    spendMonth: formatMoney(monthSpend),
+    spendAvg: formatMoney(ledgerDays ? monthSpend / ledgerDays : 0),
+    spendWork: spentSeconds === null ? '—' : (monthSpend > 0 ? formatLedgerWork(spentSeconds) : '0'),
+    spendToday: formatMoney(ledgerTotal(todayRecords)),
+    ledgerCount: monthRecords.length,
+    ledgerDays,
+    commuteBefore: commute.before,
+    commuteAfter: commute.after,
+    commuteTotal: commute.total,
+    commuteInHourly: !!settings.commuteInHourly,
+    commuteMode: (settings.commuteInputMode || DEFAULTS.commuteInputMode) === 'split' ? '往返分开填写' : '一天合计'
+  };
+}
+
+// 分享图里的分区统计卡：左侧标题、右上角说明、下方若干列
+function drawShareStatCard(ctx, x, y, w, h, title, note, cols) {
+  shareRoundRect(ctx, x, y, w, h, 24);
+  ctx.fillStyle = '#171717';
+  ctx.fill();
+  ctx.strokeStyle = '#262626';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.font = `600 28px ${SHARE_FONT}`;
+  ctx.fillStyle = '#ddd';
+  ctx.fillText(title, x + 32, y + 52);
+  if (note) {
+    ctx.textAlign = 'right';
+    ctx.font = `400 22px ${SHARE_FONT}`;
+    ctx.fillStyle = '#777';
+    ctx.fillText(note, x + w - 32, y + 52);
+    ctx.textAlign = 'left';
+  }
+
+  const inner = 32;
+  const colW = (w - inner * 2) / cols.length;
+  cols.forEach((col, i) => {
+    const cx = x + inner + i * colW;
+    ctx.font = `400 22px ${SHARE_FONT}`;
+    ctx.fillStyle = '#999';
+    ctx.fillText(col.label, cx, y + 102);
+    ctx.font = `700 34px ${SHARE_FONT}`;
+    ctx.fillStyle = col.color || '#c8ff00';
+    ctx.fillText(col.value, cx, y + 156);
+    if (col.sub) {
+      ctx.font = `400 20px ${SHARE_FONT}`;
+      ctx.fillStyle = '#777';
+      ctx.fillText(col.sub, cx, y + 188);
+    }
+  });
+}
+
+function drawShareCard() {
+  const data = getShareData();
+  const W = 1080, H = 1920, pad = 72;
+  const accent = '#c8ff00', dim = '#999', faint = '#777';
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+
+  // 背景与右上角光晕
+  ctx.fillStyle = '#0f0f0f';
+  ctx.fillRect(0, 0, W, H);
+  const glow = ctx.createRadialGradient(W - 140, 40, 0, W - 140, 40, 780);
+  glow.addColorStop(0, 'rgba(200, 255, 0, .13)');
+  glow.addColorStop(1, 'rgba(200, 255, 0, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // 品牌与日期
+  ctx.font = `800 58px ${SHARE_FONT}`;
+  let bx = pad;
+  ['千', '薪', '万苦'].forEach((ch, i) => {
+    ctx.fillStyle = i === 1 ? accent : '#fff';
+    ctx.fillText(ch, bx, 126);
+    bx += ctx.measureText(ch).width;
+  });
+  ctx.font = `400 28px ${SHARE_FONT}`;
+  ctx.fillStyle = faint;
+  ctx.textAlign = 'right';
+  ctx.fillText(`${data.date} ${data.weekday}`, W - pad, 120);
+  ctx.textAlign = 'left';
+
+  ctx.strokeStyle = '#2a2a2a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pad, 176);
+  ctx.lineTo(W - pad, 176);
+  ctx.stroke();
+
+  // 今日已赚 + 状态徽章
+  ctx.font = `400 32px ${SHARE_FONT}`;
+  ctx.fillStyle = dim;
+  ctx.fillText('今日已赚', pad, 286);
+
+  const statusText = data.status || '工作中';
+  ctx.font = `600 26px ${SHARE_FONT}`;
+  const badgeW = ctx.measureText(statusText).width + 66;
+  const badgeX = W - pad - badgeW;
+  shareRoundRect(ctx, badgeX, 248, badgeW, 52, 26);
+  ctx.fillStyle = 'rgba(200, 255, 0, .10)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(200, 255, 0, .35)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.arc(badgeX + 26, 274, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillText(statusText, badgeX + 44, 283);
+
+  // 大金额
+  ctx.font = `600 54px ${SHARE_FONT}`;
+  ctx.fillStyle = accent;
+  ctx.fillText('¥', pad, 432);
+  ctx.font = `800 128px ${SHARE_MONO}`;
+  ctx.fillText((data.earned || '¥0.00').replace('¥', ''), pad + 52, 436);
+
+  // 本月已赚 / 时薪
+  const gap = 24;
+  const boxW = (W - pad * 2 - gap) / 2;
+  const boxY = 486, boxH = 170;
+  [
+    { label: '本月已赚', value: data.monthEarned, sub: data.monthDays, color: '#fff' },
+    { label: '时薪', value: data.hourly, sub: '', color: accent }
+  ].forEach((item, i) => {
+    const x = pad + i * (boxW + gap);
+    shareRoundRect(ctx, x, boxY, boxW, boxH, 22);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fill();
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.font = `400 26px ${SHARE_FONT}`;
+    ctx.fillStyle = dim;
+    ctx.fillText(item.label, x + 32, boxY + 58);
+    ctx.font = `700 40px ${SHARE_FONT}`;
+    ctx.fillStyle = item.color;
+    ctx.fillText(item.value || '¥0.00', x + 32, boxY + 118);
+    if (item.sub) {
+      ctx.font = `400 22px ${SHARE_FONT}`;
+      ctx.fillStyle = faint;
+      ctx.fillText(item.sub, x + 32, boxY + 152);
+    }
+  });
+
+  // 倒计时
+  ctx.font = `400 30px ${SHARE_FONT}`;
+  ctx.fillStyle = dim;
+  ctx.fillText(data.countdownLabel || '距离今天下班', pad, 748);
+  ctx.font = `400 28px ${SHARE_FONT}`;
+  ctx.fillStyle = faint;
+  ctx.textAlign = 'right';
+  ctx.fillText(`今日进度 ${Math.round(data.progress)}%`, W - pad, 748);
+  ctx.textAlign = 'left';
+
+  ctx.font = `700 104px ${SHARE_MONO}`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText(data.countdown || '00:00:00', pad, 862);
+
+  // 进度条
+  const barY = 904, barH = 14;
+  const barW = W - pad * 2;
+  shareRoundRect(ctx, pad, barY, barW, barH, barH / 2);
+  ctx.fillStyle = '#262626';
+  ctx.fill();
+  const fillW = barW * (data.progress / 100);
+  if (fillW > 0) {
+    shareRoundRect(ctx, pad, barY, Math.max(fillW, barH), barH, barH / 2);
+    ctx.fillStyle = accent;
+    ctx.fill();
+  }
+
+  ctx.font = `400 24px ${SHARE_FONT}`;
+  ctx.fillStyle = faint;
+  ctx.fillText(data.range, pad, 970);
+  ctx.textAlign = 'right';
+  ctx.fillText('每 1 秒都在到账', W - pad, 970);
+  ctx.textAlign = 'left';
+
+  const hoursText = h => (h > 0 ? formatHours(h) : '0 小时');
+  const cardX = pad, cardW = W - pad * 2;
+
+  // 通勤
+  const commuteNote = data.commuteTotal <= 0
+    ? '未设置通勤'
+    : (data.commuteInHourly ? '已计入时薪' : '未计入时薪');
+  drawShareStatCard(ctx, cardX, 1016, cardW, 210, '通勤', commuteNote, [
+    { label: '去程', value: fmtDurationMinutes(data.commuteBefore), sub: '上班路上' },
+    { label: '返程', value: fmtDurationMinutes(data.commuteAfter), sub: '下班路上' },
+    { label: '每日通勤', value: fmtDurationMinutes(data.commuteTotal), sub: data.commuteMode, color: '#fff' }
+  ]);
+
+  // 加班
+  const isLeave = data.overtimeSettle === 'leave';
+  const overtimeCols = isLeave ? [
+    { label: '今日加班', value: hoursText(data.otTodayHours), sub: '换成调休' },
+    { label: '本月加班', value: hoursText(data.otMonthHours), sub: '累计时长' },
+    { label: '剩余调休', value: hoursText(data.leaveEarned - data.leaveUsed), sub: '已用 ' + hoursText(data.leaveUsed) }
+  ] : [
+    { label: '今日加班费', value: data.otTodayMoney, sub: hoursText(data.otTodayHours) },
+    { label: '本月加班费', value: data.otMonthMoney, sub: hoursText(data.otMonthHours) },
+    { label: '累计加班', value: hoursText(data.otAllHours), sub: `${data.otCount} 条记录`, color: '#fff' }
+  ];
+  drawShareStatCard(ctx, cardX, 1250, cardW, 210, '加班', isLeave ? '调休口径' : '给钱口径', overtimeCols);
+
+  // 记账
+  drawShareStatCard(ctx, cardX, 1490, cardW, 210, '记账', `覆盖 ${data.ledgerDays} 天`, [
+    { label: '本月支出', value: data.spendMonth, sub: `日均 ${data.spendAvg}` },
+    { label: '折算工作日', value: data.spendWork, sub: '按时薪折算', color: '#fff' },
+    { label: '今日支出', value: data.spendToday, sub: `本月 ${data.ledgerCount} 笔` }
+  ]);
+
+  // 页脚
+  ctx.strokeStyle = '#222';
+  ctx.beginPath();
+  ctx.moveTo(pad, 1736);
+  ctx.lineTo(W - pad, 1736);
+  ctx.stroke();
+
+  ctx.font = `500 26px ${SHARE_FONT}`;
+  ctx.fillStyle = faint;
+  ctx.fillText('千薪万苦 · 把薪水变成看得见的时间', pad, 1790);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#9bc200';
+  ctx.fillText('gaoyunqiang.netlify.app', W - pad, 1790);
+  ctx.textAlign = 'left';
+
+  ctx.font = `400 22px ${SHARE_FONT}`;
+  ctx.fillStyle = '#555';
+  ctx.fillText('数据仅保存在本地，不上传任何服务器', pad, 1838);
+
+  return canvas;
+}
+
+function generateShareCardBlob() {
+  const canvas = drawShareCard();
+  return new Promise(resolve => {
+    if (canvas.toBlob) {
+      canvas.toBlob(blob => resolve(blob), 'image/png');
+      return;
+    }
+    // 老浏览器兜底：dataURL 转 Blob
+    try {
+      const bin = atob(canvas.toDataURL('image/png').split(',')[1]);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      resolve(new Blob([bytes], { type: 'image/png' }));
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
+async function openShareModal() {
+  shareCardBlob = null;
+  document.getElementById('shareModal').classList.add('show');
+  const blob = await generateShareCardBlob();
+  if (!blob) {
+    showToast('分享图生成失败');
+    return;
+  }
+  shareCardBlob = blob;
+  if (shareCardUrl) URL.revokeObjectURL(shareCardUrl);
+  shareCardUrl = URL.createObjectURL(blob);
+  document.getElementById('sharePreviewImg').src = shareCardUrl;
+
+  let canShare = false;
+  try {
+    const file = new File([blob], shareCardName(), { type: 'image/png' });
+    canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+  } catch (e) {
+    canShare = false;
+  }
+  document.getElementById('shareNativeBtn').style.display = canShare ? '' : 'none';
+  document.getElementById('shareHint').textContent = canShare
+    ? '可直接分享到聊天软件，也可保存图片后发送'
+    : '手机上可长按图片保存到相册';
+}
+
+function closeShareModal() {
+  const modal = document.getElementById('shareModal');
+  if (modal) modal.classList.remove('show');
+  const img = document.getElementById('sharePreviewImg');
+  if (img) img.removeAttribute('src');
+  shareCardBlob = null;
+  if (shareCardUrl) {
+    URL.revokeObjectURL(shareCardUrl);
+    shareCardUrl = '';
+  }
+}
+
+function saveShareCard() {
+  if (!shareCardBlob) {
+    showToast('分享图还没生成好');
+    return;
+  }
+  const url = URL.createObjectURL(shareCardBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = shareCardName();
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    if (a.parentNode) a.parentNode.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1000);
+  showToast('已保存分享图');
+}
+
+async function shareNativeCard() {
+  if (!shareCardBlob) return;
+  try {
+    const file = new File([shareCardBlob], shareCardName(), { type: 'image/png' });
+    await navigator.share({
+      files: [file],
+      title: '千薪万苦 · 今日战绩',
+      text: '看看我今天这一秒赚了多少'
+    });
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    showToast('分享未完成，可保存图片后发送');
+  }
+}
+
 // ============ 统计页分类 ============
 // 统计卡片按「看一看 / 算一算」分组展示；新增卡片时只需放进对应 panel，
 // 需要新增分类时在 #statsTabs 里补一个 .stats-tab 即可。
@@ -5692,12 +6172,16 @@ document.getElementById('customWorkdayModal').addEventListener('click', function
 document.getElementById('ledgerModal').addEventListener('click', function(e) {
   if (e.target === this) closeLedgerModal();
 });
+document.getElementById('shareModal').addEventListener('click', function(e) {
+  if (e.target === this) closeShareModal();
+});
 
 // Keyboard
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     closeCustomWorkdayModal();
     closeLedgerModal();
+    closeShareModal();
     switchScreen('timer');
   }
 });
