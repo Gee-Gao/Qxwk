@@ -3122,82 +3122,114 @@ function getCurrentWorkState() {
   const commuteSplit = getCommuteSplit();
   const commuteBefore = commuteSplit.before;
   const commuteAfter = commuteSplit.after;
-  const totalWorkMinutes = shift.workMinutes + commuteSplit.total;
-  const paidStart = -commuteBefore;
-  const paidEnd = shift.duration + commuteAfter;
+  const commuteTotal = commuteSplit.total;
+  // 上下班计时只按班次工作时间，通勤单独计时
+  const workMinutes = shift.workMinutes;
+  const totalPaidMinutes = workMinutes + commuteTotal;
+
+  const base = {
+    workedMinutes: 0,
+    workWorkedMinutes: 0,
+    remainingMinutes: 0,
+    totalWorkMinutes: 0,
+    totalPaidMinutes,
+    isWorking: false,
+    isLunch: false,
+    isCommuting: false,
+    isRest: true,
+    progress: 0,
+    earnedToday: 0,
+    remainingValue: 0,
+    crossDay: shift.crossDay,
+    shiftDate: anchor,
+    commuteBefore,
+    commuteAfter,
+    commuteTotal,
+    commutePhase: 'none',
+    commuteLegElapsed: 0
+  };
 
   // 非工作日（周末/法定节假日）不计时，避免休息日仍在累计工时与收益
-  if (!isWorkday(anchor)) {
-    return {
-      workedMinutes: 0,
-      remainingMinutes: 0,
-      totalWorkMinutes: 0,
-      isWorking: false,
-      isLunch: false,
-      isCommuting: false,
-      isRest: true,
-      progress: 0,
-      earnedToday: 0,
-      remainingValue: 0,
-      crossDay: shift.crossDay,
-      shiftDate: anchor,
-      commuteBefore,
-      commuteAfter
-    };
-  }
+  if (!isWorkday(anchor)) return base;
 
   // 班次内的午休区间（相对上班时间）；午休部分落在班次外时只按重叠部分处理
   const lunchS = Math.max(shift.lunchStart, shift.start) - shift.start;
   const lunchE = Math.min(shift.lunchEnd, shift.end) - shift.start;
   const hasLunch = shift.lunchMinutes > 0 && lunchE > lunchS;
 
-  let workedMinutes = 0;
+  let workWorked = 0;
   let isWorking = false;
   let isLunch = false;
-  let isCommuting = false;
 
-  if (pos < paidStart) {
-    // 还没出发通勤：剩余为完整计时时长（工作 + 通勤）
-  } else if (pos < 0) {
-    // 去程通勤中
-    isCommuting = true;
-    workedMinutes = pos - paidStart;
-  } else if (pos >= paidEnd) {
-    // 已下班（含返程通勤）：按上满整个计时时长计
-    workedMinutes = totalWorkMinutes;
+  if (pos <= 0) {
+    // 还没上班
+    workWorked = 0;
   } else if (pos >= shift.duration) {
-    // 返程通勤中
-    isCommuting = true;
-    workedMinutes = commuteBefore + shift.workMinutes + (pos - shift.duration);
+    // 已下班
+    workWorked = workMinutes;
   } else if (hasLunch && pos < lunchS) {
     isWorking = true;
-    workedMinutes = commuteBefore + pos;
+    workWorked = pos;
   } else if (hasLunch && pos < lunchE) {
     isLunch = true;
-    workedMinutes = commuteBefore + lunchS;
+    workWorked = lunchS;
   } else {
     isWorking = true;
-    workedMinutes = commuteBefore + pos - shift.lunchMinutes;
+    workWorked = pos - shift.lunchMinutes;
+  }
+  workWorked = Math.max(0, Math.min(workMinutes, workWorked));
+
+  // 通勤计时：去程在上班前，返程在下班后，各自独立累计
+  let isCommuting = false;
+  let commutePhase = 'none';
+  let commuteElapsed = 0;
+  let commuteLegElapsed = 0;
+  if (commuteTotal > 0) {
+    if (commuteBefore > 0 && pos >= -commuteBefore && pos < 0) {
+      isCommuting = true;
+      commutePhase = 'morning';
+      commuteLegElapsed = pos + commuteBefore;
+      commuteElapsed = commuteLegElapsed;
+    } else if (commuteAfter > 0 && pos >= shift.duration && pos < shift.duration + commuteAfter) {
+      isCommuting = true;
+      commutePhase = 'evening';
+      commuteLegElapsed = pos - shift.duration;
+      commuteElapsed = commuteBefore + commuteLegElapsed;
+    } else if (pos < 0) {
+      commutePhase = 'before';
+    } else if (pos < shift.duration) {
+      commutePhase = 'working';
+      commuteElapsed = commuteBefore;
+    } else {
+      commutePhase = 'done';
+      commuteElapsed = commuteTotal;
+    }
   }
 
-  workedMinutes = Math.max(0, Math.min(totalWorkMinutes, workedMinutes));
-  const remainingMinutes = Math.max(0, totalWorkMinutes - workedMinutes);
+  // 收益口径仍包含通勤：工作时长 + 已完成的通勤时长
+  const paidWorked = Math.max(0, Math.min(totalPaidMinutes, workWorked + commuteElapsed));
+  const remainingMinutes = Math.max(0, workMinutes - workWorked);
 
   return {
-    workedMinutes,
+    workedMinutes: paidWorked,
+    workWorkedMinutes: workWorked,
     remainingMinutes,
-    totalWorkMinutes,
+    totalWorkMinutes: workMinutes,
+    totalPaidMinutes,
     isWorking,
     isLunch,
     isCommuting,
     isRest: false,
-    progress: totalWorkMinutes > 0 ? (workedMinutes / totalWorkMinutes) * 100 : 0,
-    earnedToday: workedMinutes * getMinuteRate(),
-    remainingValue: remainingMinutes * getMinuteRate(),
+    progress: workMinutes > 0 ? (workWorked / workMinutes) * 100 : 0,
+    earnedToday: paidWorked * getMinuteRate(),
+    remainingValue: Math.max(0, totalPaidMinutes - paidWorked) * getMinuteRate(),
     crossDay: shift.crossDay,
     shiftDate: anchor,
     commuteBefore,
-    commuteAfter
+    commuteAfter,
+    commuteTotal,
+    commutePhase,
+    commuteLegElapsed
   };
 }
 
@@ -3469,7 +3501,7 @@ function updateCommuteHint() {
   };
 
   if (!settings.commuteInHourly) {
-    hint.textContent = `未纳入计时：只按每日工作 ${fmtDurationMinutes(workMinutes)} 折算；开启后通勤会一并计入计时与时薪`;
+    hint.textContent = `未纳入计时：只按每日工作 ${fmtDurationMinutes(workMinutes)} 折算；开启后通勤会并入时薪与收益`;
     return;
   }
 
@@ -3745,8 +3777,14 @@ function updatePeriodBadge() {
 function updateTimer() {
   const state = getCurrentWorkState();
   const remainingSeconds = Math.round(state.remainingMinutes * 60);
+  const isMorningCommute = state.isCommuting && state.commutePhase === 'morning';
+  const isEveningCommute = state.isCommuting && state.commutePhase === 'evening';
+  // 通勤时段大计时自动切换到对应通勤段，其余时间仍按上下班班次计时
+  const commuteLegTotal = isMorningCommute ? state.commuteBefore : (isEveningCommute ? state.commuteAfter : 0);
+  const commuteLegLeft = Math.max(0, commuteLegTotal - state.commuteLegElapsed);
 
   updatePeriodBadge();
+  updateCommuteBadge();
   const countdownEl = document.getElementById('countdownDisplay');
   const countdownLabel = document.getElementById('countdownLabel');
 
@@ -3754,11 +3792,17 @@ function updateTimer() {
     // 非工作日不计时，倒计时与进度都归零
     countdownEl.textContent = '--:--:--';
     countdownLabel.textContent = '今天休息，不计时';
+  } else if (state.isCommuting) {
+    countdownEl.textContent = formatTime(Math.round(commuteLegLeft * 60));
+    countdownLabel.textContent = isMorningCommute ? '距离到岗' : '距离到家';
   } else {
     countdownEl.textContent = formatTime(remainingSeconds);
     countdownLabel.textContent = state.crossDay ? '距离下班' : '距离今天下班';
   }
-  document.getElementById('progressFill').style.width = state.progress.toFixed(1) + '%';
+  const progress = state.isCommuting
+    ? (commuteLegTotal > 0 ? (state.commuteLegElapsed / commuteLegTotal) * 100 : 0)
+    : state.progress;
+  document.getElementById('progressFill').style.width = progress.toFixed(1) + '%';
 
   const statusEl = document.getElementById('workStatus');
   const statusText = document.getElementById('statusText');
@@ -3766,12 +3810,12 @@ function updateTimer() {
   if (state.isRest) {
     statusText.textContent = '休息日';
     statusEl.classList.add('paused');
-  } else if (state.isLunch) {
-    statusText.textContent = '午休中';
-    statusEl.classList.add('paused');
   } else if (state.isCommuting) {
     statusText.textContent = '通勤中';
     statusEl.classList.remove('paused');
+  } else if (state.isLunch) {
+    statusText.textContent = '午休中';
+    statusEl.classList.add('paused');
   } else if (state.isWorking) {
     statusText.textContent = '工作中';
     statusEl.classList.remove('paused');
@@ -3784,14 +3828,11 @@ function updateTimer() {
     statusEl.classList.add('paused');
   }
 
-  // 计时区间：纳入通勤时，开始 / 结束时间随去程、返程通勤一起延展
+  // 计时区间只按班次时间，通勤不影响上下班计时
   const shift = getShiftTimes();
-  const startWithCommute = shift.start - state.commuteBefore;
-  const endWithCommute = shift.end + state.commuteAfter;
-  document.getElementById('startTimeLabel').textContent =
-    (startWithCommute < 0 ? '前日 ' : '') + minutesToClock(startWithCommute);
+  document.getElementById('startTimeLabel').textContent = minutesToClock(shift.start);
   document.getElementById('endTimeLabel').textContent =
-    ((state.crossDay || endWithCommute >= 1440) ? '次日 ' : '') + minutesToClock(endWithCommute);
+    ((state.crossDay || shift.end >= 1440) ? '次日 ' : '') + minutesToClock(shift.end);
 
   // Earnings（开启联动时，加班应得一并计入；加班费另起一行单独展示）
   const now = new Date();
@@ -3807,7 +3848,6 @@ function updateTimer() {
   const hourlyRate = getHourlyRate();
   document.getElementById('hourlyRate').textContent = formatMoney(hourlyRate) + '/小时';
   setFxLine('earnedHourlyFx', hourlyRate, '/小时');
-  updateCommuteBadge();
 
   // 本月概览：已完成工作日按整天计，今天的收益按秒实时累计（与今日已赚口径一致）
   const monthWorked = getWorkedDaysThisMonth();
@@ -3953,9 +3993,11 @@ function updateStats() {
   document.getElementById('annualSpendVal').textContent = formatMoney(annualSpend);
   renderOvertimeLine('annualOvertimeLine', overtimeInYear(thisYear));
 
-  // Monthly overview
+  // Monthly overview：已完成工作日按整天计，今天的收益随计时实时增长（与计时页口径一致）
   const monthWorked = getWorkedDaysThisMonth();
-  const monthEarned = monthWorked * dailyHours * getHourlyRate() + monthOvertime;
+  const monthCompleted = getWorkedDaysThisMonth(true);
+  const monthEarned = monthCompleted * dailyHours * getHourlyRate()
+    + (workState.isRest ? 0 : workState.earnedToday) + monthOvertime;
   const monthTotal = getMonthlyNet();
   const monthProgress = settings.workDaysPerMonth > 0 ? (monthWorked / settings.workDaysPerMonth) * 100 : 0;
 
