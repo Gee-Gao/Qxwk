@@ -57,14 +57,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // 静态资源同样网络优先，避免更新代码后仍命中旧缓存；离线时回退缓存
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
+    fetch(request)
+      .then((response) => {
         const copy = response.clone();
         caches.open(CACHE).then((cache) => cache.put(request, copy));
         return response;
-      });
-    })
+      })
+      .catch(() => caches.match(request))
   );
 });
