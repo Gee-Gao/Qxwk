@@ -3258,8 +3258,15 @@ function getShareData() {
 
   // 通勤：去程 / 返程 / 每日合计
   const commute = getCommuteSplit();
+  const mode = settings.salaryMode || DEFAULTS.salaryMode;
 
   return {
+    salaryMode: mode,
+    taxTag: mode === 'gross' ? '税前' : '税后',
+    preTaxEarned: txt('preTaxEarnedToday'),
+    preTaxMonthEarned: txt('preTaxMonthEarned'),
+    preTaxHourly: txt('preTaxHourly'),
+    preTaxMonthDays: txt('preTaxMonthDays'),
     earned: txt('earnedToday'),
     monthEarned: txt('homeMonthEarned'),
     monthDays: txt('homeMonthDays'),
@@ -3321,16 +3328,67 @@ function drawShareStatCard(ctx, x, y, w, h, title, note, cols) {
     const cx = x + inner + i * colW;
     ctx.font = `400 22px ${SHARE_FONT}`;
     ctx.fillStyle = '#999';
-    ctx.fillText(col.label, cx, y + 102);
+    ctx.fillText(col.label, cx, y + h * 0.49);
     ctx.font = `700 34px ${SHARE_FONT}`;
     ctx.fillStyle = col.color || '#c8ff00';
-    ctx.fillText(col.value, cx, y + 156);
+    ctx.fillText(col.value, cx, y + h * 0.74);
     if (col.sub) {
       ctx.font = `400 20px ${SHARE_FONT}`;
       ctx.fillStyle = '#777';
-      ctx.fillText(col.sub, cx, y + 188);
+      ctx.fillText(col.sub, cx, y + h * 0.895);
     }
   });
+}
+
+// 分享图里的薪资卡：与计时页卡片同构，右上角口径标注 + 金额 + 辅助行
+function drawShareSalaryCard(ctx, x, y, w, h, card) {
+  const themes = {
+    // 主色主题：今日已赚用荧光绿底，本月已赚用黑底描主色边
+    green: { bg: '#c8ff00', border: null, text: '#000', label: 'rgba(0, 0, 0, .7)', note: 'rgba(0, 0, 0, .55)', sub: 'rgba(0, 0, 0, .6)' },
+    net: { bg: '#1e1e1e', border: 'rgba(200, 255, 0, .35)', text: '#fff', label: '#999', note: '#c8ff00', sub: '#888' },
+    // 对照主题：税后两卡用紫色底 / 黑底描紫边
+    compare: { bg: '#1e1830', border: '#463469', text: '#fff', label: 'rgba(255, 255, 255, .7)', note: '#a78bfa', sub: 'rgba(255, 255, 255, .55)' },
+    flat: { bg: '#1e1e1e', border: 'rgba(167, 139, 250, .35)', text: '#fff', label: 'rgba(255, 255, 255, .7)', note: '#fff', sub: 'rgba(255, 255, 255, .55)' }
+  };
+  const t = themes[card.tone];
+
+  shareRoundRect(ctx, x, y, w, h, 24);
+  ctx.fillStyle = t.bg;
+  ctx.fill();
+  if (t.border) {
+    ctx.strokeStyle = t.border;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // 口径标注放右上角，与计时页卡片一致
+  if (card.tag) {
+    ctx.font = `600 22px ${SHARE_FONT}`;
+    ctx.fillStyle = t.note;
+    ctx.textAlign = 'right';
+    ctx.fillText(card.tag, x + w - 30, y + h * 0.25);
+    ctx.textAlign = 'left';
+  }
+
+  ctx.font = `400 26px ${SHARE_FONT}`;
+  ctx.fillStyle = t.label;
+  ctx.fillText(card.label, x + 30, y + h * 0.33);
+
+  // 金额过长时自动收窄字号，避免溢出卡片
+  const maxW = w - 60;
+  let size = 56;
+  for (; size > 28; size -= 2) {
+    ctx.font = `800 ${size}px ${SHARE_MONO}`;
+    if (ctx.measureText(card.value).width <= maxW) break;
+  }
+  ctx.fillStyle = t.text;
+  ctx.fillText(card.value, x + 30, y + h * 0.67);
+
+  if (card.sub) {
+    ctx.font = `400 24px ${SHARE_FONT}`;
+    ctx.fillStyle = t.sub;
+    ctx.fillText(card.sub, x + 30, y + h * 0.88);
+  }
 }
 
 function drawShareCard() {
@@ -3374,16 +3432,13 @@ function drawShareCard() {
   ctx.lineTo(W - pad, 176);
   ctx.stroke();
 
-  // 今日已赚 + 状态徽章
-  ctx.font = `400 32px ${SHARE_FONT}`;
-  ctx.fillStyle = dim;
-  ctx.fillText('今日已赚', pad, 286);
+  const compareMode = data.salaryMode === 'compare';
 
+  // 状态徽章
   const statusText = data.status || '工作中';
   ctx.font = `600 26px ${SHARE_FONT}`;
   const badgeW = ctx.measureText(statusText).width + 66;
-  const badgeX = W - pad - badgeW;
-  shareRoundRect(ctx, badgeX, 248, badgeW, 52, 26);
+  shareRoundRect(ctx, pad, 226, badgeW, 52, 26);
   ctx.fillStyle = 'rgba(200, 255, 0, .10)';
   ctx.fill();
   ctx.strokeStyle = 'rgba(200, 255, 0, .35)';
@@ -3391,61 +3446,64 @@ function drawShareCard() {
   ctx.stroke();
   ctx.fillStyle = accent;
   ctx.beginPath();
-  ctx.arc(badgeX + 26, 274, 6, 0, Math.PI * 2);
+  ctx.arc(pad + 26, 252, 6, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillText(statusText, badgeX + 44, 283);
+  ctx.fillText(statusText, pad + 44, 261);
 
-  // 大金额
-  ctx.font = `600 54px ${SHARE_FONT}`;
-  ctx.fillStyle = accent;
-  ctx.fillText('¥', pad, 432);
-  ctx.font = `800 128px ${SHARE_MONO}`;
-  ctx.fillText((data.earned || '¥0.00').replace('¥', ''), pad + 52, 436);
+  // 薪资卡片：结构对齐计时页，今日已赚（下挂时薪）+ 本月已赚（下挂已工作天数）
+  const salaryY = 300;
+  const salaryGap = 24;
+  const salaryW = (W - pad * 2 - salaryGap) / 2;
+  const salaryH = compareMode ? 186 : 206;
+  const salaryGapY = compareMode ? 12 : 0;
+  if (compareMode) {
+    // 对比口径：税前行用主色主题、税后行用对照主题，与计时页两排配色一致
+    drawShareSalaryCard(ctx, pad, salaryY, salaryW, salaryH, {
+      tone: 'green', tag: '税前', label: '今日已赚', value: data.preTaxEarned || '¥0.00', sub: data.preTaxHourly
+    });
+    drawShareSalaryCard(ctx, pad + salaryW + salaryGap, salaryY, salaryW, salaryH, {
+      tone: 'net', tag: '税前', label: '本月已赚', value: data.preTaxMonthEarned || '¥0.00', sub: data.preTaxMonthDays
+    });
+    const netY = salaryY + salaryH + salaryGapY;
+    drawShareSalaryCard(ctx, pad, netY, salaryW, salaryH, {
+      tone: 'compare', tag: '税后', label: '今日已赚', value: data.earned || '¥0.00', sub: data.hourly
+    });
+    drawShareSalaryCard(ctx, pad + salaryW + salaryGap, netY, salaryW, salaryH, {
+      tone: 'flat', tag: '税后', label: '本月已赚', value: data.monthEarned || '¥0.00', sub: data.monthDays
+    });
+  } else {
+    drawShareSalaryCard(ctx, pad, salaryY, salaryW, salaryH, {
+      tone: 'green', tag: data.taxTag, label: '今日已赚', value: data.earned || '¥0.00', sub: data.hourly
+    });
+    drawShareSalaryCard(ctx, pad + salaryW + salaryGap, salaryY, salaryW, salaryH, {
+      tone: 'net', tag: data.taxTag, label: '本月已赚', value: data.monthEarned || '¥0.00', sub: data.monthDays
+    });
+  }
 
-  // 本月已赚 / 时薪
-  const gap = 24;
-  const boxW = (W - pad * 2 - gap) / 2;
-  const boxY = 486, boxH = 170;
-  [
-    { label: '本月已赚', value: data.monthEarned, sub: data.monthDays, color: '#fff' },
-    { label: '时薪', value: data.hourly, sub: '', color: accent }
-  ].forEach((item, i) => {
-    const x = pad + i * (boxW + gap);
-    shareRoundRect(ctx, x, boxY, boxW, boxH, 22);
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fill();
-    ctx.strokeStyle = '#2a2a2a';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.font = `400 26px ${SHARE_FONT}`;
-    ctx.fillStyle = dim;
-    ctx.fillText(item.label, x + 32, boxY + 58);
-    ctx.font = `700 40px ${SHARE_FONT}`;
-    ctx.fillStyle = item.color;
-    ctx.fillText(item.value || '¥0.00', x + 32, boxY + 118);
-    if (item.sub) {
-      ctx.font = `400 22px ${SHARE_FONT}`;
-      ctx.fillStyle = faint;
-      ctx.fillText(item.sub, x + 32, boxY + 152);
-    }
-  });
+  // 税率口径不同导致卡片行数变化，后续区块整体下移保持相同留白
+  const salaryBottom = compareMode ? salaryY + salaryH * 2 + salaryGapY : salaryY + salaryH;
+  const yOff = salaryBottom - (salaryY + 206);
+  const countdownLabelY = 592 + yOff;
+  const countdownY = 716 + yOff;
+  const barY = 766 + yOff;
+  const rangeY = 832 + yOff;
 
   // 倒计时
   ctx.font = `400 30px ${SHARE_FONT}`;
   ctx.fillStyle = dim;
-  ctx.fillText(data.countdownLabel || '距离今天下班', pad, 748);
+  ctx.fillText(data.countdownLabel || '距离今天下班', pad, countdownLabelY);
   ctx.font = `400 28px ${SHARE_FONT}`;
   ctx.fillStyle = faint;
   ctx.textAlign = 'right';
-  ctx.fillText(`今日进度 ${Math.round(data.progress)}%`, W - pad, 748);
+  ctx.fillText(`今日进度 ${Math.round(data.progress)}%`, W - pad, countdownLabelY);
   ctx.textAlign = 'left';
 
   ctx.font = `700 104px ${SHARE_MONO}`;
   ctx.fillStyle = '#fff';
-  ctx.fillText(data.countdown || '00:00:00', pad, 862);
+  ctx.fillText(data.countdown || '00:00:00', pad, countdownY);
 
   // 进度条
-  const barY = 904, barH = 14;
+  const barH = 14;
   const barW = W - pad * 2;
   shareRoundRect(ctx, pad, barY, barW, barH, barH / 2);
   ctx.fillStyle = '#262626';
@@ -3459,19 +3517,23 @@ function drawShareCard() {
 
   ctx.font = `400 24px ${SHARE_FONT}`;
   ctx.fillStyle = faint;
-  ctx.fillText(data.range, pad, 970);
+  ctx.fillText(data.range, pad, rangeY);
   ctx.textAlign = 'right';
-  ctx.fillText('每 1 秒都在到账', W - pad, 970);
+  ctx.fillText('每 1 秒都在到账', W - pad, rangeY);
   ctx.textAlign = 'left';
 
   const hoursText = h => (h > 0 ? formatHours(h) : '0 小时');
   const cardX = pad, cardW = W - pad * 2;
+  // 对比口径多出一排薪资卡，压缩统计卡高度避免撞到页脚
+  const statH = compareMode ? 192 : 232;
+  const statGap = compareMode ? 18 : 26;
+  const statY = 908 + yOff;
 
   // 通勤
   const commuteNote = data.commuteTotal <= 0
     ? '未设置通勤'
     : (data.commuteInHourly ? '已计入时薪' : '未计入时薪');
-  drawShareStatCard(ctx, cardX, 1016, cardW, 210, '通勤', commuteNote, [
+  drawShareStatCard(ctx, cardX, statY, cardW, statH, '通勤', commuteNote, [
     { label: '去程', value: fmtDurationMinutes(data.commuteBefore), sub: '上班路上' },
     { label: '返程', value: fmtDurationMinutes(data.commuteAfter), sub: '下班路上' },
     { label: '每日通勤', value: fmtDurationMinutes(data.commuteTotal), sub: data.commuteMode, color: '#fff' }
@@ -3488,10 +3550,10 @@ function drawShareCard() {
     { label: '本月加班费', value: data.otMonthMoney, sub: hoursText(data.otMonthHours) },
     { label: '累计加班', value: hoursText(data.otAllHours), sub: `${data.otCount} 条记录`, color: '#fff' }
   ];
-  drawShareStatCard(ctx, cardX, 1250, cardW, 210, '加班', isLeave ? '调休口径' : '给钱口径', overtimeCols);
+  drawShareStatCard(ctx, cardX, statY + statH + statGap, cardW, statH, '加班', isLeave ? '调休口径' : '给钱口径', overtimeCols);
 
   // 记账
-  drawShareStatCard(ctx, cardX, 1490, cardW, 210, '记账', `覆盖 ${data.ledgerDays} 天`, [
+  drawShareStatCard(ctx, cardX, statY + (statH + statGap) * 2, cardW, statH, '记账', `覆盖 ${data.ledgerDays} 天`, [
     { label: '本月支出', value: data.spendMonth, sub: `日均 ${data.spendAvg}` },
     { label: '折算工作日', value: data.spendWork, sub: '按时薪折算', color: '#fff' },
     { label: '今日支出', value: data.spendToday, sub: `本月 ${data.ledgerCount} 笔` }
@@ -3559,9 +3621,6 @@ async function openShareModal() {
     canShare = false;
   }
   document.getElementById('shareNativeBtn').style.display = canShare ? '' : 'none';
-  document.getElementById('shareHint').textContent = canShare
-    ? '可直接分享到聊天软件，也可保存图片后发送'
-    : '手机上可长按图片保存到相册';
 }
 
 function closeShareModal() {
@@ -3576,24 +3635,6 @@ function closeShareModal() {
   }
 }
 
-function saveShareCard() {
-  if (!shareCardBlob) {
-    showToast('分享图还没生成好');
-    return;
-  }
-  const url = URL.createObjectURL(shareCardBlob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = shareCardName();
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    if (a.parentNode) a.parentNode.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 1000);
-  showToast('已保存分享图');
-}
-
 async function shareNativeCard() {
   if (!shareCardBlob) return;
   try {
@@ -3605,7 +3646,7 @@ async function shareNativeCard() {
     });
   } catch (e) {
     if (e && e.name === 'AbortError') return;
-    showToast('分享未完成，可保存图片后发送');
+    showToast('分享未完成，请稍后重试');
   }
 }
 

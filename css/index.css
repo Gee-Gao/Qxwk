@@ -763,13 +763,6 @@ body {
 }
 .share-actions { display: flex; gap: 10px; margin-top: 16px; }
 .share-actions .btn { flex: 1; }
-.share-hint {
-  margin-top: 10px;
-  font-size: 11px;
-  color: #777;
-  line-height: 1.5;
-  text-align: center;
-}
 
 /* 分组标题 */
 .section-title {
