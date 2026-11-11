@@ -814,6 +814,16 @@
   <div class="modal-overlay" id="shareModal">
     <div class="modal share-modal">
       <h3><span>分享今日战绩</span> <button class="close" onclick="closeShareModal()">×</button></h3>
+      <div class="share-hint">点击选项勾选模块，长按拖动自定义顺序，至少保留一个</div>
+      <div class="share-options" id="shareOptions">
+        <button type="button" class="share-option active" data-section="countdown" onclick="toggleShareSection('countdown')">倒计时</button>
+        <button type="button" class="share-option active" data-section="salary" onclick="toggleShareSection('salary')">薪资</button>
+        <button type="button" class="share-option active" data-section="commute" onclick="toggleShareSection('commute')">通勤</button>
+        <button type="button" class="share-option active" data-section="overtime" onclick="toggleShareSection('overtime')">加班</button>
+        <button type="button" class="share-option active" data-section="ledger" onclick="toggleShareSection('ledger')">记账</button>
+        <button type="button" class="share-option active" data-section="life" onclick="toggleShareSection('life')">生命消耗</button>
+        <button type="button" class="share-option active" data-section="year" onclick="toggleShareSection('year')">年度概览</button>
+      </div>
       <div class="share-preview"><img id="sharePreviewImg" alt="今日战绩分享图"></div>
       <div class="share-actions">
         <button type="button" class="btn btn-primary" id="shareNativeBtn" onclick="shareNativeCard()">分享</button>
