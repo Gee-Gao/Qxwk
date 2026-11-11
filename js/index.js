@@ -2669,11 +2669,17 @@ function updateCalculator() {
 const LEDGER_DEFAULT_CATEGORIES = [
   { id: 'food',      name: '餐饮', icon: '🍚' },
   { id: 'transport', name: '交通', icon: '🚌' },
-  { id: 'utilities', name: '水电', icon: '💡' },
-  { id: 'rent',      name: '房租', icon: '🏠' },
+  // utilities 沿用旧「水电」的 id，保证历史记录修改时仍能对应到项目
+  { id: 'utilities', name: '水费', icon: '💧' },
+  { id: 'electricity', name: '电费', icon: '💡' },
+  { id: 'gas',       name: '燃气', icon: '🔥' },
+  { id: 'heating',   name: '取暖', icon: '♨️' },
+  { id: 'rent',      name: '租房', icon: '🏠' },
+  { id: 'gift',      name: '礼金', icon: '🎁' },
   { id: 'shopping',  name: '购物', icon: '🛍️' },
   { id: 'fun',       name: '娱乐', icon: '🎮' },
   { id: 'medical',   name: '医疗', icon: '💊' },
+  { id: 'insurance', name: '保险', icon: '🛡️' },
   { id: 'phone',     name: '通讯', icon: '📱' },
   { id: 'study',     name: '学习', icon: '📚' },
   { id: 'other',     name: '其他', icon: '📦' }
