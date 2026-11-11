@@ -414,7 +414,7 @@
       <div class="ledger-card">
         <div class="ledger-month-nav">
           <button type="button" class="ledger-month-btn" onclick="shiftLedgerMonth(-1)" aria-label="上个月">‹</button>
-          <div class="ledger-month-label" id="ledgerMonthLabel"></div>
+          <div class="ledger-month-label" id="ledgerMonthLabel" onclick="openLedgerMonthPicker()" title="点击快速选择月份"></div>
           <button type="button" class="ledger-month-btn" onclick="shiftLedgerMonth(1)" aria-label="下个月">›</button>
         </div>
         <div class="ledger-cal-weekdays">
@@ -448,7 +448,7 @@
     <div class="ledger-panel" data-tab="stats">
       <div class="ledger-month-nav">
         <button type="button" class="ledger-month-btn" onclick="shiftLedgerMonth(-1)" aria-label="上个月">‹</button>
-        <div class="ledger-month-label" id="ledgerStatsMonthLabel"></div>
+        <div class="ledger-month-label" id="ledgerStatsMonthLabel" onclick="openLedgerMonthPicker()" title="点击快速选择月份"></div>
         <button type="button" class="ledger-month-btn" onclick="shiftLedgerMonth(1)" aria-label="下个月">›</button>
       </div>
       <div class="ledger-scope-tabs" id="ledgerScopeTabs">
@@ -794,6 +794,19 @@
 
       <div class="ledger-work-preview" id="ledgerWorkPreview"></div>
       <button type="button" class="btn btn-primary ledger-submit" id="ledgerSubmitBtn" onclick="submitLedgerRecord()">记账</button>
+    </div>
+  </div>
+
+  <!-- 月份快速选择 -->
+  <div class="modal-overlay" id="ledgerMonthModal">
+    <div class="modal month-picker-modal">
+      <h3><span>选择月份</span> <button class="close" onclick="closeLedgerMonthModal()">×</button></h3>
+      <div class="month-picker-year">
+        <button type="button" class="ledger-month-btn" onclick="shiftLedgerPickerYear(-1)" aria-label="上一年">‹</button>
+        <strong id="ledgerPickerYear">2026 年</strong>
+        <button type="button" class="ledger-month-btn" onclick="shiftLedgerPickerYear(1)" aria-label="下一年">›</button>
+      </div>
+      <div class="month-picker-grid" id="ledgerPickerMonths"></div>
     </div>
   </div>
 

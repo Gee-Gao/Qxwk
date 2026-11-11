@@ -988,6 +988,14 @@ body {
   font-size: 15px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+/* 月份标签可点击，尾部小箭头提示可弹出快速选择 */
+.ledger-month-label::after {
+  content: '▾';
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
 }
 .ledger-month-btn {
   width: 30px;
@@ -1005,6 +1013,40 @@ body {
   transition: color .15s, border-color .15s;
 }
 .ledger-month-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+/* 月份快速选择弹窗 */
+.month-picker-year {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.month-picker-year strong { font-size: 15px; }
+.month-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.month-picker-item {
+  padding: 10px 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: #222;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.month-picker-item:hover { border-color: #3a3a3a; }
+.month-picker-item.today { color: var(--accent); border-color: rgba(200, 255, 0, .35); }
+.month-picker-item.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
 
 /* 日历 */
 .ledger-card {

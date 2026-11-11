@@ -80,6 +80,7 @@ let ledgerCategories = [];    // 自定义记账项目
 let ledgerMonth = '';         // 记账/统计页当前月份（YYYY-MM）
 let ledgerViewDate = '';      // 记账页当前选中的日期（YYYY-MM-DD）
 let ledgerStatsScope = 'month'; // 图表统计范围：month 月度 / year 年度累计
+let ledgerPickerYear = 0;     // 月份快速选择弹窗当前显示的年份
 let ledgerDate = '';          // 当前正在记账的日期（YYYY-MM-DD）
 let ledgerEditingId = null;   // 为空表示新增，否则为正在修改的记录编号
 let ledgerSelectedCategory = '';
@@ -3090,6 +3091,56 @@ function shiftLedgerMonth(delta) {
   renderLedger();
 }
 
+// 直接跳到指定月份（YYYY-MM）
+function jumpLedgerMonth(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(monthKey || '')) return;
+  ledgerMonth = monthKey;
+  const todayKey = fmtDateKey(new Date());
+  ledgerViewDate = todayKey.slice(0, 7) === ledgerMonth ? todayKey : `${ledgerMonth}-01`;
+  renderLedger();
+}
+
+// ---------- 月份快速选择 ----------
+function openLedgerMonthPicker() {
+  ledgerPickerYear = (ledgerMonth || currentMonthKey()).split('-').map(Number)[0];
+  renderLedgerMonthPicker();
+  const overlay = document.getElementById('ledgerMonthModal');
+  overlay.classList.add('show');
+  overlay.scrollTop = 0;
+}
+
+function closeLedgerMonthModal() {
+  const overlay = document.getElementById('ledgerMonthModal');
+  if (overlay) overlay.classList.remove('show');
+}
+
+function shiftLedgerPickerYear(delta) {
+  ledgerPickerYear += delta;
+  renderLedgerMonthPicker();
+}
+
+function renderLedgerMonthPicker() {
+  const yearEl = document.getElementById('ledgerPickerYear');
+  const gridEl = document.getElementById('ledgerPickerMonths');
+  if (!yearEl || !gridEl) return;
+  yearEl.textContent = ledgerPickerYear + ' 年';
+  const current = currentMonthKey();
+  let html = '';
+  for (let m = 1; m <= 12; m++) {
+    const key = `${ledgerPickerYear}-${String(m).padStart(2, '0')}`;
+    const cls = ['month-picker-item'];
+    if (key === ledgerMonth) cls.push('active');
+    if (key === current) cls.push('today');
+    html += `<button type="button" class="${cls.join(' ')}" onclick="pickLedgerMonth('${key}')">${m} 月</button>`;
+  }
+  gridEl.innerHTML = html;
+}
+
+function pickLedgerMonth(monthKey) {
+  closeLedgerMonthModal();
+  jumpLedgerMonth(monthKey);
+}
+
 // ---------- 记账弹窗 ----------
 function selectLedgerDate(dateKey) {
   ledgerViewDate = dateKey;
@@ -3979,6 +4030,9 @@ document.getElementById('customWorkdayModal').addEventListener('click', function
 });
 document.getElementById('ledgerModal').addEventListener('click', function(e) {
   if (e.target === this) closeLedgerModal();
+});
+document.getElementById('ledgerMonthModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLedgerMonthModal();
 });
 document.getElementById('shareModal').addEventListener('click', function(e) {
   if (e.target === this) closeShareModal();
