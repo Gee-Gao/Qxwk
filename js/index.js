@@ -4038,11 +4038,19 @@ document.getElementById('shareModal').addEventListener('click', function(e) {
   if (e.target === this) closeShareModal();
 });
 
+// 禁用移动端手指缩放：viewport 之外再拦掉 iOS 的 gesture 与多指触摸
+document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
+document.addEventListener('gesturechange', function(e) { e.preventDefault(); });
+document.addEventListener('touchmove', function(e) {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
 // 快捷键：Esc 关闭所有弹窗并回到计时页
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     closeCustomWorkdayModal();
     closeLedgerModal();
+    closeLedgerMonthModal();
     closeShareModal();
     switchScreen('timer');
   }

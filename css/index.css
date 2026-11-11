@@ -26,6 +26,8 @@ body {
   color: var(--text);
   overflow: hidden;
   user-select: none;
+  /* 禁止双指缩放，只保留上下左右滚动 */
+  touch-action: pan-x pan-y;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
 }
