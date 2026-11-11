@@ -451,19 +451,23 @@
         <div class="ledger-month-label" id="ledgerStatsMonthLabel"></div>
         <button type="button" class="ledger-month-btn" onclick="shiftLedgerMonth(1)" aria-label="下个月">›</button>
       </div>
+      <div class="ledger-scope-tabs" id="ledgerScopeTabs">
+        <button type="button" class="ledger-scope-tab active" data-scope="month" onclick="selectLedgerScope('month')">月度统计</button>
+        <button type="button" class="ledger-scope-tab" data-scope="year" onclick="selectLedgerScope('year')">年度统计</button>
+      </div>
 
       <div class="ledger-stat-card">
-        <h3>本月支出</h3>
+        <h3 id="ledgerStatsTitle">本月支出</h3>
         <div class="ledger-big" id="ledgerStatsTotal">¥0.00</div>
         <div class="ledger-sub" id="ledgerStatsTime">按当前时薪折算：—</div>
         <div class="ledger-salary-row">
-          <div class="ledger-mini"><span>本月工资</span><strong id="ledgerStatsSalary">¥0.00</strong></div>
-          <div class="ledger-mini"><span>剩余工资</span><strong id="ledgerStatsRemaining">¥0.00</strong></div>
+          <div class="ledger-mini"><span id="ledgerStatsSalaryLabel">本月工资</span><strong id="ledgerStatsSalary">¥0.00</strong></div>
+          <div class="ledger-mini"><span id="ledgerStatsRemainingLabel">剩余工资</span><strong id="ledgerStatsRemaining">¥0.00</strong></div>
         </div>
         <div class="ledger-mini-grid">
           <div class="ledger-mini"><span>日均支出</span><strong id="ledgerStatsAvg">¥0.00</strong></div>
           <div class="ledger-mini"><span>记账天数</span><strong id="ledgerStatsDays">0 天</strong></div>
-          <div class="ledger-mini"><span>本月笔数</span><strong id="ledgerStatsCount">0 笔</strong></div>
+          <div class="ledger-mini"><span id="ledgerStatsCountLabel">本月笔数</span><strong id="ledgerStatsCount">0 笔</strong></div>
           <div class="ledger-mini"><span>无消费天数</span><strong id="ledgerStatsFree">0 天</strong></div>
         </div>
       </div>
@@ -474,13 +478,13 @@
       </div>
 
       <div class="ledger-stat-card">
-        <h3>每日支出</h3>
+        <h3 id="ledgerTrendTitle">每日支出</h3>
         <div class="ledger-trend" id="ledgerTrendBars"></div>
         <div class="ledger-trend-axis" id="ledgerTrendAxis"></div>
       </div>
 
       <div class="ledger-stat-card">
-        <h3>本月之最</h3>
+        <h3 id="ledgerTopTitle">本月之最</h3>
         <div id="ledgerTopList"></div>
       </div>
     </div>

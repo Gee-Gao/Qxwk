@@ -79,6 +79,7 @@ let ledgerRecords = [];       // 记账记录
 let ledgerCategories = [];    // 自定义记账项目
 let ledgerMonth = '';         // 记账/统计页当前月份（YYYY-MM）
 let ledgerViewDate = '';      // 记账页当前选中的日期（YYYY-MM-DD）
+let ledgerStatsScope = 'month'; // 图表统计范围：month 月度 / year 年度累计
 let ledgerDate = '';          // 当前正在记账的日期（YYYY-MM-DD）
 let ledgerEditingId = null;   // 为空表示新增，否则为正在修改的记录编号
 let ledgerSelectedCategory = '';
@@ -601,17 +602,32 @@ function buildMonthlySchedule(o) {
   let cumTaxable = 0;
   let prevTax = 0;
   for (let m = startMonth; m < 12; m++) {
-    const probation = !!regular && new Date(year, m, 1) < regular;
+    const monthStart = new Date(year, m, 1);
+    const monthEnd = new Date(year, m + 1, 0);
+    const probation = !!regular && monthStart < regular;
     const monthPay = probation ? grossFull * ratio : grossFull;
-    // 入职当月按 21.75 天折算：只计入职日到月底的工作日；五险一金仍按整月工资作基数
-    let gross = monthPay;
-    if (hire && hire.getFullYear() === year && hire.getMonth() === m) {
-      const monthEnd = new Date(year, m + 1, 0);
+    let gross;
+    if (regular && regular > monthStart && regular <= monthEnd) {
+      // 转正当月：转正前按试用期比例、转正后按正式月薪，按实际工作日加权折算
+      let probationDays = 0;
+      let regularDays = 0;
+      for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+        if (!isWorkday(d)) continue;
+        if (hire && d < hire) continue;
+        if (d < regular) probationDays++;
+        else regularDays++;
+      }
+      const weighted = (probationDays * ratio + regularDays) / STANDARD_MONTH_DAYS;
+      gross = grossFull * Math.min(1, weighted);
+    } else if (hire && hire.getFullYear() === year && hire.getMonth() === m) {
+      // 入职当月按 21.75 天折算：只计入职日到月底的工作日；五险一金仍按整月工资作基数
       let attended = 0;
       for (let d = new Date(hire); d <= monthEnd; d.setDate(d.getDate() + 1)) {
         if (isWorkday(d)) attended++;
       }
       gross = monthPay * Math.min(1, attended / STANDARD_MONTH_DAYS);
+    } else {
+      gross = monthPay;
     }
     const ins = calcMonthlyInsurance(gross, o, monthPay);
     const taxable = gross - ins.insurance - special - IIT_THRESHOLD_MONTHLY;
@@ -803,10 +819,10 @@ function getGrossHourlyRate() {
   return calcHourlyRate(getMonthlyGross());
 }
 
-// 试用期 / 正式期各自的时薪（未配置试用期时两者相同）
-function getPhaseHourlyRates() {
+// 试用期 / 正式期各自的时薪（未配置试用期时两者相同）；grossOnly 强制按税前时薪计算
+function getPhaseHourlyRates(grossOnly) {
   const mode = settings.salaryMode || DEFAULTS.salaryMode;
-  if (mode === 'gross') {
+  if (grossOnly || mode === 'gross') {
     const ratioPct = parseFloat(settings.probationRatio);
     const ratio = (isNaN(ratioPct) || ratioPct <= 0 ? 100 : Math.min(100, ratioPct)) / 100;
     const full = calcHourlyRate(settings.monthlySalary);
@@ -1560,7 +1576,6 @@ function updateTimer() {
   const monthOvertimeTotals = sumOvertime(overtimeInMonth(now.getFullYear(), now.getMonth()));
   const linked = isOvertimeLinked();
   const overtimeToday = linked ? todayOvertime.money : 0;
-  const overtimeMonth = linked ? monthOvertimeTotals.money : 0;
 
   document.getElementById('earnedToday').textContent = formatMoney(state.earnedToday + overtimeToday);
   setFxName('earnedFxName');
@@ -1569,17 +1584,16 @@ function updateTimer() {
   document.getElementById('hourlyRate').textContent = formatMoney(hourlyRate) + '/小时';
   setFxLine('earnedHourlyFx', hourlyRate, '/小时');
 
-  // 本月概览：已完成工作日按整天计，今天的收益按秒实时累计（与今日已赚口径一致）
+  // 本月概览：按每天所属阶段（试用/正式）逐日累计，今天的收益按秒实时增长
   const monthWorked = getWorkedDaysThisMonth();
-  const monthCompleted = getWorkedDaysThisMonth(true);
-  const monthEarned = monthCompleted * getPaidDailyHours() * getHourlyRate() + state.earnedToday + overtimeMonth;
+  const monthEarned = getCurrentMonthEarned();
   document.getElementById('homeMonthEarned').textContent = formatMoney(monthEarned);
   setFxName('homeMonthFxName');
   setFxLine('homeMonthEarnedFx', monthEarned);
   document.getElementById('homeMonthDays').textContent = `已工作 ${formatDays(monthWorked)} 天 / ${settings.workDaysPerMonth} 天`;
 
   // 税后口径：额外展示税前对照卡片，口径标签同步显隐
-  updatePreTaxCard(state, monthWorked, monthCompleted);
+  updatePreTaxCard(state, monthWorked);
 
   // 加班费小面板（今日 / 本月；对比口径下含税前税后）
   renderHomeOvertimePanel(todayOvertime, monthOvertimeTotals, linked);
@@ -1611,7 +1625,7 @@ function applyRowTheme(row, theme) {
 }
 
 // 对比口径下，用税前薪资折算同一批指标，填充税前卡片
-function updatePreTaxCard(state, monthWorked, monthCompleted) {
+function updatePreTaxCard(state, monthWorked) {
   const row = document.getElementById('preTaxRow');
   if (!row) return;
   const mode = settings.salaryMode || DEFAULTS.salaryMode;
@@ -1633,14 +1647,12 @@ function updatePreTaxCard(state, monthWorked, monthCompleted) {
   const grossRate = getGrossHourlyRate();
   const grossToday = state.workedMinutes * grossRate / 60;
   const grossOvertimeToday = linkedOvertime(overtimeOnDay(fmtDateKey(new Date())), grossRate);
-  const grossNow = new Date();
-  const grossOvertimeMonth = linkedOvertime(overtimeInMonth(grossNow.getFullYear(), grossNow.getMonth()), grossRate);
   document.getElementById('preTaxEarnedToday').textContent = formatMoney(grossToday + grossOvertimeToday);
   setFxName('preTaxFxName');
   setFxLine('preTaxEarnedTodayFx', grossToday + grossOvertimeToday);
   document.getElementById('preTaxHourly').textContent = formatMoney(grossRate) + '/小时';
   setFxLine('preTaxHourlyFx', grossRate, '/小时');
-  const preTaxMonthEarned = monthCompleted * getPaidDailyHours() * grossRate + grossToday + grossOvertimeMonth;
+  const preTaxMonthEarned = getCurrentMonthEarned(true);
   document.getElementById('preTaxMonthEarned').textContent = formatMoney(preTaxMonthEarned);
   setFxName('preTaxMonthFxName');
   setFxLine('preTaxMonthEarnedFx', preTaxMonthEarned);
@@ -1665,9 +1677,7 @@ function updateStats() {
   const shiftAnchor = workState.shiftDate;
 
   const yearTotals = sumOvertime(overtimeInYear(thisYear));
-  const monthTotals = sumOvertime(overtimeInMonth(now.getFullYear(), now.getMonth()));
   const yearOvertime = isOvertimeLinked() ? yearTotals.money : 0;
-  const monthOvertime = isOvertimeLinked() ? monthTotals.money : 0;
 
   // 从入职日起算，试用期工作日按试用期时薪、转正后按正式时薪分别累计；
   // 今天跳过整天累计，单独按已工作时长实时折算（跨天夜班归属到班次开始那天）
@@ -1712,11 +1722,9 @@ function updateStats() {
   document.getElementById('annualSpendVal').textContent = formatMoney(annualSpend);
   renderOvertimeLine('annualOvertimeLine', overtimeInYear(thisYear));
 
-  // 本月概览：已完成工作日按整天计，今天的收益随计时实时增长（与计时页口径一致）
+  // 本月概览：按每天所属阶段（试用/正式）逐日累计，今天的收益随计时实时增长
   const monthWorked = getWorkedDaysThisMonth();
-  const monthCompleted = getWorkedDaysThisMonth(true);
-  const monthEarned = monthCompleted * dailyHours * getHourlyRate()
-    + (workState.isRest ? 0 : workState.earnedToday) + monthOvertime;
+  const monthEarned = getCurrentMonthEarned();
   const monthTotal = getMonthlyNet();
   const monthProgress = settings.workDaysPerMonth > 0 ? (monthWorked / settings.workDaysPerMonth) * 100 : 0;
 
@@ -2770,10 +2778,13 @@ function renderLedgerCalendar() {
   if (!grid) return;
   const [y, m] = ledgerMonth.split('-').map(Number);
   const label = `${y} 年 ${m} 月`;
-  ['ledgerMonthLabel', 'ledgerStatsMonthLabel'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = label;
-  });
+  const statsLabel = ledgerStatsScope === 'year'
+    ? (m > 1 ? `${y} 年 1-${m} 月` : `${y} 年 1 月`)
+    : label;
+  const monthLabelEl = document.getElementById('ledgerMonthLabel');
+  if (monthLabelEl) monthLabelEl.textContent = label;
+  const statsLabelEl = document.getElementById('ledgerStatsMonthLabel');
+  if (statsLabelEl) statsLabelEl.textContent = statsLabel;
 
   const offset = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 周一排第一列
   const days = new Date(y, m, 0).getDate();
@@ -2837,48 +2848,112 @@ function renderLedgerRecordList() {
   }).join('');
 }
 
-// 指定月份（YYYY-MM）的工资：与统计页「本月扣缴明细」同源，避免两处口径不一致
-function getLedgerMonthSalary(monthKey) {
-  const mode = settings.salaryMode || DEFAULTS.salaryMode;
+// 年度累计已赚：与统计页「年度概览」同口径，按实际已工作的天数折算，
+// 截至所选月份月末；超过今天时按今天实时收益截止，未来月份不额外增加
+function getYearEarnedThroughMonth(year, endMonth, grossOnly) {
   const now = new Date();
-  const nowKey = monthKeyOf(now);
-  const [y, m] = monthKey.split('-').map(Number);
+  const shiftAnchor = getShiftAnchorDate(now);
+  const monthEnd = new Date(year, endMonth, 0);
+  const cutoff = monthEnd < shiftAnchor ? monthEnd : shiftAnchor;
+  const includeToday = cutoff.getTime() === shiftAnchor.getTime()
+    && shiftAnchor.getFullYear() === year;
 
-  if (monthKey === nowKey) {
-    const row = currentMonthTax(taxParamsFromSettings());
-    if (row) return mode === 'gross' ? row.gross : row.net;
+  const rates = getPhaseHourlyRates(grossOnly);
+  const probationRate = rates.probation === null ? rates.regular : rates.probation;
+  const regularRate = rates.regular === null ? probationRate : rates.regular;
+  const dailyHours = getPaidDailyHours();
+  const hire = parseDateKey(settings.hireDate || '');
+  const regularDate = parseDateKey(getRegularDate());
+  const todayKey = fmtDateKey(shiftAnchor);
+
+  let start = new Date(year, 0, 1);
+  if (hire && hire > start) start = hire;
+  let workedProbation = 0;
+  let workedRegular = 0;
+  for (let d = new Date(start); d <= cutoff && d.getFullYear() === year; d.setDate(d.getDate() + 1)) {
+    if (!isWorkday(d)) continue;
+    // 今天单独按实时收益累计，避免重复计入整天
+    if (includeToday && fmtDateKey(d) === todayKey) continue;
+    if (regularDate && d < regularDate) workedProbation++;
+    else workedRegular++;
   }
-  if (y === now.getFullYear()) {
-    const row = buildMonthlySchedule(taxParamsFromSettings()).find(r => r.month === m - 1);
-    if (row) return mode === 'gross' ? row.gross : row.net;
+
+  let earned = (workedProbation * probationRate + workedRegular * regularRate) * dailyHours;
+  if (includeToday && (!hire || shiftAnchor >= hire)) {
+    const state = getCurrentWorkState();
+    if (!state.isRest) {
+      earned += grossOnly
+        ? state.workedMinutes * getGrossHourlyRate() / 60
+        : state.earnedToday;
+    }
   }
-  return mode === 'gross' ? getMonthlyGross() : getMonthlyNet();
+  const overtimeMatch = d => d.getFullYear() === year && d.getMonth() + 1 <= endMonth;
+  earned += grossOnly
+    ? linkedOvertime(overtimeMatch, getGrossHourlyRate())
+    : linkedOvertime(overtimeMatch);
+  return earned;
+}
+
+// 记账图表的收入：年度看 1 月至所选月份的累计，月度看所选月份本身；
+// 都按今天已实时累计的收益计算，与计时页一样每秒增长
+function getLedgerStatsIncome(year, month, isYear) {
+  const throughMonth = getYearEarnedThroughMonth(year, month);
+  if (isYear) return throughMonth;
+  return throughMonth - getYearEarnedThroughMonth(year, month - 1);
+}
+
+// 本月已赚：逐日按试用期 / 正式期时薪拆分，首页、统计页与记账图表共用同一口径
+function getCurrentMonthEarned(grossOnly) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  return getYearEarnedThroughMonth(year, month, grossOnly)
+    - getYearEarnedThroughMonth(year, month - 1, grossOnly);
+}
+
+// 统计区间内的记账记录：年度为 1 月至所选月份累计
+function ledgerStatsRecords(year, month, isYear) {
+  const startMonth = isYear ? 1 : month;
+  return ledgerRecords.filter(r => {
+    if (!r || typeof r.date !== 'string') return false;
+    const [ry, rm] = r.date.split('-').map(Number);
+    return ry === year && rm >= startMonth && rm <= month;
+  });
 }
 
 function renderLedgerStats() {
   const totalEl = document.getElementById('ledgerStatsTotal');
   if (!totalEl) return;
   const [y, m] = ledgerMonth.split('-').map(Number);
-  const daysInMonth = new Date(y, m, 0).getDate();
-  const records = ledgerMonthRecords(ledgerMonth);
+  const isYear = ledgerStatsScope === 'year';
+  // 年度统计为累计口径：1 月只看 1 月，2 月看 1-2 月
+  const startMonth = isYear ? 1 : m;
+  const records = ledgerStatsRecords(y, m, isYear);
   const total = ledgerTotal(records);
   const seconds = ledgerWorkSeconds(total);
   const daysWithRecords = new Set(records.map(r => r.date)).size;
-  const salary = getLedgerMonthSalary(ledgerMonth);
+
+  // 统计区间天数；收入与计时页一致，按实时已赚每秒累计
+  let daysInScope = 0;
+  for (let i = startMonth; i <= m; i++) daysInScope += new Date(y, i, 0).getDate();
+  const salary = getLedgerStatsIncome(y, m, isYear);
   const remaining = salary - total;
 
+  document.getElementById('ledgerStatsTitle').textContent = isYear ? '年度支出' : '本月支出';
   totalEl.textContent = formatMoney(total);
   document.getElementById('ledgerStatsTime').textContent = seconds === null
     ? '按当前时薪折算：先在「设置」里填好月薪'
     : `折算工作日 ${formatLedgerWork(seconds)} · 按当前时薪折算`;
+  document.getElementById('ledgerStatsSalaryLabel').textContent = isYear ? '累计已赚' : '本月已赚';
   document.getElementById('ledgerStatsSalary').textContent = formatMoney(salary);
   const remainingEl = document.getElementById('ledgerStatsRemaining');
   remainingEl.textContent = (remaining < 0 ? '-¥' : '¥') + Math.abs(remaining).toFixed(2);
   remainingEl.classList.toggle('negative', remaining < 0);
-  document.getElementById('ledgerStatsAvg').textContent = formatMoney(total / daysInMonth);
+  document.getElementById('ledgerStatsAvg').textContent = formatMoney(total / daysInScope);
   document.getElementById('ledgerStatsDays').textContent = daysWithRecords + ' 天';
+  document.getElementById('ledgerStatsCountLabel').textContent = isYear ? '年度笔数' : '本月笔数';
   document.getElementById('ledgerStatsCount').textContent = records.length + ' 笔';
-  document.getElementById('ledgerStatsFree').textContent = (daysInMonth - daysWithRecords) + ' 天';
+  document.getElementById('ledgerStatsFree').textContent = (daysInScope - daysWithRecords) + ' 天';
 
   // 分类占比
   const catBox = document.getElementById('ledgerCategoryList');
@@ -2898,27 +2973,48 @@ function renderLedgerStats() {
       </div>
       <div class="ledger-cat-bar"><div class="ledger-cat-fill" style="width:${pct.toFixed(1)}%"></div></div>
     </div>`;
-  }).join('') : '<div class="ledger-empty-hint">本月还没有支出分类</div>';
+  }).join('') : `<div class="ledger-empty-hint">${isYear ? '年度' : '本月'}还没有支出分类</div>`;
 
-  // 每日支出趋势
-  const daily = new Array(daysInMonth + 1).fill(0);
-  records.forEach(r => {
-    const day = parseInt(r.date.slice(8, 10), 10);
-    if (day >= 1 && day <= daysInMonth) daily[day] += Number(r.amount) || 0;
-  });
-  const max = Math.max(...daily.slice(1), 0);
-  document.getElementById('ledgerTrendBars').innerHTML = daily.slice(1).map((v, i) => {
-    const h = max > 0 ? v / max * 100 : 0;
-    const cls = 'ledger-trend-bar' + (v > 0 ? ' has' : '') + (v === max && v > 0 ? ' max' : '');
-    return `<div class="${cls}" style="height:${h}%" title="${m} 月 ${i + 1} 日 ${formatMoney(v)}"></div>`;
-  }).join('');
-  document.getElementById('ledgerTrendAxis').innerHTML = [...new Set([1, 5, 10, 15, 20, 25, daysInMonth])]
-    .filter(d => d <= daysInMonth).map(d => `<span>${d}</span>`).join('');
+  // 支出趋势：月度看每日，年度看每月
+  const barsEl = document.getElementById('ledgerTrendBars');
+  const axisEl = document.getElementById('ledgerTrendAxis');
+  document.getElementById('ledgerTrendTitle').textContent = isYear ? '每月支出' : '每日支出';
+  if (isYear) {
+    const monthly = new Array(m + 1).fill(0);
+    records.forEach(r => {
+      const mm = parseInt(r.date.slice(5, 7), 10);
+      if (mm >= startMonth && mm <= m) monthly[mm] += Number(r.amount) || 0;
+    });
+    const maxMonth = Math.max(...monthly.slice(startMonth), 0);
+    barsEl.innerHTML = monthly.slice(startMonth).map((v, i) => {
+      const h = maxMonth > 0 ? v / maxMonth * 100 : 0;
+      const cls = 'ledger-trend-bar' + (v > 0 ? ' has' : '') + (v === maxMonth && v > 0 ? ' max' : '');
+      return `<div class="${cls}" style="height:${h}%" title="${startMonth + i} 月 ${formatMoney(v)}"></div>`;
+    }).join('');
+    axisEl.innerHTML = monthly.slice(startMonth)
+      .map((_, i) => `<span>${startMonth + i}</span>`).join('');
+  } else {
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const daily = new Array(daysInMonth + 1).fill(0);
+    records.forEach(r => {
+      const day = parseInt(r.date.slice(8, 10), 10);
+      if (day >= 1 && day <= daysInMonth) daily[day] += Number(r.amount) || 0;
+    });
+    const max = Math.max(...daily.slice(1), 0);
+    barsEl.innerHTML = daily.slice(1).map((v, i) => {
+      const h = max > 0 ? v / max * 100 : 0;
+      const cls = 'ledger-trend-bar' + (v > 0 ? ' has' : '') + (v === max && v > 0 ? ' max' : '');
+      return `<div class="${cls}" style="height:${h}%" title="${m} 月 ${i + 1} 日 ${formatMoney(v)}"></div>`;
+    }).join('');
+    axisEl.innerHTML = [...new Set([1, 5, 10, 15, 20, 25, daysInMonth])]
+      .filter(d => d <= daysInMonth).map(d => `<span>${d}</span>`).join('');
+  }
 
-  // 本月之最
+  // 本月之最 / 年度之最
+  document.getElementById('ledgerTopTitle').textContent = isYear ? '年度之最' : '本月之最';
   const topBox = document.getElementById('ledgerTopList');
   if (!records.length) {
-    topBox.innerHTML = '<div class="ledger-empty-hint">本月还没有记录，记账后会显示本月之最</div>';
+    topBox.innerHTML = `<div class="ledger-empty-hint">${isYear ? '年度' : '本月'}还没有记录，记账后会显示${isYear ? '年度' : '本月'}之最</div>`;
     return;
   }
   const maxRecord = records.reduce((a, b) => (Number(b.amount) || 0) > (Number(a.amount) || 0) ? b : a);
@@ -2926,7 +3022,7 @@ function renderLedgerStats() {
   records.forEach(r => { const name = r.name || '其他'; catCounts[name] = (catCounts[name] || 0) + 1; });
   const topCatName = Object.keys(catCounts).sort((a, b) => catCounts[b] - catCounts[a])[0];
   const topCatIcon = (records.find(r => (r.name || '其他') === topCatName) || {}).icon || '📦';
-  const freeDays = daysInMonth - daysWithRecords;
+  const freeDays = daysInScope - daysWithRecords;
   topBox.innerHTML = `
     <div class="ledger-top-row">
       <span class="lbl">最贵的一笔</span>
@@ -2940,9 +3036,28 @@ function renderLedgerStats() {
     </div>
     <div class="ledger-top-row">
       <span class="lbl">记账覆盖</span>
-      <span class="val">${daysWithRecords} / ${daysInMonth} 天
+      <span class="val">${daysWithRecords} / ${daysInScope} 天
         <em>无消费 ${freeDays} 天</em></span>
     </div>`;
+}
+
+// 记账图表收入每秒刷新：只更新会随秒变化的收入与剩余工资，避免整块重绘
+function refreshLedgerStatsIncome() {
+  const panel = document.querySelector('#screen-ledger .ledger-panel[data-tab="stats"]');
+  if (!panel || !panel.classList.contains('active')) return;
+  const salaryEl = document.getElementById('ledgerStatsSalary');
+  const remainingEl = document.getElementById('ledgerStatsRemaining');
+  if (!salaryEl || !remainingEl || !ledgerMonth) return;
+
+  const [y, m] = ledgerMonth.split('-').map(Number);
+  const isYear = ledgerStatsScope === 'year';
+  const total = ledgerTotal(ledgerStatsRecords(y, m, isYear));
+  const salary = getLedgerStatsIncome(y, m, isYear);
+  const remaining = salary - total;
+
+  salaryEl.textContent = formatMoney(salary);
+  remainingEl.textContent = (remaining < 0 ? '-¥' : '¥') + Math.abs(remaining).toFixed(2);
+  remainingEl.classList.toggle('negative', remaining < 0);
 }
 
 // ---------- 标签页与月份 ----------
@@ -2954,6 +3069,16 @@ function selectLedgerTab(tab) {
     panel.classList.toggle('active', panel.dataset.tab === tab);
   });
   renderLedger();
+}
+
+// 图表范围切换：月度 / 年度累计
+function selectLedgerScope(scope) {
+  ledgerStatsScope = scope === 'year' ? 'year' : 'month';
+  document.querySelectorAll('#ledgerScopeTabs .ledger-scope-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.scope === ledgerStatsScope);
+  });
+  renderLedgerCalendar();
+  renderLedgerStats();
 }
 
 function shiftLedgerMonth(delta) {
@@ -3843,6 +3968,8 @@ setInterval(() => {
       updatePaidLeave();
       updateStats();
     }
+    // 记账图表收入与计时页一致，每秒实时累计
+    if (id === 'screen-ledger') refreshLedgerStatsIncome();
   }
 }, 1000);
 

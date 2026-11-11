@@ -950,6 +950,33 @@ body {
   animation: statsPanelIn .22s ease;
 }
 
+/* 图表统计范围切换：月度 / 年度累计 */
+.ledger-scope-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.ledger-scope-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.ledger-scope-tab:hover { border-color: #3a3a3a; color: var(--text); }
+.ledger-scope-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
 /* 月份切换 */
 .ledger-month-nav {
   display: flex;
