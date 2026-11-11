@@ -1,0 +1,1544 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  color-scheme: dark; /* 让日期/时间选择器等原生控件跟随暗色主题 */
+  --bg: #0f0f0f;
+  --card: #1a1a1a;
+  --card-light: #f5f5f5;
+  --accent: #c8ff00;
+  --accent-dim: #9bc200;
+  --accent-dark: #1a1a1a;
+  --compare: #a78bfa;      /* 对照色：紫罗兰，与主色（荧光绿）色相 + 明暗双重区分 */
+  --compare-bg: #1e1830;   /* 对照色浅底（左侧卡片） */
+  --compare-border: #463469;
+  --compare-line: rgba(167, 139, 250, .35);  /* 对照色描边（右侧黑底卡片） */
+  --text: #ffffff;
+  --text-dim: #999;
+  --text-dark: #333;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --screen-pad: 16px; /* .screen 内边距，sticky 分类栏需要用它抵消 */
+}
+
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* 移动端浏览器地址栏收缩时不留空白 */
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--screen-pad);
+  padding-bottom: 80px;
+  display: none;
+}
+.screen.active { display: block; }
+
+.screen::-webkit-scrollbar { width: 4px; }
+.screen::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+/* 顶部栏 */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 4px 16px;
+}
+.header .logo {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.header .logo span { color: var(--accent); }
+.period-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #000;
+  white-space: nowrap;
+}
+.period-badge.probation {
+  color: var(--accent);
+  border-color: #46520f;
+  background: rgba(200, 255, 0, .08);
+}
+/* 计时卡片顶部：时薪已含通勤时间的标识 */
+.commute-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #3a3a3a;
+  background: #1d1d1d;
+  color: var(--accent-dim);
+  white-space: nowrap;
+}
+.header .icon-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #222;
+  border: none;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+}
+.header .icon-btn:hover { background: #333; }
+
+/* 计时卡片 */
+.timer-card {
+  background: linear-gradient(145deg, #1e1e1e, #161616);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  text-align: center;
+  border: 1px solid #2a2a2a;
+}
+.timer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.timer-status .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s infinite;
+}
+.timer-status.paused .dot { background: #ff6b6b; animation: none; }
+.timer-status.commuting .dot { background: #4da3ff; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+.timer-display {
+  font-size: 56px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 2px;
+  color: var(--text);
+  margin-bottom: 8px;
+  font-family: "SF Mono", "Consolas", monospace;
+}
+.timer-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.timer-progress {
+  width: 100%;
+  height: 6px;
+  background: #2a2a2a;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.timer-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width .5s ease;
+}
+.timer-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.timer-quote {
+  font-size: 13px;
+  color: #aaa;
+  padding: 10px 0 0;
+  border-top: 1px solid #2a2a2a;
+  line-height: 1.5;
+}
+
+/* 统计卡片网格 */
+.stats-grid {
+  display: grid;
+  grid-auto-rows: 1fr; /* 每行等高：税后与税前两组卡片高度自动对齐 */
+  column-gap: 10px;
+  row-gap: 12px;
+  margin-top: 12px;
+}
+.stats-row {
+  display: flex;
+  gap: 10px;
+}
+.stat-card {
+  flex: 1;
+  min-width: 0; /* 同上：避免卡片内长文本把 flex 项撑出容器 */
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+}
+.stat-card.green {
+  background: var(--accent);
+  color: #000;
+}
+.stat-card.gray {
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  color: var(--text);
+}
+/* 主色主题的次级卡片：灰底描主色边框，与绿色卡片归为一组 */
+.stat-card.net { border-color: rgba(200, 255, 0, .35); }
+/* 对照主题卡片：左侧用对照色底，右侧沿用黑底 + 对照色描边 */
+.stat-card.compare {
+  background: var(--compare-bg);
+  border: 1px solid var(--compare-border);
+}
+.stat-card.compare-flat {
+  background: #1e1e1e;
+  border: 1px solid var(--compare-line);
+}
+.stat-card .label {
+  font-size: 12px;
+  /* 用颜色而非 opacity 变淡：opacity 会连带冲淡内部的「税前/税后」徽章 */
+  color: rgba(255, 255, 255, .7);
+  margin-bottom: 6px;
+}
+.stat-card.green .label {
+  color: rgba(0, 0, 0, .7);
+}
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.stat-card .sub {
+  font-size: 14px;
+  opacity: .6;
+  margin-top: 4px;
+}
+/* 计时页卡片内的外币换算附加行 */
+.stat-card .fx-sub {
+  font-size: 14px;
+  opacity: .65;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+/* 外币区块的币种名称标签，置于外币金额上方 */
+.stat-card .fx-name {
+  font-size: 14px;
+  opacity: .65;
+  margin-top: 6px;
+}
+.stat-card .icon {
+  position: absolute;
+  top: 12px; right: 12px;
+  font-size: 16px;
+  opacity: .5;
+}
+/* 卡片外的「查看更多数据」入口 */
+.stats-more {
+  display: block;
+  margin-top: 10px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+}
+/* 口径标注（税后/税前）挪到卡片右上角，改用纯文字，不再用胶囊徽章 */
+.stat-card .card-note {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 11px;
+  letter-spacing: .02em;
+}
+
+/* 「税前」两处都在深底上，统一用对照紫，左右完全一致 */
+.stat-card.compare .card-note,
+.stat-card.compare-flat .card-note { color: var(--compare); }
+/* 黑底卡片上的口径标注改为白色，与上方卡片保持一致的清晰度 */
+.stat-card.compare-flat .card-note { color: var(--text); }
+
+/* 设置页 */
+.settings-card {
+  background: #1a1a1a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  border: 1px solid #2a2a2a;
+}
+.settings-card h3 {
+  font-size: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: -8px 0 14px;
+}
+
+.settings-card.about {
+  margin-top: 16px;
+}
+.settings-card.about p {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.settings-subhead {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; /* 作为 grid/flex 项时，默认 min-width:auto 会被输入框固有宽度撑开轨道 */
+}
+.field-group label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.field-group .field-hint {
+  font-size: 11px;
+  color: #777;
+  line-height: 1.45;
+}
+.field-group .field-hint:empty { display: none; }
+.field-group input {
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 16px; /* 移动端 16px 以下会触发 iOS Safari 聚焦自动放大 */
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  min-width: 0;
+  width: 100%;
+  align-self: stretch;
+  transition: border-color .2s;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.field-group input:focus { border-color: var(--accent); }
+.field-group input[type="date"],
+.field-group input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 42px;
+  line-height: 1.2;
+}
+.field-group input::placeholder { color: #555; }
+.field-group input:disabled { opacity: .45; cursor: not-allowed; }
+.field-group select {
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 16px; /* 移动端 16px 以下会触发 iOS Safari 聚焦自动放大 */
+  outline: none;
+  min-width: 0;
+  width: 100%;
+  align-self: stretch;
+  transition: border-color .2s;
+  cursor: pointer;
+}
+.field-group select:focus { border-color: var(--accent); }
+.field-group select:disabled { opacity: .45; cursor: not-allowed; }
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+.btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+}
+.btn-primary:hover { background: var(--accent-dim); }
+.btn-secondary {
+  background: #2a2a2a;
+  color: var(--text);
+}
+.btn-secondary:hover { background: #333; }
+.btn-dark {
+  background: #000;
+  color: #fff;
+}
+.btn-dark:hover { background: #222; }
+
+/* 带薪离岗计时 */
+.paid-leave-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.paid-leave-card h3 { font-size: 16px; margin-bottom: 4px; }
+.paid-leave-card .desc { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; }
+.paid-leave-timer {
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Consolas", monospace;
+  text-align: center;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+.paid-leave-earned {
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 4px;
+}
+.paid-leave-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+/* 设备成本 */
+.cost-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.cost-card h3 {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.cost-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+.cost-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cost-result {
+  background: var(--accent);
+  color: #000;
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  text-align: center;
+}
+.cost-result .rate {
+  font-size: 24px;
+  font-weight: 700;
+}
+/* 对比口径：税前 / 税后并排算 */
+.cost-result .rate.rate-cols { display: flex; }
+.cost-result .rate-cols .rate-col { flex: 1; }
+.cost-result .rate-cols .rate-col + .rate-col { border-left: 1px solid rgba(0, 0, 0, .18); }
+.cost-result .rate-cols .rate-val { font-size: 20px; font-weight: 700; }
+.cost-result .rate-cap {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: .65;
+  margin-top: 2px;
+}
+.cost-result .rate-label {
+  font-size: 12px;
+  opacity: .7;
+}
+.cost-result .usage {
+  font-size: 12px;
+  opacity: .7;
+  margin-top: 2px;
+}
+.device-item {
+  position: relative;
+  border-top: 1px solid #262626;
+  margin-top: 14px;
+}
+.device-item:first-child {
+  border-top: none;
+  margin-top: 0;
+}
+.device-item .device-name {
+  padding-right: 32px; /* 给右上角的删除按钮留位 */
+  margin-bottom: 10px;
+}
+.device-item .device-del {
+  position: absolute;
+  top: 0; right: 0;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  border: none;
+  color: #999;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.device-item .device-del:hover { background: #3a3a3a; color: #fff; }
+.add-device {
+  border: 2px dashed #333;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  margin-top: 14px;
+  transition: border-color .2s, color .2s;
+}
+.add-device:hover { border-color: var(--accent); color: var(--accent); }
+.add-device.limit,
+.add-device.limit:hover {
+  border-color: #2a2a2a;
+  color: #555;
+  cursor: default;
+}
+
+/* 加班记录列表 */
+.overtime-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 30px 12px 0; /* 右侧留出删除按钮的位置 */
+  border-top: 1px solid #262626;
+}
+.overtime-item:first-child { border-top: none; padding-top: 0; }
+.overtime-item .overtime-date { font-size: 13px; }
+.overtime-item .overtime-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.overtime-item .overtime-amount {
+  margin-left: auto;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+}
+/* 对比口径：单条记录里税前 / 税后各一行 */
+.overtime-item .overtime-amount.compare {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+/* 单一口径：在金额前标注税前 / 税后 */
+.overtime-item .overtime-amount .overtime-basis {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+/* 调休记录：使用（扣减）的时长用中性色，与加班的绿色区分 */
+.overtime-item .overtime-amount.used { color: var(--text-dim); }
+.overtime-item .overtime-del {
+  position: absolute;
+  top: 50%; right: 0;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  border: none;
+  color: #999;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.overtime-item .overtime-del:hover { background: #3a3a3a; color: #fff; }
+
+/* 底部导航栏 */
+.bottom-nav {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 64px;
+  background: rgba(15, 15, 15, .95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  transition: all .2s;
+  color: var(--text-dim);
+}
+.nav-item.active {
+  color: var(--text);
+  background: rgba(200, 255, 0, .12);
+}
+.nav-item .nav-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.nav-item .nav-label {
+  font-size: 10px;
+  font-weight: 500;
+}
+.nav-item.active .nav-label { color: var(--accent); }
+
+/* 弹窗 */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 100;
+  padding: 16px 0;
+  overflow-y: auto; /* 弹窗内容过高时允许滚动，保证矮屏上也能点到按钮 */
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: #1a1a1a;
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 90%;
+  max-width: 360px;
+  border: 1px solid #2a2a2a;
+  margin: auto; /* 用自动外边距保持居中；内容超高时改为滚动，避免被裁切 */
+}
+.modal h3 {
+  font-size: 18px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal h3 .close {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 22px;
+  background: none;
+  border: none;
+}
+
+/* 自定义工作日：当月日历 */
+.cal-head {
+  display: flex;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #777;
+  text-align: center;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-day {
+  min-height: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 0;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  background: #222;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.cal-day.empty { border: none; background: none; cursor: default; }
+.cal-day .cal-tag { font-size: 9px; opacity: .7; }
+.cal-day.work {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+.cal-day.work .cal-tag { opacity: .8; }
+
+/* 轻提示 */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #333;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  opacity: 0;
+  transition: all .3s;
+  z-index: 200;
+  pointer-events: none;
+  max-width: 88%;
+  text-align: center;
+  line-height: 1.4;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 分享卡片 */
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.header .icon-btn svg { width: 18px; height: 18px; display: block; }
+.share-modal { max-width: 440px; }
+.share-preview {
+  background: #000;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+/* 9:16 长图在矮屏上按视口高度缩放，保证下方按钮始终可见 */
+.share-preview img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 56vh;
+  object-fit: contain;
+}
+.share-actions { display: flex; gap: 10px; margin-top: 16px; }
+.share-actions .btn { flex: 1; }
+.share-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #777;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* 分组标题 */
+.section-title {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 16px 0 8px;
+  padding: 0 4px;
+}
+
+/* 统计页卡片 */
+.stats-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.stats-card h3 {
+  font-size: 15px;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+}
+/* 本月扣缴明细：右上角放阶段标签 */
+#monthTaxCard { position: relative; }
+#monthTaxCard .period-badge {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+}
+.stats-card .big-val {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.stats-card .sub-val {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.stats-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+/* 扣缴明细：左右两列的键值行 */
+.deduct-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #242424;
+}
+.deduct-row:last-child { border-bottom: none; }
+.deduct-row .lbl { color: var(--text-dim); }
+.deduct-row .val { font-variant-numeric: tabular-nums; }
+.deduct-row.total { font-weight: 600; }
+.deduct-row.total .lbl { color: var(--text); }
+.deduct-row.total .val { color: var(--accent); }
+/* 统计页：加班费与加班总时长明细行 */
+.overtime-line {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 8px 0;
+}
+/* 计时页：加班费小面板 */
+.overtime-panel {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 12px;
+}
+.overtime-panel-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.overtime-panel-note { color: #777; }
+.overtime-panel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+/* 调休口径：总 / 已 / 剩余三列 */
+.overtime-panel-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.overtime-panel-grid.cols-3 .overtime-stat .val { font-size: 15px; }
+.overtime-stat {
+  background: #222;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  text-align: left;
+}
+.overtime-stat .val {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.overtime-stat .lbl {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+/* 对比口径下的税后块：与上方税后行同色 */
+.overtime-stat.compare .val { color: var(--compare); }
+.stats-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.stats-bar-row .lbl {
+  width: 60px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.stats-bar-row .bar {
+  flex: 1;
+  height: 8px;
+  background: #222;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.stats-bar-row .bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+}
+.stats-bar-row .bar-fill.spend { background: #ff7b7b; }
+.stats-bar-row .val {
+  width: 70px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 统计页分类切换：卡片越加越多，按分类分屏展示，避免无限下拉 */
+.stats-tabs, .ledger-tabs {
+  position: sticky;
+  /* 抵消 .screen 的上内边距，滚动时才能贴住顶部，不留缝隙让卡片透出来 */
+  top: calc(-1 * var(--screen-pad));
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  padding: 8px 0 12px;
+  background: var(--bg);
+}
+.stats-tab, .ledger-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 4px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.stats-tab:hover, .ledger-tab:hover { border-color: #3a3a3a; color: var(--text); }
+.stats-tab.active, .ledger-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+.stats-panel { display: none; }
+.stats-panel.active {
+  display: block;
+  animation: statsPanelIn .22s ease;
+}
+@keyframes statsPanelIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ============ 记账模块 ============ */
+.ledger-panel { display: none; }
+.ledger-panel.active {
+  display: block;
+  animation: statsPanelIn .22s ease;
+}
+
+/* 月份切换 */
+.ledger-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.ledger-month-label {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ledger-month-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid #2a2a2a;
+  background: #222;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.ledger-month-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+/* 日历 */
+.ledger-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.ledger-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #777;
+  text-align: center;
+}
+.ledger-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.ledger-day {
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 0;
+  background: #222;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.ledger-day:hover { background: #262626; border-color: #3a3a3a; }
+.ledger-day.empty { background: none; border: none; cursor: default; }
+.ledger-day.has-record { color: var(--text); }
+.ledger-day.selected {
+  border-color: var(--accent);
+  background: rgba(200, 255, 0, .06);
+}
+.ledger-day.today .l-day-num {
+  background: var(--accent);
+  color: #000;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-weight: 700;
+}
+.ledger-day .l-day-amount {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.ledger-empty-hint {
+  font-size: 12px;
+  color: #777;
+  text-align: center;
+  padding: 14px 0;
+}
+.ledger-add-btn {
+  width: 100%;
+  margin: 8px 0 12px;
+}
+
+/* 本月汇总 */
+.ledger-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.ledger-sum-item {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 12px 6px;
+  text-align: center;
+}
+.ledger-sum-item span {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.ledger-sum-item strong {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.ledger-sum-item.accent strong { color: var(--accent); }
+
+/* 记录列表 */
+.ledger-record {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.ledger-record:hover { border-color: #3a3a3a; }
+.ledger-record-icon { width: 24px; font-size: 18px; text-align: center; }
+.ledger-record-info { flex: 1; min-width: 0; }
+.ledger-record-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ledger-record-meta { font-size: 11px; color: #777; margin-top: 2px; }
+.ledger-record-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 统计卡片 */
+.ledger-stat-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.ledger-stat-card h3 {
+  font-size: 15px;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+}
+.ledger-big {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 4px;
+}
+.ledger-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.ledger-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.ledger-salary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ledger-mini {
+  background: #222;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.ledger-mini span {
+  display: block;
+  font-size: 11px;
+  color: #777;
+  margin-bottom: 4px;
+}
+.ledger-mini strong {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.ledger-mini strong.negative { color: #ff7b7b; }
+
+/* 分类占比 */
+.ledger-cat-row { margin-bottom: 12px; }
+.ledger-cat-row:last-child { margin-bottom: 0; }
+.ledger-cat-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.ledger-cat-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger-cat-val { color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ledger-cat-bar {
+  height: 6px;
+  background: #262626;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.ledger-cat-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* 每日趋势 */
+.ledger-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 80px;
+  padding-top: 6px;
+}
+.ledger-trend-bar {
+  flex: 1;
+  min-width: 0;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  opacity: .5;
+}
+.ledger-trend-bar.has { min-height: 2px; }
+.ledger-trend-bar.max { opacity: 1; box-shadow: 0 0 6px rgba(200, 255, 0, .45); }
+.ledger-trend-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #777;
+  margin-top: 6px;
+}
+
+/* 本月之最 */
+.ledger-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid #242424;
+  font-size: 13px;
+}
+.ledger-top-row:last-child { border-bottom: none; }
+.ledger-top-row .lbl { color: var(--text-dim); white-space: nowrap; }
+.ledger-top-row .val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ledger-top-row .val em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: #777;
+  margin-top: 2px;
+}
+
+/* 记账弹窗 */
+.modal.ledger-modal { max-width: 400px; }
+.ledger-del {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #777;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+.ledger-del:hover { background: #3a1f1f; color: #ff7b7b; }
+.ledger-form-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.ledger-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.ledger-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid #2a2a2a;
+  background: #222;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.ledger-cat:hover { border-color: #3a3a3a; color: var(--text); }
+.ledger-cat.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  font-weight: 600;
+}
+.ledger-cat-add { border-style: dashed; }
+.ledger-custom-cats {
+  margin-top: -4px;
+  padding-top: 8px;
+  border-top: 1px dashed #2a2a2a;
+}
+.ledger-custom-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.ledger-cat-del {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: #262626;
+  color: #999;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex: none;
+}
+.ledger-cat-del:hover { background: #3a1f1f; color: #ff7b7b; }
+.ledger-custom-form {
+  background: #222;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  margin-bottom: 12px;
+}
+.ledger-custom-form input {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  margin-bottom: 8px;
+}
+.ledger-custom-form input:focus { border-color: var(--accent-dim); }
+.ledger-icon-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.ledger-icon-option {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ledger-icon-option.active { border-color: var(--accent); background: rgba(200, 255, 0, .12); }
+.ledger-custom-actions { display: flex; gap: 8px; }
+.ledger-custom-actions .btn { padding: 9px; font-size: 12px; }
+.ledger-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #222;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 10px;
+}
+.ledger-amount-row span { font-size: 20px; color: var(--accent); font-weight: 700; }
+.ledger-amount-row input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.ledger-amount-row input::placeholder { color: #555; }
+.ledger-note-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #2a2a2a;
+  background: #222;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.ledger-note-input:focus { border-color: var(--accent-dim); }
+.ledger-work-preview {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height .25s ease, opacity .25s ease, margin .25s ease;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.ledger-work-preview.show {
+  max-height: 80px;
+  opacity: 1;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  background: rgba(200, 255, 0, .06);
+  border: 1px solid rgba(200, 255, 0, .25);
+  border-radius: var(--radius-sm);
+}
+.ledger-work-preview strong { color: var(--accent); font-size: 15px; }
+.ledger-work-precise { display: block; font-size: 11px; color: #777; margin-top: 3px; }
+.ledger-submit { width: 100%; margin-top: 12px; }
+
+/* 生命消耗大盘 */
+.life-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.life-card h3 { font-size: 16px; margin-bottom: 4px; }
+.life-card .desc { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; }
+
+.life-hero {
+  background: #000;
+  border: 1px solid #262626;
+  border-radius: var(--radius-sm);
+  padding: 18px 14px;
+  text-align: center;
+  margin-top: 14px;
+}
+.life-hero .life-hours {
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  font-family: "SF Mono", "Consolas", monospace;
+  line-height: 1.1;
+}
+.life-hero .life-hours .unit {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-dim);
+  margin-left: 4px;
+}
+.life-hero .life-hours-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+.life-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.life-stat {
+  background: #222;
+  border-radius: var(--radius-sm);
+  padding: 10px 4px;
+  text-align: center;
+  min-width: 0;
+}
+.life-stat .v {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.life-stat .v small { font-size: 11px; font-weight: 400; color: var(--text-dim); }
+.life-stat .k { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+.life-empty {
+  font-size: 12px;
+  color: #777;
+  text-align: center;
+  line-height: 1.6;
+  padding: 14px 0 4px;
+}
+
+/* 反向计算器 */
+.calc-card {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+.calc-card h3 { font-size: 16px; margin-bottom: 4px; }
+.calc-card .desc { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; }
+.calc-card .field-group { margin-top: 12px; }
+.calc-card .cost-result { margin-top: 12px; }
+
+/* 分段选择控件（休息制度） */
+.seg-control {
+  display: flex;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.seg-btn {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+.seg-btn + .seg-btn { border-left: 1px solid #333; }
+.seg-btn.active {
+  background: var(--accent);
+  color: #000;
+}
+/* 依赖其它开关、当前不可用的选项整体置灰 */
+.seg-control.disabled {
+  opacity: .4;
+  pointer-events: none;
+}
+
+/* 移动端适配：窄屏下日期/数字输入并排会挤，改为单列 */
+@media (max-width: 380px) {
+  :root { --screen-pad: 12px; }
+  .cost-fields { grid-template-columns: 1fr; }
+  .settings-grid { grid-template-columns: 1fr; }
+  .timer-display { font-size: 48px; letter-spacing: 1px; }
+  /* 金额位数多时 28px 会顶出卡片，窄屏缩小并收紧内边距 */
+  .stat-card { padding: 12px; }
+  .stat-card .value { font-size: 22px; }
+}
+/* 横屏 / 矮屏：避免计时卡片把内容顶出屏幕 */
+@media (max-height: 560px) {
+  .timer-card { padding: 16px; }
+  .timer-display { font-size: 40px; }
+}

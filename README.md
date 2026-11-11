@@ -76,7 +76,7 @@
 
 ## 技术说明
 
-- 单文件应用：全部 HTML / CSS / JavaScript 都内联在 `index.html` 中，无构建步骤、无第三方运行时依赖
+- 纯静态应用：HTML 结构、CSS 样式与 JavaScript 逻辑分别放在 `index.html`、`css/index.css`、`js/index.js` 中，无构建步骤、无第三方运行时依赖
 - PWA：通过 `manifest.json` 与 `sw.js` 支持安装到桌面/主屏及离线访问
 - 存储：`localStorage`
 - 外部接口（均为可选，失败时有本地兜底）：
@@ -109,7 +109,11 @@ npx serve .
 
 ```
 Qxwk/
-├── index.html        # 应用主体（结构、样式、逻辑全部内联）
+├── index.html        # 应用主体（HTML 结构）
+├── css/
+│   └── index.css     # 全部样式
+├── js/
+│   └── index.js      # 全部逻辑（含 Service Worker 注册）
 ├── manifest.json     # PWA 清单
 ├── sw.js             # Service Worker：预缓存应用外壳、离线回退
 ├── icons/            # 应用图标（192 / 512 / maskable / apple-touch）
