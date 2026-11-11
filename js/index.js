@@ -1669,6 +1669,7 @@ function updateStats() {
   // 生命消耗大盘 & 反向计算器
   updateLifePanel();
   updateCalculator();
+  renderHourlyTrend();
 
   // 年度累计：开启联动时把加班应得一并计入，今天的收益按秒实时累计
   const dailyHours = getPaidDailyHours();
@@ -1761,6 +1762,175 @@ function updateStats() {
     }
   }
   renderOvertimeLine('monthOvertimeLine', overtimeInMonth(now.getFullYear(), now.getMonth()));
+}
+
+// ============ 时薪波动曲线 ============
+// 每月时薪 = 当月薪资 ÷（每日工时 × 当月工作日数）：月薪不变，工作日多的月份每小时更便宜
+// 只展示最近 12 个月，且不早于入职当月
+let hourlyTrendSig = '';
+
+// 指定月份适用的月薪：转正前按试用期，之后按正式期；口径跟随设置里的税前 / 税后
+function getMonthlyPayForMonth(monthStart) {
+  const mode = settings.salaryMode || DEFAULTS.salaryMode;
+  const regular = parseDateKey(getRegularDate());
+  const probation = !!regular && monthStart < regular;
+  const ratioPct = parseFloat(settings.probationRatio);
+  const ratio = (isNaN(ratioPct) || ratioPct <= 0 ? 100 : Math.min(100, ratioPct)) / 100;
+  const full = Math.max(0, parseFloat(settings.monthlySalary) || 0);
+  if (mode === 'gross') return full * (probation ? ratio : 1);
+  const profile = calcNetProfile(taxParamsFromSettings());
+  if (probation) {
+    if (profile.probation) return profile.probation.net;
+    // 跨年入职时当年明细里没有试用期月份，按正式到手 × 试用期比例近似
+    return profile.regular ? profile.regular.net * ratio : full * ratio;
+  }
+  return profile.regular ? profile.regular.net : full;
+}
+
+// 曲线数据：从入职月（或 11 个月前）到今天所在的月份
+function getHourlyTrendData() {
+  const now = new Date();
+  const curIdx = now.getFullYear() * 12 + now.getMonth();
+  const hire = parseDateKey(settings.hireDate || '');
+  const hireIdx = hire ? hire.getFullYear() * 12 + hire.getMonth() : curIdx - 11;
+  const startIdx = Math.max(hireIdx, curIdx - 11);
+  const dailyHours = getPaidDailyHours();
+  const data = [];
+  for (let idx = startIdx; idx <= curIdx; idx++) {
+    const year = Math.floor(idx / 12);
+    const month = idx % 12;
+    const workDays = countWorkdaysInMonth(year, month);
+    const pay = getMonthlyPayForMonth(new Date(year, month, 1));
+    const hourly = dailyHours > 0 && workDays > 0 ? pay / (dailyHours * workDays) : 0;
+    data.push({ year, month, workDays, hourly });
+  }
+  return data;
+}
+
+function renderHourlyTrend() {
+  const chartEl = document.getElementById('hourlyTrendChart');
+  const nowEl = document.getElementById('hourlyTrendNow');
+  const deltaEl = document.getElementById('hourlyTrendDelta');
+  if (!chartEl || !nowEl || !deltaEl) return;
+
+  const data = getHourlyTrendData();
+  // 统计页每秒刷新，时薪只随设置与月份变化，签名一致时跳过重绘
+  const sig = JSON.stringify([
+    settings.monthlySalary, settings.salaryMode, settings.workDayMode, settings.workDaysPerMonth,
+    settings.startTime, settings.endTime, settings.lunchStart, settings.lunchEnd,
+    settings.commuteInHourly, settings.commuteInputMode, settings.commuteMinutes,
+    settings.commuteMorning, settings.commuteEvening,
+    settings.hireDate, settings.probationMonths, settings.probationRatio,
+    data.map(p => [p.year, p.month, p.workDays, p.hourly.toFixed(4)])
+  ]);
+  if (sig === hourlyTrendSig) return;
+  hourlyTrendSig = sig;
+
+  const dailyHours = getPaidDailyHours();
+  const salary = parseFloat(settings.monthlySalary) || 0;
+
+  const showEmpty = msg => {
+    nowEl.textContent = '—';
+    deltaEl.className = 'hourly-trend-delta';
+    deltaEl.textContent = '暂无数据';
+    chartEl.innerHTML = `<div class="hourly-trend-empty">${msg}</div>`;
+  };
+
+  if (!data.length) { showEmpty('入职日期还没到，暂时没有可展示的月份'); return; }
+  if (salary <= 0) { showEmpty('先去「设置」里填上月薪，时薪曲线才有得画'); return; }
+  if (dailyHours <= 0) { showEmpty('先在「设置」里填好上下班时间'); return; }
+
+  const last = data[data.length - 1];
+  const prev = data.length > 1 ? data[data.length - 2] : null;
+  nowEl.textContent = formatMoney(last.hourly);
+
+  deltaEl.className = 'hourly-trend-delta';
+  if (!prev) {
+    deltaEl.textContent = '入职首月';
+  } else {
+    const diff = last.hourly - prev.hourly;
+    if (Math.abs(diff) < 0.005) {
+      deltaEl.textContent = '与上月持平';
+    } else {
+      const up = diff > 0;
+      deltaEl.classList.add(up ? 'up' : 'down');
+      deltaEl.textContent = `比上月${up ? '多赚' : '少赚'} ${formatMoney(Math.abs(diff))}/小时`;
+    }
+  }
+
+  // 小折线图：固定 viewBox，随卡片宽度等比缩放
+  const W = 340;
+  const H = 136;
+  const padL = 38;
+  const padR = 12;
+  const padT = 12;
+  const padB = 22;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  const values = data.map(p => p.hourly);
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  let min = dataMin;
+  let max = dataMax;
+  if (max - min < 0.5) {
+    min -= 1;
+    max += 1;
+  } else {
+    const pad = (max - min) * 0.18;
+    min -= pad;
+    max += pad;
+  }
+  const span = max - min;
+  const xOf = i => data.length > 1 ? padL + (plotW * i) / (data.length - 1) : padL + plotW / 2;
+  const yOf = v => padT + plotH * (1 - (v - min) / span);
+
+  const axisMoney = v => '¥' + (v >= 100 ? Math.round(v) : v.toFixed(1));
+  const gridVals = [dataMax, (dataMax + dataMin) / 2, dataMin];
+  const grid = gridVals.map((v, i) => {
+    const y = yOf(v);
+    return `<line x1="${padL}" y1="${y.toFixed(2)}" x2="${W - padR}" y2="${y.toFixed(2)}"`
+      + ` stroke="#262626" stroke-width="1"${i === 2 ? '' : ' stroke-dasharray="3 3"'}/>`
+      + `<text x="${padL - 6}" y="${(y + 3).toFixed(2)}" text-anchor="end" font-size="9" fill="#666">${axisMoney(v)}</text>`;
+  }).join('');
+
+  const pts = data.map((p, i) => [xOf(i), yOf(p.hourly)]);
+  const lineD = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${y.toFixed(2)}`).join(' ');
+  const baseY = (padT + plotH).toFixed(2);
+  const areaD = `${lineD} L${pts[pts.length - 1][0].toFixed(2)} ${baseY}`
+    + ` L${pts[0][0].toFixed(2)} ${baseY} Z`;
+
+  const dots = data.map((p, i) => {
+    const [x, y] = pts[i];
+    const isLast = i === data.length - 1;
+    const tip = `${p.year} 年 ${p.month + 1} 月 · ${p.workDays} 个工作日 · ${formatMoney(p.hourly)}/小时`;
+    return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${isLast ? 4 : 2.5}"`
+      + ` fill="${isLast ? '#c8ff00' : '#0f0f0f'}" stroke="#c8ff00" stroke-width="${isLast ? 0 : 1.6}">`
+      + `<title>${tip}</title></circle>`;
+  }).join('');
+
+  // 月份标签：9 个以内全显示，更多时隔月显示并保证最后一个月有标签
+  const labels = data.map((p, i) => {
+    const show = data.length <= 9 || i === 0 || i === data.length - 1
+      || (i % 2 === 0 && data.length - 1 - i >= 2);
+    if (!show) return '';
+    return `<text x="${xOf(i).toFixed(2)}" y="${H - 6}" text-anchor="middle" font-size="9" fill="#777">`
+      + `${p.month + 1}月</text>`;
+  }).join('');
+
+  chartEl.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"`
+    + ` aria-label="最近 ${data.length} 个月的时薪变化">`
+    + '<defs><linearGradient id="hourlyTrendFill" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0%" stop-color="rgba(200,255,0,.22)"/>'
+    + '<stop offset="100%" stop-color="rgba(200,255,0,0)"/>'
+    + '</linearGradient></defs>'
+    + grid
+    + `<path d="${areaD}" fill="url(#hourlyTrendFill)"/>`
+    + `<path d="${lineD}" fill="none" stroke="#c8ff00" stroke-width="1.8"`
+    + ' stroke-linecap="round" stroke-linejoin="round"/>'
+    + dots
+    + labels
+    + '</svg>';
 }
 
 // 统计页：列出该周期的加班费 / 调休时长，没有就不占位；按当前口径只取对应来源的记录

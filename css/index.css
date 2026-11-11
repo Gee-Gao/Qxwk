@@ -882,6 +882,66 @@ body {
   line-height: 1.5;
   margin-bottom: 14px;
 }
+/* 时薪波动曲线：本月时薪 + 环比，下方一张小折线图 */
+.hourly-trend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.hourly-trend-now {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+.hourly-trend-val {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.hourly-trend-unit {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.hourly-trend-delta {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #2f2f2f;
+  background: #222;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.hourly-trend-delta.up {
+  color: var(--accent);
+  border-color: rgba(200, 255, 0, .35);
+  background: rgba(200, 255, 0, .08);
+}
+.hourly-trend-delta.down {
+  color: #ff7b7b;
+  border-color: rgba(255, 123, 123, .35);
+  background: rgba(255, 123, 123, .08);
+}
+.hourly-trend-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.hourly-trend-empty {
+  font-size: 12px;
+  color: #777;
+  text-align: center;
+  line-height: 1.6;
+  padding: 18px 0 6px;
+}
 /* 扣缴明细：左右两列的键值行 */
 .deduct-row {
   display: flex;
