@@ -3546,12 +3546,6 @@ function getLifeStats() {
 function updateLifePanel() {
   const panel = document.getElementById('lifePanel');
   if (!panel) return;
-  const hireDate = settings.hireDate || '';
-  const input = document.getElementById('hireDateInput');
-  if (input) {
-    const displayHire = formatDateSlash(hireDate);
-    if (input.value !== displayHire) input.value = displayHire;
-  }
 
   const stats = getLifeStats();
   if (stats.workDays <= 0) {
