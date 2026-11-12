@@ -715,26 +715,26 @@
       <h3>💱 外币显示</h3>
       <div class="desc">开启后，计时页会在人民币金额下附加所选外币的换算金额</div>
       <div class="settings-grid">
-        <div class="field-group" style="grid-column:1/-1">
+        <div class="field-group">
           <label>外币开关</label>
           <div class="seg-control" id="foreignEnabled">
             <button type="button" class="seg-btn" data-on="on" onclick="selectForeignEnabled(true)">开启</button>
             <button type="button" class="seg-btn" data-on="off" onclick="selectForeignEnabled(false)">关闭</button>
           </div>
         </div>
-        <div class="field-group" style="grid-column:1/-1">
+        <div class="field-group">
           <label>选择外币</label>
           <select id="foreignCurrencySelect" onchange="selectForeignCurrency(this.value)"></select>
-          <div class="field-hint" id="foreignHint"></div>
         </div>
+        <div class="field-hint" id="foreignHint" style="grid-column:1/-1"></div>
       </div>
     </div>
     <div class="settings-card">
       <h3>💾 数据备份</h3>
       <div class="desc">导出全部本地数据，或从备份文件恢复，便于换设备迁移</div>
       <div class="btn-row">
-        <button type="button" class="btn btn-secondary" onclick="exportQxwkData()">导出数据</button>
         <button type="button" class="btn btn-primary" onclick="triggerQxwkImport()">导入数据</button>
+        <button type="button" class="btn btn-secondary" onclick="exportQxwkData()">导出数据</button>
       </div>
       <input type="file" id="qxwkImportFile" accept=".json,application/json" style="display:none" onchange="importQxwkData(event)">
       <div style="margin-top:10px;font-size:11px;color:#777;line-height:1.45">导入会覆盖当前所有本地数据，建议先导出备份；导入成功后页面会自动刷新</div>
