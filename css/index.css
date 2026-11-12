@@ -1940,6 +1940,7 @@ body {
   height: 260px;
 }
 .picker-time-col {
+  position: relative;
   flex: 1;
   overflow-y: auto;
   display: flex;

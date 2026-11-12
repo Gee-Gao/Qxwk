@@ -515,11 +515,11 @@ function renderPickerTime() {
   const minute = parseInt(parts[1], 10) || 0;
   let hours = '';
   for (let i = 0; i < 24; i++) {
-    hours += `<button type="button" class="${i === hour ? 'active' : ''}" onclick="selectPickerHour(${i})">${pickerPad(i)}</button>`;
+    hours += `<button type="button" data-hour="${i}" class="${i === hour ? 'active' : ''}" onclick="selectPickerHour(${i})">${pickerPad(i)}</button>`;
   }
   let minutes = '';
   for (let i = 0; i < 60; i++) {
-    minutes += `<button type="button" class="${i === minute ? 'active' : ''}" onclick="selectPickerMinute(${i})">${pickerPad(i)}</button>`;
+    minutes += `<button type="button" data-minute="${i}" class="${i === minute ? 'active' : ''}" onclick="selectPickerMinute(${i})">${pickerPad(i)}</button>`;
   }
   document.getElementById('pickerHours').innerHTML = hours;
   document.getElementById('pickerMinutes').innerHTML = minutes;
@@ -529,29 +529,50 @@ function renderPickerTime() {
   });
 }
 
+// 只更新选中态，不重绘列表，避免每次选择后滚动位置被重置到顶部
+function updatePickerTimeActive() {
+  const parts = pickerSelected.split(':');
+  const hour = parseInt(parts[0], 10) || 0;
+  const minute = parseInt(parts[1], 10) || 0;
+  document.querySelectorAll('#pickerHours button').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.hour, 10) === hour);
+  });
+  document.querySelectorAll('#pickerMinutes button').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.minute, 10) === minute);
+  });
+}
+
 function centerPickerCol(id) {
   const col = document.getElementById(id);
   if (!col) return;
   const active = col.querySelector('button.active');
-  if (active) col.scrollTop = active.offsetTop - col.clientHeight / 2 + active.offsetHeight / 2;
+  if (!active) return;
+  // 用相对列顶部的位置计算，避免 offsetTop 受其它定位父级影响
+  const colRect = col.getBoundingClientRect();
+  const activeRect = active.getBoundingClientRect();
+  col.scrollTop += activeRect.top - colRect.top - (col.clientHeight - activeRect.height) / 2;
 }
 
 function selectPickerHour(hour) {
   const minute = pickerSelected.split(':')[1] || '00';
   pickerSelected = `${pickerPad(hour)}:${minute}`;
-  renderPickerTime();
+  updatePickerTimeActive();
 }
 
 function selectPickerMinute(minute) {
   const hour = pickerSelected.split(':')[0] || '00';
   pickerSelected = `${hour}:${pickerPad(minute)}`;
-  renderPickerTime();
+  updatePickerTimeActive();
 }
 
 function pickNowTime() {
   const now = new Date();
   pickerSelected = `${pickerPad(now.getHours())}:${pickerPad(now.getMinutes())}`;
-  renderPickerTime();
+  updatePickerTimeActive();
+  requestAnimationFrame(() => {
+    centerPickerCol('pickerHours');
+    centerPickerCol('pickerMinutes');
+  });
 }
 
 function confirmPicker() {
