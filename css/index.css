@@ -355,13 +355,6 @@ body {
   -webkit-user-select: text;
 }
 .field-group input:focus { border-color: var(--accent); }
-.field-group input[type="date"],
-.field-group input[type="time"] {
-  -webkit-appearance: none;
-  appearance: none;
-  min-height: 42px;
-  line-height: 1.2;
-}
 .field-group input::placeholder { color: #555; }
 .field-group input:disabled { opacity: .45; cursor: not-allowed; }
 .field-group select {
@@ -1737,4 +1730,246 @@ body {
 @media (max-height: 560px) {
   .timer-card { padding: 16px; }
   .timer-display { font-size: 40px; }
+}
+
+/* ============ 历史工作 ============ */
+/* 归档 / 添加按钮 */
+.job-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.job-actions .btn {
+  flex: 1;
+  padding: 10px 8px;
+  font-size: 13px;
+}
+/* 历史工作列表 */
+.job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.job-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #222;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.job-item:hover {
+  border-color: #3a3a3a;
+  background: #262626;
+}
+.job-item-main {
+  flex: 1;
+  min-width: 0;
+}
+.job-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.job-item-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  line-height: 1.45;
+}
+.job-item-pay {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.job-del {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #555;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.job-del:hover { background: #3a3a3a; color: #fff; }
+.job-empty {
+  font-size: 12px;
+  color: #777;
+  line-height: 1.6;
+  padding: 6px 2px 2px;
+}
+/* 历史工作录入弹窗：内部沿用设置页的卡片布局 */
+.job-modal {
+  max-width: 460px;
+  padding: 20px 16px;
+}
+.job-modal .job-modal-card {
+  background: #161616;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius);
+  padding: 14px 12px;
+  margin-bottom: 12px;
+}
+.job-modal .job-modal-card h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.job-modal .job-modal-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.job-modal .settings-grid {
+  gap: 10px;
+}
+.job-modal .settings-subhead {
+  margin-top: 2px;
+}
+.job-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.job-modal-actions .btn {
+  flex: 1;
+}
+/* 生命消耗大盘：多段工作经历提示 */
+.life-note {
+  font-size: 11px;
+  color: #777;
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* ============ 统一日期 / 时间选择器 ============ */
+.field-group input[data-picker] {
+  min-height: 42px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.picker-modal {
+  max-width: 360px;
+}
+.picker-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.picker-nav-btns {
+  display: flex;
+  gap: 6px;
+}
+.picker-nav-btns button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #222;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+}
+.picker-nav-btns button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.picker-month {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.picker-grid {
+  margin-bottom: 10px;
+}
+.picker-grid .cal-day {
+  min-height: 38px;
+}
+.picker-grid .cal-day.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+.picker-grid .cal-day.today {
+  border-color: var(--accent);
+}
+.picker-grid .cal-day:disabled {
+  opacity: .28;
+  cursor: not-allowed;
+}
+.picker-quick {
+  display: flex;
+  gap: 8px;
+}
+.picker-quick .btn {
+  flex: 1;
+  padding: 8px;
+  font-size: 12px;
+}
+.picker-time-head {
+  display: flex;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #777;
+}
+.picker-time-head span {
+  flex: 1;
+  text-align: center;
+}
+.picker-time-cols {
+  display: flex;
+  gap: 10px;
+  height: 260px;
+}
+.picker-time-col {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+.picker-time-col::-webkit-scrollbar { width: 4px; }
+.picker-time-col::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+.picker-time-col button {
+  flex: none;
+  padding: 8px;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  background: #222;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+.picker-time-col button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  font-weight: 600;
+}
+.picker-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.picker-actions .btn {
+  flex: 1;
 }

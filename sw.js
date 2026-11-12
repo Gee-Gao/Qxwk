@@ -1,7 +1,7 @@
 // 千薪万苦 · Service Worker
 // 让应用可以离线打开，并满足 PWA 安装条件（HTTPS / localhost 下生效）
 
-const CACHE = 'qxwk-v2';
+const CACHE = 'qxwk-v3';
 const APP_SHELL = [
   './index.html',
   './css/index.css',
