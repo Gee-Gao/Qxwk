@@ -14,6 +14,13 @@
 - 首次打开会停在设置页，填好月薪和上下班时间即可
 - 安装后支持离线打开，断网也能看计时
 
+## Android 安装包
+
+仓库内提供了打包好的 Android 应用：[apk/千薪万苦.apk](apk/千薪万苦.apk)
+
+- 传到手机后直接安装即可（需允许「安装未知来源应用」）
+- 与网页版功能一致，数据同样仅保存在本机
+
 ## 功能
 
 ### 计时
@@ -126,6 +133,8 @@ Qxwk/
 ├── manifest.json     # PWA 清单
 ├── sw.js             # Service Worker：预缓存应用外壳、离线回退
 ├── icons/            # 应用图标（192 / 512 / maskable / apple-touch）
+├── apk/
+│   └── 千薪万苦.apk  # 打包好的 Android 安装包
 ├── LICENSE           # MIT 许可证
 └── README.md
 ```
