@@ -3893,6 +3893,22 @@ function ledgerStatsRecords(year, month, isYear) {
   });
 }
 
+// 趋势图纵坐标：最大值、中值、0 三档
+function renderTrendYAxis(maxVal) {
+  const yEl = document.getElementById('ledgerTrendYAxis');
+  if (!yEl) return;
+  yEl.innerHTML = maxVal > 0
+    ? [maxVal, maxVal / 2, 0].map(v => `<span>${fmtMoneyCompact(v)}</span>`).join('')
+    : '<span></span><span></span><span>¥0</span>';
+}
+
+// 趋势图提示文案：默认提示，点按日期后显示对应金额
+function showTrendTip(label, amount) {
+  const tipEl = document.getElementById('ledgerTrendTip');
+  if (!tipEl) return;
+  tipEl.innerHTML = label ? `${label} 支出 <strong>${amount}</strong>` : '点按日期查看金额';
+}
+
 function renderLedgerStats() {
   const totalEl = document.getElementById('ledgerStatsTotal');
   if (!totalEl) return;
@@ -3951,6 +3967,7 @@ function renderLedgerStats() {
   const barsEl = document.getElementById('ledgerTrendBars');
   const axisEl = document.getElementById('ledgerTrendAxis');
   document.getElementById('ledgerTrendTitle').textContent = isYear ? '每月支出' : '每日支出';
+  let scaleMax = 0;
   if (isYear) {
     const monthly = new Array(m + 1).fill(0);
     records.forEach(r => {
@@ -3958,10 +3975,11 @@ function renderLedgerStats() {
       if (mm >= startMonth && mm <= m) monthly[mm] += Number(r.amount) || 0;
     });
     const maxMonth = Math.max(...monthly.slice(startMonth), 0);
+    scaleMax = maxMonth;
     barsEl.innerHTML = monthly.slice(startMonth).map((v, i) => {
       const h = maxMonth > 0 ? v / maxMonth * 100 : 0;
-      const cls = 'ledger-trend-bar' + (v > 0 ? ' has' : '') + (v === maxMonth && v > 0 ? ' max' : '');
-      return `<div class="${cls}" style="height:${h}%" title="${startMonth + i} 月 ${formatMoney(v)}"></div>`;
+      const cls = 'ledger-trend-bar' + (v > 0 ? ' has' : '');
+      return `<div class="${cls}" style="height:${h}%" data-label="${startMonth + i}月" data-value="${v.toFixed(2)}" title="${startMonth + i} 月 ${formatMoney(v)}"></div>`;
     }).join('');
     axisEl.innerHTML = monthly.slice(startMonth)
       .map((_, i) => `<span>${startMonth + i}</span>`).join('');
@@ -3973,14 +3991,17 @@ function renderLedgerStats() {
       if (day >= 1 && day <= daysInMonth) daily[day] += Number(r.amount) || 0;
     });
     const max = Math.max(...daily.slice(1), 0);
+    scaleMax = max;
     barsEl.innerHTML = daily.slice(1).map((v, i) => {
       const h = max > 0 ? v / max * 100 : 0;
-      const cls = 'ledger-trend-bar' + (v > 0 ? ' has' : '') + (v === max && v > 0 ? ' max' : '');
-      return `<div class="${cls}" style="height:${h}%" title="${y}/${String(m).padStart(2, '0')}/${String(i + 1).padStart(2, '0')} ${formatMoney(v)}"></div>`;
+      const cls = 'ledger-trend-bar' + (v > 0 ? ' has' : '');
+      return `<div class="${cls}" style="height:${h}%" data-label="${m}月${i + 1}日" data-value="${v.toFixed(2)}" title="${y}/${String(m).padStart(2, '0')}/${String(i + 1).padStart(2, '0')} ${formatMoney(v)}"></div>`;
     }).join('');
     axisEl.innerHTML = [...new Set([1, 5, 10, 15, 20, 25, daysInMonth])]
       .filter(d => d <= daysInMonth).map(d => `<span>${d}</span>`).join('');
   }
+  renderTrendYAxis(scaleMax);
+  showTrendTip();
 
   // 本月之最 / 年度之最
   document.getElementById('ledgerTopTitle').textContent = isYear ? '年度之最' : '本月之最';
@@ -5387,6 +5408,18 @@ document.getElementById('shareModal').addEventListener('click', function(e) {
 });
 document.getElementById('pickerModal').addEventListener('click', function(e) {
   if (e.target === this) closePicker();
+});
+
+// 趋势图：点按柱子显示当日 / 当月金额
+document.getElementById('ledgerTrendBars').addEventListener('click', function(e) {
+  const bar = e.target.closest('.ledger-trend-bar');
+  if (!bar || !bar.dataset.label) return;
+  this.querySelectorAll('.ledger-trend-bar.selected').forEach(el => el.classList.remove('selected'));
+  bar.classList.add('selected');
+  const val = Number(bar.dataset.value) || 0;
+  showTrendTip(bar.dataset.label, '¥' + val.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  }));
 });
 
 // 点击所有带 data-picker 的输入框时，统一打开自定义日期 / 时间选择器

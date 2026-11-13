@@ -1221,7 +1221,8 @@ body {
   border-color: var(--accent);
   background: rgba(200, 255, 0, .06);
 }
-.ledger-day.today .l-day-num {
+/* 今天默认是选中项，切到其他日期后不再保留独立高亮 */
+.ledger-day.today.selected .l-day-num {
   background: var(--accent);
   color: #000;
   border-radius: 999px;
@@ -1385,12 +1386,32 @@ body {
 }
 
 /* 每日趋势 */
+.ledger-chart {
+  display: flex;
+  align-items: flex-start;
+}
+.ledger-chart-y {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  height: 96px;
+  padding-right: 6px;
+  font-size: 10px;
+  line-height: 1;
+  color: #777;
+  white-space: nowrap;
+}
+.ledger-chart-main {
+  flex: 1;
+  min-width: 0;
+}
 .ledger-trend {
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  height: 80px;
-  padding-top: 6px;
+  height: 96px;
 }
 .ledger-trend-bar {
   flex: 1;
@@ -1398,9 +1419,25 @@ body {
   background: var(--accent);
   border-radius: 2px 2px 0 0;
   opacity: .5;
+  cursor: pointer;
 }
 .ledger-trend-bar.has { min-height: 2px; }
-.ledger-trend-bar.max { opacity: 1; box-shadow: 0 0 6px rgba(200, 255, 0, .45); }
+.ledger-trend-bar.selected {
+  opacity: 1;
+  box-shadow: 0 0 10px rgba(200, 255, 0, .9);
+  outline: 1px solid rgba(255, 255, 255, .85);
+  outline-offset: 1px;
+}
+.ledger-trend-tip {
+  margin-top: 8px;
+  min-height: 14px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.ledger-trend-tip strong {
+  color: var(--accent);
+  font-weight: 600;
+}
 .ledger-trend-axis {
   display: flex;
   justify-content: space-between;
