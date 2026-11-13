@@ -5410,11 +5410,22 @@ document.getElementById('pickerModal').addEventListener('click', function(e) {
   if (e.target === this) closePicker();
 });
 
-// 趋势图：点按柱子显示当日 / 当月金额
+// 趋势图：点按任意位置，就近选中对应的日期 / 月份
 document.getElementById('ledgerTrendBars').addEventListener('click', function(e) {
-  const bar = e.target.closest('.ledger-trend-bar');
+  const bars = Array.from(this.querySelectorAll('.ledger-trend-bar'));
+  if (!bars.length) return;
+  const rect = this.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  // 柱子再矮也能点中：按横向中心距离吸附最近的柱子
+  let bar = null;
+  let minDist = Infinity;
+  bars.forEach(item => {
+    const r = item.getBoundingClientRect();
+    const dist = Math.abs(r.left + r.width / 2 - rect.left - x);
+    if (dist < minDist) { minDist = dist; bar = item; }
+  });
   if (!bar || !bar.dataset.label) return;
-  this.querySelectorAll('.ledger-trend-bar.selected').forEach(el => el.classList.remove('selected'));
+  bars.forEach(item => item.classList.remove('selected'));
   bar.classList.add('selected');
   const val = Number(bar.dataset.value) || 0;
   showTrendTip(bar.dataset.label, '¥' + val.toLocaleString('zh-CN', {
