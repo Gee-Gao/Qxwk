@@ -5170,12 +5170,6 @@ function deleteRecurringTemplate(id) {
 }
 
 function openRecurringForm(id) {
-  // 切换模板前先把上一条未落盘的改动存下
-  if (recurringAutoSaveTimer) {
-    clearTimeout(recurringAutoSaveTimer);
-    recurringAutoSaveTimer = null;
-    persistRecurringDraft();
-  }
   recurringEditingId = id || null;
   const template = id ? ledgerRecurring.find(t => t.id === id) : null;
   if (template) {
@@ -5196,8 +5190,10 @@ function openRecurringForm(id) {
       note: template.note
     };
   } else {
+    // 固定金额默认使用当前分类名称
+    const defaultCat = ledgerCategoryById('rent');
     recurringDraft = {
-      mode: 'fixed', categoryId: 'rent', name: '',
+      mode: 'fixed', categoryId: 'rent', name: defaultCat ? defaultCat.name : '',
       amount: '', baseFare: '', tripsPerDay: 2, workdayOnly: true,
       pricingId: '', busCityId: '',
       enabled: true,
@@ -5219,12 +5215,6 @@ function openRecurringForm(id) {
 }
 
 function closeRecurringForm() {
-  // 关闭前把尚未落盘的改动补存一次
-  if (recurringAutoSaveTimer) {
-    clearTimeout(recurringAutoSaveTimer);
-    recurringAutoSaveTimer = null;
-    persistRecurringDraft();
-  }
   recurringEditingId = null;
   recurringDraft = null;
   const form = document.getElementById('ledgerRecurringForm');
@@ -5249,13 +5239,14 @@ function selectRecurringMode(mode) {
     recurringDraft.categoryId = 'transport';
     recurringDraft.name = '公交通勤';
   } else {
-    // 从通勤切回固定金额时清掉通勤默认名，避免误用
-    if (recurringDraft.name === '地铁通勤' || recurringDraft.name === '公交通勤') {
-      recurringDraft.name = '';
-    }
+    // 切回固定金额：名称默认取当前分类名
     const cats = getLedgerCategories();
     if (!cats.some(c => c.id === recurringDraft.categoryId)) {
       recurringDraft.categoryId = cats[0] ? cats[0].id : '';
+    }
+    if (!recurringDraft.name || recurringDraft.name === '地铁通勤' || recurringDraft.name === '公交通勤') {
+      const cat = ledgerCategoryById(recurringDraft.categoryId);
+      recurringDraft.name = cat ? cat.name : '';
     }
   }
   renderRecurringForm();
@@ -5414,7 +5405,7 @@ function renderRecurringForm() {
         <label>名称</label>
         ${isTransit
           ? `<input type="text" value="${isMetro ? '地铁通勤' : '公交通勤'}" disabled>`
-          : `<input type="text" maxlength="10" value="${escapeLedgerText(d.name)}" placeholder="例如：房租" oninput="recurringDraft.name=this.value">`}
+          : `<input type="text" maxlength="10" value="${escapeLedgerText(d.name)}" oninput="recurringDraft.name=this.value">`}
       </div>
       ${isTransit ? '' : `<div class="field-group" style="grid-column:1/-1">
         <label>分类</label>
@@ -5438,36 +5429,35 @@ function renderRecurringForm() {
         <label>备注（可选）</label>
         <input type="text" maxlength="30" value="${escapeLedgerText(d.note)}" placeholder="会写入每条生成的记录" oninput="recurringDraft.note=this.value">
       </div>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn btn-secondary" onclick="closeRecurringForm()">关闭</button>
+      <button type="button" class="btn btn-primary" onclick="saveRecurringTemplate()">保存</button>
     </div>`;
-  scheduleRecurringAutoSave();
 }
 
-let recurringAutoSaveTimer = null;
-
-function scheduleRecurringAutoSave() {
+function saveRecurringTemplate() {
   if (!recurringDraft) return;
-  clearTimeout(recurringAutoSaveTimer);
-  recurringAutoSaveTimer = setTimeout(() => {
-    recurringAutoSaveTimer = null;
-    persistRecurringDraft();
-  }, 400);
-}
-
-function persistRecurringDraft() {
-  if (!recurringDraft) return false;
   const d = recurringDraft;
   const isMetro = d.mode === 'metro';
   const isBus = d.mode === 'bus';
   const isTransit = isMetro || isBus;
-  if (isBus && d.busCityId && busRateOf(pricingRuleById(d.busCityId)) == null) return false;
+  if (isBus && d.busCityId && busRateOf(pricingRuleById(d.busCityId)) == null) {
+    showToast('请选择公交城市');
+    return;
+  }
   const cat = isTransit ? ledgerCategoryById('transport') : ledgerCategoryById(d.categoryId);
   const amount = roundLedgerMoney(isTransit ? d.baseFare : d.amount);
-  if (!(amount > 0)) return false;
+  if (!(amount > 0)) {
+    showToast(isTransit ? '请输入单程原价' : '请输入模板金额');
+    return;
+  }
   const startDate = normalizeRecurringDate(d.startDate);
-  if (!startDate) return false;
+  if (!startDate) {
+    showToast('请选择启用日期');
+    return;
+  }
   const existing = recurringEditingId ? ledgerRecurring.find(t => t.id === recurringEditingId) : null;
-  // 编辑中的模板已被删除时不再写回
-  if (recurringEditingId && !existing) return false;
   const name = isTransit
     ? (isMetro ? '地铁通勤' : '公交通勤')
     : ((d.name || '').trim() || (cat ? cat.name : '周期支出'));
@@ -5495,12 +5485,12 @@ function persistRecurringDraft() {
     ledgerRecurring[ledgerRecurring.findIndex(t => t.id === existing.id)] = template;
   } else {
     ledgerRecurring.push(template);
-    recurringEditingId = template.id;
   }
   saveLedgerRecurring();
+  closeRecurringForm();
   renderLedgerRecurringList();
   renderLedger();
-  return true;
+  showToast('已保存模板，记录已自动补齐');
 }
 
 // ---------- 城市规则选择 ----------
@@ -6630,9 +6620,6 @@ document.getElementById('shareModal').addEventListener('click', function(e) {
 document.getElementById('pickerModal').addEventListener('click', function(e) {
   if (e.target === this) closePicker();
 });
-
-// 周期模板表单自动保存：字段确认修改后延迟落盘，无需保存按钮
-document.getElementById('ledgerRecurringForm').addEventListener('change', scheduleRecurringAutoSave);
 
 // 趋势图：点按任意位置，就近选中对应的日期 / 月份
 document.getElementById('ledgerTrendBars').addEventListener('click', function(e) {

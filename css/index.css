@@ -1256,9 +1256,7 @@ body {
   margin: 0;
 }
 .ledger-recurring-btn {
-  flex: none;
-  padding: 0 14px;
-  font-size: 13px;
+  flex: 1;
   white-space: nowrap;
 }
 
@@ -1760,6 +1758,7 @@ body {
   padding: 12px;
 }
 .ledger-recurring-form .settings-grid { gap: 10px; }
+.ledger-recurring-form .btn-row { margin-top: 12px; }
 .ledger-recurring-note {
   font-size: 11px;
   color: #777;
