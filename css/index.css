@@ -1245,6 +1245,22 @@ body {
   width: 100%;
   margin: 8px 0 12px;
 }
+.ledger-action-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+.ledger-action-row .ledger-add-btn {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+.ledger-recurring-btn {
+  flex: none;
+  padding: 0 14px;
+  font-size: 13px;
+  white-space: nowrap;
+}
 
 /* 本月汇总 */
 .ledger-summary {
@@ -1305,6 +1321,16 @@ body {
   color: var(--accent);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.ledger-record-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(200, 255, 0, .12);
+  color: var(--accent);
+  font-size: 9px;
+  vertical-align: 1px;
 }
 
 /* 统计卡片 */
@@ -1640,6 +1666,176 @@ body {
 .ledger-work-preview strong { color: var(--accent); font-size: 15px; }
 .ledger-work-precise { display: block; font-size: 11px; color: #777; margin-top: 3px; }
 .ledger-submit { width: 100%; margin-top: 12px; }
+.ledger-pricing-block { margin-bottom: 10px; }
+.ledger-pricing-block .ledger-rule-row { margin-top: 8px; }
+.ledger-pricing-block .field-hint { margin-top: 6px; }
+
+/* 周期支出弹窗 */
+.modal.ledger-recurring-modal { max-width: 420px; }
+.ledger-recurring-modal .ledger-empty-hint {
+  text-align: left;
+  line-height: 1.6;
+}
+.ledger-recurring-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #222;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.ledger-recurring-item.paused { opacity: .55; }
+.ledger-recurring-icon {
+  width: 24px;
+  flex: none;
+  text-align: center;
+  font-size: 18px;
+}
+.ledger-recurring-info { flex: 1; min-width: 0; }
+.ledger-recurring-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.ledger-recurring-tag {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #2e2e2e;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+.ledger-recurring-meta { margin-top: 2px; font-size: 11px; color: #777; }
+.ledger-recurring-toggle,
+.ledger-recurring-edit {
+  flex: none;
+  padding: 5px 8px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.ledger-recurring-toggle { border-radius: 999px; cursor: default; white-space: nowrap; }
+.ledger-recurring-toggle.on { border-color: rgba(200, 255, 0, .45); color: var(--accent); }
+.ledger-recurring-toggle:not(.on) { border-color: rgba(255, 107, 107, .45); color: #ff6b6b; }
+.ledger-recurring-edit { border-radius: 8px; }
+.ledger-recurring-add { width: 100%; margin: 4px 0 12px; }
+/* 新增 / 编辑模板时收起列表，只显示表单 */
+.ledger-recurring-modal.editing #ledgerRecurringList,
+.ledger-recurring-modal.editing .ledger-recurring-add { display: none; }
+/* 新增 / 编辑模板：按 tab 页的容器规格全屏展示，切换模式高度不变 */
+.modal-overlay.recurring-fullscreen {
+  padding: 0;
+  background: var(--bg);
+  /* 让出底部 tab 栏，避免被全屏表单遮挡 */
+  bottom: calc(64px + env(safe-area-inset-bottom));
+}
+.ledger-recurring-modal.editing {
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  margin: 0 auto;
+  padding: var(--screen-pad);
+  background: var(--bg);
+  border: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ledger-recurring-modal.editing .ledger-recurring-form {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ledger-recurring-form {
+  background: #191919;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+.ledger-recurring-form .settings-grid { gap: 10px; }
+.ledger-recurring-note {
+  font-size: 11px;
+  color: #777;
+  line-height: 1.5;
+}
+.ledger-rule-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.ledger-rule-picker {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.ledger-rule-picker:hover { border-color: #3a3a3a; }
+.ledger-rule-picker-arrow {
+  flex: none;
+  color: #777;
+  font-size: 12px;
+}
+.ledger-city-search {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #222;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  outline: none;
+  margin-bottom: 10px;
+}
+.ledger-city-search:focus { border-color: var(--accent); }
+.ledger-city-search::placeholder { color: #555; }
+.ledger-city-list {
+  max-height: 52vh;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.ledger-city-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: #222;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+}
+.ledger-city-item:hover { border-color: #3a3a3a; }
+.ledger-city-item.active {
+  border-color: var(--accent);
+  background: rgba(200, 255, 0, .06);
+}
+.ledger-city-item-name { font-size: 13px; }
+.ledger-city-item-meta { font-size: 11px; color: #777; }
 
 /* 生命消耗大盘 */
 .life-card {

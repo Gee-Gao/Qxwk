@@ -451,7 +451,10 @@
         </div>
       </div>
 
-      <button type="button" class="btn btn-primary ledger-add-btn" onclick="openLedgerForSelectedDate()">＋ 记一笔</button>
+      <div class="ledger-action-row">
+        <button type="button" class="btn btn-primary ledger-add-btn" onclick="openLedgerForSelectedDate()">＋ 记一笔</button>
+        <button type="button" class="btn btn-secondary ledger-recurring-btn" onclick="openLedgerRecurringModal()">周期支出</button>
+      </div>
 
       <div class="section-title" id="ledgerListTitle">当日记录</div>
       <div id="ledgerMonthRecords"></div>
@@ -824,6 +827,22 @@
         </div>
       </div>
 
+      <div class="ledger-pricing-block" id="ledgerPricingBlock" style="display:none">
+        <div class="ledger-form-label">计费方式</div>
+        <div class="seg-control" id="ledgerPricingModes">
+          <button type="button" class="seg-btn active" data-mode="normal" onclick="selectLedgerPricingMode('normal')">普通</button>
+          <button type="button" class="seg-btn" data-mode="bus" onclick="selectLedgerPricingMode('bus')">公交</button>
+          <button type="button" class="seg-btn" data-mode="metro" onclick="selectLedgerPricingMode('metro')">地铁</button>
+        </div>
+        <div class="ledger-rule-row" id="ledgerPricingCityRow" style="display:none">
+          <button type="button" class="ledger-rule-picker" onclick="openLedgerCityPicker()">
+            <span id="ledgerPricingCityName">无折扣</span>
+            <span class="ledger-rule-picker-arrow">▾</span>
+          </button>
+        </div>
+        <div class="field-hint" id="ledgerPricingHint"></div>
+      </div>
+
       <div class="ledger-amount-row">
         <span>¥</span>
         <input type="number" id="ledgerAmount" inputmode="decimal" step="0.01" min="0" placeholder="0.00" oninput="updateLedgerWorkPreview()">
@@ -845,6 +864,25 @@
         <button type="button" class="ledger-month-btn" onclick="shiftLedgerPickerYear(1)" aria-label="下一年">›</button>
       </div>
       <div class="month-picker-grid" id="ledgerPickerMonths"></div>
+    </div>
+  </div>
+
+  <!-- 周期支出模板 -->
+  <div class="modal-overlay" id="ledgerRecurringModal">
+    <div class="modal ledger-recurring-modal">
+      <h3><span>周期支出</span> <button class="close" onclick="closeLedgerRecurringModal()">×</button></h3>
+      <div id="ledgerRecurringList"></div>
+      <button type="button" class="btn btn-secondary ledger-recurring-add" onclick="openRecurringForm()">＋ 新增模板</button>
+      <div class="ledger-recurring-form" id="ledgerRecurringForm" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- 选择城市规则 -->
+  <div class="modal-overlay" id="ledgerCityModal">
+    <div class="modal ledger-recurring-modal">
+      <h3><span id="ledgerCityTitle">选择城市</span> <button class="close" onclick="closeCityPicker()">×</button></h3>
+      <input type="text" class="ledger-city-search" id="ledgerCitySearch" placeholder="搜索城市，例如：北京" oninput="renderCityPickerList(this.value)">
+      <div class="ledger-city-list" id="ledgerCityList"></div>
     </div>
   </div>
 

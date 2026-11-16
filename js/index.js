@@ -87,6 +87,16 @@ let ledgerDate = '';          // 当前正在记账的日期（YYYY-MM-DD）
 let ledgerEditingId = null;   // 为空表示新增，否则为正在修改的记录编号
 let ledgerSelectedCategory = '';
 let ledgerCustomIcon = '🏷️';
+let ledgerPricingMode = 'normal';   // 手动记账计费方式：normal / metro / bus
+let ledgerManualRuleId = '';        // 手动地铁记录选中的城市规则
+let ledgerManualCityId = '';        // 手动公交记录选中的城市
+let cityPickerTarget = 'recurring'; // 城市选择器回填目标：recurring / ledger
+let ledgerRecurring = [];           // 周期支出模板
+let recurringEditingId = null;      // 正在编辑的周期模板 id，空表示新增
+let recurringDraft = null;          // 周期模板表单草稿
+let cityPickerFor = 'metro';        // 城市选择器用途：metro 地铁规则 / bus 公交折扣
+let ledgerPricingRules = [];        // 预置城市折扣规则（只读）
+const LEDGER_RECURRING_KEY = 'qianxwk_ledger_recurring';
 
 // ============ 历史工作 ============
 // 历史工作保存与当前工作完全一致的工作参数快照；
@@ -116,6 +126,7 @@ function load() {
     leaveUsedRecords = JSON.parse(localStorage.getItem('qianxwk_leave_used')) || [];
     ledgerRecords = JSON.parse(localStorage.getItem('qianxwk_ledger_records')) || [];
     ledgerCategories = JSON.parse(localStorage.getItem('qianxwk_ledger_categories')) || [];
+    ledgerRecurring = JSON.parse(localStorage.getItem(LEDGER_RECURRING_KEY)) || [];
     jobHistory = JSON.parse(localStorage.getItem(JOB_HISTORY_KEY)) || [];
   } catch(e) {
     settings = {...DEFAULTS};
@@ -125,10 +136,14 @@ function load() {
     leaveUsedRecords = [];
     ledgerRecords = [];
     ledgerCategories = [];
+    ledgerRecurring = [];
     jobHistory = [];
   }
   if (!Array.isArray(ledgerRecords)) ledgerRecords = [];
   if (!Array.isArray(ledgerCategories)) ledgerCategories = [];
+  if (!Array.isArray(ledgerRecurring)) ledgerRecurring = [];
+  ledgerPricingRules = clonePricingPresets();
+  normalizeLedgerRecurring();
   if (!Array.isArray(jobHistory)) jobHistory = [];
   normalizeJobHistory();
   // 兼容旧版「整天/小数」开关：小数 -> 1 位，其余（整天/未设置）-> 0 位
@@ -3693,12 +3708,258 @@ const LEDGER_ICON_OPTIONS = [
   '🎁','🎂','🎉','💳','🧾','📦'
 ];
 
+// 预置城市折扣规则（只读）：按各地公开票务规则整理
+// basis: amount 按金额 / count 按次数；counting: paid 实付累计 / base 原价累计
+const LEDGER_PRICING_PRESETS = [
+  {
+    id: 'bj_metro', name: '北京地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [
+      { over: 0, rate: 1 }, { over: 100, rate: 0.8 },
+      { over: 150, rate: 0.5 }, { over: 400, rate: 1 }
+    ]
+  },
+  {
+    id: 'sh_metro', name: '上海地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 1 }, { over: 70, rate: 0.9 }]
+  },
+  {
+    id: 'gz_metro', name: '广州地铁',
+    basis: 'amount', counting: 'base', reset: 'month',
+    tiers: [{ over: 0, rate: 1 }, { over: 80, rate: 0.8 }, { over: 200, rate: 0.5 }]
+  },
+  {
+    id: 'cd_metro', name: '成都地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }, { over: 200, rate: 0.6 }, { over: 400, rate: 0.9 }]
+  },
+  {
+    id: 'hz_metro', name: '杭州地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }, { over: 50, rate: 0.7 }, { over: 100, rate: 0.5 }]
+  },
+  {
+    id: 'nj_metro', name: '南京地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [
+      { over: 0, rate: 0.95 }, { over: 150, rate: 0.9 },
+      { over: 200, rate: 0.8 }, { over: 300, rate: 0.95 }
+    ]
+  },
+  {
+    id: 'cq_metro', name: '重庆轨道交通',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }, { over: 100, rate: 0.7 }, { over: 200, rate: 0.5 }]
+  },
+  {
+    id: 'su_metro', name: '苏州地铁',
+    basis: 'count', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }, { over: 15, rate: 0.9 }, { over: 30, rate: 0.8 }]
+  },
+  {
+    id: 'xa_metro', name: '西安地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'shenzhen_metro', name: '深圳地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'zz_metro', name: '郑州地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'cs_metro', name: '长沙地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'tj_metro', name: '天津地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'qd_metro', name: '青岛地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [
+      { over: 0, rate: 0.9 }, { over: 100, rate: 0.8 },
+      { over: 200, rate: 0.7 }, { over: 300, rate: 0.9 }
+    ]
+  },
+  {
+    id: 'hf_metro', name: '合肥地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'nb_metro', name: '宁波地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'wx_metro', name: '无锡地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'fz_metro', name: '福州地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'xm_metro', name: '厦门地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'wh_metro', name: '武汉地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }],
+    note: '满 200 元另有 10/30/60 元奖励金，未计入'
+  },
+  {
+    id: 'nc_metro', name: '南昌地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'nn_metro', name: '南宁地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'gy_metro', name: '贵阳地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'sjz_metro', name: '石家庄地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'ty_metro', name: '太原地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'jn_metro', name: '济南地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.8 }]
+  },
+  {
+    id: 'lz_metro', name: '兰州地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'cc_metro', name: '长春轨道交通',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [
+      { over: 0, rate: 0.95 }, { over: 50, rate: 0.85 },
+      { over: 100, rate: 0.8 }, { over: 200, rate: 0.95 }
+    ]
+  },
+  {
+    id: 'sy_metro', name: '沈阳地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'dl_metro', name: '大连地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.8 }]
+  },
+  {
+    id: 'wz_metro', name: '温州轨道交通',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.9 }]
+  },
+  {
+    id: 'xz_metro', name: '徐州地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'cz_metro', name: '常州地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'nt_metro', name: '南通轨道交通',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'sx_metro', name: '绍兴地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.91 }]
+  },
+  {
+    id: 'ly_metro', name: '洛阳地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'wuhu_metro', name: '芜湖轨道交通',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.8 }]
+  },
+  {
+    id: 'chuzhou_metro', name: '滁州轨道交通',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'mas_metro', name: '马鞍山轨道交通',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [{ over: 0, rate: 0.95 }]
+  },
+  {
+    id: 'wlmq_metro', name: '乌鲁木齐地铁',
+    basis: 'amount', counting: 'paid', reset: 'month',
+    tiers: [
+      { over: 0, rate: 0.9 }, { over: 100, rate: 0.8 },
+      { over: 200, rate: 0.7 }, { over: 300, rate: 0.9 }
+    ]
+  },
+  {
+    id: 'fs_metro', name: '佛山地铁',
+    basis: 'amount', counting: 'base', reset: 'month',
+    tiers: [{ over: 0, rate: 1 }, { over: 80, rate: 0.8 }, { over: 200, rate: 0.5 }]
+  }
+];
+
+// 公交刷卡折扣：只收录有固定刷卡折扣的城市，未收录的城市不在公交选择器里展示
+const LEDGER_BUS_RATES = {
+  bj_metro: 0.5,
+  cd_metro: 0.9,
+  nj_metro: 0.8,
+  wh_metro: 0.8,
+  tj_metro: 0.95,
+  sjz_metro: 0.9,
+  zz_metro: 0.8,
+  xa_metro: 0.5,
+  hf_metro: 0.7,
+  xz_metro: 0.7,
+  cz_metro: 0.6,
+  nt_metro: 0.7,
+  chuzhou_metro: 0.8,
+  nn_metro: 0.9,
+  dl_metro: 0.95,
+  wlmq_metro: 0.9
+};
+
 function getLedgerCategories() {
   return LEDGER_DEFAULT_CATEGORIES.concat(ledgerCategories);
 }
 
 function ledgerCategoryById(id) {
-  return getLedgerCategories().find(c => c.id === id) || null;
+  return getLedgerCategories().find(c => c && c.id === id) || null;
 }
 
 function saveLedgerRecords() {
@@ -3709,12 +3970,304 @@ function saveLedgerCategories() {
   localStorage.setItem('qianxwk_ledger_categories', JSON.stringify(ledgerCategories));
 }
 
+function saveLedgerRecurring() {
+  localStorage.setItem(LEDGER_RECURRING_KEY, JSON.stringify(ledgerRecurring));
+}
+
+function clonePricingPresets() {
+  return LEDGER_PRICING_PRESETS.map(rule => ({
+    ...rule,
+    tiers: rule.tiers.map(tier => ({ ...tier }))
+  }));
+}
+
+function pricingRuleById(id) {
+  return ledgerPricingRules.find(rule => rule && rule.id === id) || null;
+}
+
+// 城市公交刷卡折扣；未收录返回 null
+function busRateOf(rule) {
+  if (!rule) return null;
+  const rate = LEDGER_BUS_RATES[rule.id];
+  return rate != null ? Number(rate) : null;
+}
+
+// 公交场景下去掉规则名里的「地铁 / 轨道交通」
+function cityShortName(rule) {
+  return String(rule && rule.name || '')
+    .replace(/地铁$/, '')
+    .replace(/轨道交通$/, '');
+}
+
+// 规则文案：按金额/按次数 + 各档位
+function pricingRuleSummary(rule) {
+  if (!rule) return '还没有可用规则';
+  const unit = rule.basis === 'count' ? '次' : '元';
+  // 只有一档 0 起：固定折扣，没有累计
+  if (rule.tiers.length === 1 && rule.tiers[0].over === 0) {
+    const fixed = Math.round(rule.tiers[0].rate * 100) / 10;
+    return fixed >= 10 ? '全价（无折扣）' : `固定 ${fixed} 折（无累计）`;
+  }
+  const tiers = rule.tiers.map(tier => {
+    const discount = Math.round(tier.rate * 100) / 10;
+    if (discount >= 10) return tier.over > 0 ? `满${tier.over}${unit}全价` : '全价';
+    return (tier.over > 0 ? `满${tier.over}${unit}` : '') + `${discount}折`;
+  });
+  const basisText = rule.basis === 'count'
+    ? '按次数累计'
+    : (rule.counting === 'base' ? '按原价累计' : '按实付累计');
+  return `${basisText} · ${tiers.join(' / ')}`;
+}
+
+// 自然月 / 自然周（周一为一周起点）的累计分组键
+function pricingPeriodKey(dateKey, rule) {
+  if (rule && rule.reset === 'week') {
+    const date = parseDateKey(dateKey);
+    if (date) {
+      const offset = (date.getDay() + 6) % 7;
+      date.setDate(date.getDate() - offset);
+      return fmtDateKey(date);
+    }
+  }
+  return typeof dateKey === 'string' ? dateKey.slice(0, 7) : '';
+}
+
+function pricingRateFor(rule, running) {
+  let rate = 1;
+  (rule.tiers || []).forEach(tier => {
+    if (running >= tier.over) rate = tier.rate;
+  });
+  return rate;
+}
+
+// 累计计量：按次数每次 +1；按金额可选实付或原价
+function pricingUnit(rule, baseAmount, paidAmount) {
+  if (rule.basis === 'count') return 1;
+  return rule.counting === 'base' ? baseAmount : paidAmount;
+}
+
+// 按「规则 + 计费周期」分组逐笔重算，规则改动会同步影响引用它的记录
+function recalcAllPricing() {
+  const groups = {};
+  ledgerRecords.forEach(record => {
+    if (!record || !record.pricingId || typeof record.date !== 'string') return;
+    const rule = pricingRuleById(record.pricingId);
+    if (!rule) return;
+    const key = rule.id + '|' + pricingPeriodKey(record.date, rule);
+    if (!groups[key]) groups[key] = { rule, records: [] };
+    groups[key].records.push(record);
+  });
+
+  let changed = false;
+  Object.keys(groups).forEach(key => {
+    const group = groups[key];
+    group.records.sort((a, b) => a.date === b.date
+      ? Number(a.createdAt) - Number(b.createdAt)
+      : (a.date < b.date ? -1 : 1));
+    let running = 0;
+    group.records.forEach(record => {
+      const base = roundLedgerMoney(record.baseAmount);
+      if (record.manualAmount) {
+        if (record.discountRate !== 1) { record.discountRate = 1; changed = true; }
+        running += pricingUnit(group.rule, base, Number(record.amount) || 0);
+        return;
+      }
+      const rate = pricingRateFor(group.rule, running);
+      const paid = roundLedgerMoney(base * rate);
+      if (roundLedgerMoney(record.amount) !== paid || record.discountRate !== rate) {
+        record.amount = paid;
+        record.discountRate = rate;
+        changed = true;
+      }
+      running += pricingUnit(group.rule, base, paid);
+    });
+  });
+  return changed;
+}
+
+function newLedgerRecordId() {
+  return 'lr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+function roundLedgerMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
 function ledgerMonthRecords(month) {
   return ledgerRecords.filter(r => r && typeof r.date === 'string' && r.date.slice(0, 7) === month);
 }
 
 function ledgerTotal(records) {
   return records.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+}
+
+// ============ 周期支出 ============
+// 模板只负责补记录；地铁折扣由定价规则按整月记录重算
+function normalizeLedgerRecurring() {
+  ledgerRecurring = ledgerRecurring.filter(t =>
+    t && typeof t === 'object' && typeof t.startDate === 'string' && Array.isArray(t.skippedPeriods));
+}
+
+// 统一把日期字符串转成 yyyy-MM-dd，非法返回空字符串
+function normalizeRecurringDate(value) {
+  const date = parseDateKey(value);
+  return date ? fmtDateKey(date) : '';
+}
+
+function newLedgerRecurringId() {
+  return 'rc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+function nextLedgerMonthKey(monthKey) {
+  const parts = monthKey.split('-').map(Number);
+  const d = new Date(parts[0], parts[1], 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function recurringTargetDate(template, monthKey) {
+  const parts = monthKey.split('-').map(Number);
+  const days = new Date(parts[0], parts[1], 0).getDate();
+  const day = template.dayMode === 'last'
+    ? days
+    : Math.min(Math.max(template.day, 1), days);
+  return monthKey + '-' + String(day).padStart(2, '0');
+}
+
+function generateFixedRecurring(template, monthKey, today) {
+  if (template.skippedPeriods.includes(monthKey)) return false;
+  if (ledgerRecords.some(r => r && r.sourceId === template.id && r.periodKey === monthKey)) return false;
+  const startDate = template.startDate;
+  const date = recurringTargetDate(template, monthKey);
+  if (date < startDate || date > today) return false;
+  const amount = roundLedgerMoney(template.amount);
+  if (!(amount > 0)) return false;
+  ledgerRecords.push({
+    id: newLedgerRecordId(),
+    date,
+    categoryId: template.categoryId,
+    name: template.name,
+    icon: template.icon,
+    amount,
+    note: template.note,
+    sourceId: template.id,
+    periodKey: monthKey,
+    createdAt: Date.now()
+  });
+  return true;
+}
+
+// 地铁按工作日逐笔生成原价记录，实付金额由阶梯规则统一重算
+function generateMetroRecurring(template, monthKey, today) {
+  const parts = monthKey.split('-').map(Number);
+  const year = parts[0];
+  const month = parts[1];
+  const days = new Date(year, month, 0).getDate();
+  const fare = roundLedgerMoney(template.baseFare);
+  if (!(fare > 0)) return false;
+  const trips = template.tripsPerDay;
+  const pricingId = template.pricingId;
+  const startDate = template.startDate;
+  let changed = false;
+  for (let day = 1; day <= days; day++) {
+    const date = monthKey + '-' + String(day).padStart(2, '0');
+    if (date > today) break;
+    if (date < startDate) continue;
+    const dateObj = new Date(year, month - 1, day);
+    if (template.workdayOnly && !isWorkday(dateObj)) continue;
+    for (let i = 0; i < trips; i++) {
+      const periodKey = date + '#' + i;
+      if (template.skippedPeriods.includes(periodKey)) continue;
+      if (ledgerRecords.some(r => r && r.sourceId === template.id && r.periodKey === periodKey)) continue;
+      ledgerRecords.push({
+        id: newLedgerRecordId(),
+        date,
+        categoryId: 'transport',
+        name: template.name,
+        icon: template.icon,
+        amount: fare,
+        baseAmount: fare,
+        pricingId,
+        discountRate: 1,
+        note: template.note,
+        sourceId: template.id,
+        periodKey,
+        createdAt: Date.now() + i
+      });
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+// 公交按工作日逐笔生成，原价按模板里的刷卡折扣计算
+function generateBusRecurring(template, monthKey, today) {
+  const parts = monthKey.split('-').map(Number);
+  const year = parts[0];
+  const month = parts[1];
+  const days = new Date(year, month, 0).getDate();
+  const fare = roundLedgerMoney(template.baseFare);
+  if (!(fare > 0)) return false;
+  const rate = template.busCityId ? busRateOf(pricingRuleById(template.busCityId)) : 1;
+  if (rate == null) return false;
+  const trips = template.tripsPerDay;
+  const startDate = template.startDate;
+  let changed = false;
+  for (let day = 1; day <= days; day++) {
+    const date = monthKey + '-' + String(day).padStart(2, '0');
+    if (date > today) break;
+    if (date < startDate) continue;
+    const dateObj = new Date(year, month - 1, day);
+    if (template.workdayOnly && !isWorkday(dateObj)) continue;
+    for (let i = 0; i < trips; i++) {
+      const periodKey = date + '#bus' + i;
+      if (template.skippedPeriods.includes(periodKey)) continue;
+      if (ledgerRecords.some(r => r && r.sourceId === template.id && r.periodKey === periodKey)) continue;
+      ledgerRecords.push({
+        id: newLedgerRecordId(),
+        date,
+        categoryId: 'transport',
+        name: template.name,
+        icon: template.icon,
+        amount: roundLedgerMoney(fare * rate),
+        baseAmount: fare,
+        discountRate: rate,
+        note: template.note,
+        sourceId: template.id,
+        periodKey,
+        createdAt: Date.now() + i
+      });
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+// 幂等补记：进入记账页 / 切月 / 启动时检查，已存在的账期不会重复生成
+function runLedgerRecurring() {
+  const today = fmtDateKey(new Date());
+  const currentMonth = today.slice(0, 7);
+  let changed = false;
+  ledgerRecurring.forEach(template => {
+    if (template.enabled === false) return;
+    const startDate = template.startDate;
+    const start = startDate.slice(0, 7);
+    if (start > currentMonth) return;
+    let month = start;
+    let guard = 0;
+    while (month <= currentMonth && guard++ < 240) {
+      const done = template.mode === 'metro'
+        ? generateMetroRecurring(template, month, today)
+        : (template.mode === 'bus'
+          ? generateBusRecurring(template, month, today)
+          : generateFixedRecurring(template, month, today));
+      if (done) changed = true;
+      month = nextLedgerMonthKey(month);
+    }
+  });
+  if (changed) {
+    recalcAllPricing();
+    saveLedgerRecords();
+  }
 }
 
 function escapeLedgerText(text) {
@@ -3767,6 +4320,7 @@ function formatLedgerCompactMoney(value) {
 function renderLedger() {
   if (!ledgerMonth) ledgerMonth = currentMonthKey();
   const todayKey = fmtDateKey(new Date());
+  runLedgerRecurring();
   if (!ledgerViewDate || ledgerViewDate.slice(0, 7) !== ledgerMonth) {
     ledgerViewDate = todayKey.slice(0, 7) === ledgerMonth ? todayKey : `${ledgerMonth}-01`;
   }
@@ -3838,12 +4392,23 @@ function renderLedgerRecordList() {
   }
   box.innerHTML = records.map(r => {
     const note = r.note ? ' · ' + escapeLedgerText(r.note) : '';
-    const work = formatLedgerWork(ledgerWorkSeconds(r.amount));
+    const badge = r.sourceId ? '<span class="ledger-record-badge">周期</span>' : '';
+    const metaParts = [];
+    if (Number(r.baseAmount) > 0) {
+      if (r.manualAmount) {
+        metaParts.push(`原价 ${formatMoney(r.baseAmount)} · 手动调整`);
+      } else if (Number(r.discountRate) > 0 && Number(r.discountRate) < 1) {
+        metaParts.push(`原价 ${formatMoney(r.baseAmount)} · ${Math.round(Number(r.discountRate) * 10)}折`);
+      } else {
+        metaParts.push(`原价 ${formatMoney(r.baseAmount)}`);
+      }
+    }
+    metaParts.push(`折算工作日 ${formatLedgerWork(ledgerWorkSeconds(r.amount))}`);
     return `<div class="ledger-record" role="button" tabindex="0" onclick="openLedgerEditModal('${r.id}')">
       <span class="ledger-record-icon">${escapeLedgerText(r.icon || '📦')}</span>
       <span class="ledger-record-info">
-        <span class="ledger-record-name">${escapeLedgerText(r.name)}${note}</span>
-        <span class="ledger-record-meta">折算工作日 ${work}</span>
+        <span class="ledger-record-name">${escapeLedgerText(r.name)}${badge}${note}</span>
+        <span class="ledger-record-meta">${metaParts.join(' · ')}</span>
       </span>
       <span class="ledger-record-amount">${formatMoney(Number(r.amount) || 0)}</span>
       <button type="button" class="ledger-del" title="删除" onclick="event.stopPropagation(); deleteLedgerRecord('${r.id}')">×</button>
@@ -4174,6 +4739,9 @@ function openLedgerModal(dateKey) {
   ledgerEditingId = null;
   ledgerDate = dateKey;
   ledgerViewDate = dateKey;
+  ledgerPricingMode = 'normal';
+  ledgerManualRuleId = '';
+  ledgerManualCityId = '';
   const cats = getLedgerCategories();
   if (!cats.some(c => c.id === ledgerSelectedCategory)) {
     ledgerSelectedCategory = cats[0] ? cats[0].id : '';
@@ -4233,6 +4801,9 @@ function closeLedgerModal() {
   if (overlay) overlay.classList.remove('show');
   ledgerDate = '';
   ledgerEditingId = null;
+  ledgerPricingMode = 'normal';
+  ledgerManualRuleId = '';
+  ledgerManualCityId = '';
   document.getElementById('ledgerAmount').value = '';
   document.getElementById('ledgerNote').value = '';
   document.getElementById('ledgerSubmitBtn').textContent = '记账';
@@ -4258,6 +4829,64 @@ function renderLedgerCategories() {
       <button type="button" class="ledger-cat-del" title="删除项目" onclick="deleteLedgerCategory('${c.id}')">×</button>
     </span>`).join('')
     + '<button type="button" class="ledger-cat ledger-cat-add" onclick="openLedgerCustomForm()">＋ 自定义</button>';
+  renderLedgerPricingBlock();
+}
+
+// 交通分类下可选择普通 / 地铁 / 公交计费
+function renderLedgerPricingBlock() {
+  const block = document.getElementById('ledgerPricingBlock');
+  if (!block) return;
+  const active = ledgerSelectedCategory === 'transport' && !ledgerEditingId;
+  block.style.display = active ? '' : 'none';
+  if (!active) {
+    ledgerPricingMode = 'normal';
+    const amountInput = document.getElementById('ledgerAmount');
+    if (amountInput) amountInput.placeholder = '0.00';
+    return;
+  }
+  document.querySelectorAll('#ledgerPricingModes .seg-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === ledgerPricingMode);
+  });
+  const cityRow = document.getElementById('ledgerPricingCityRow');
+  const cityName = document.getElementById('ledgerPricingCityName');
+  const hint = document.getElementById('ledgerPricingHint');
+  const amountInput = document.getElementById('ledgerAmount');
+  const isTransit = ledgerPricingMode === 'metro' || ledgerPricingMode === 'bus';
+  if (cityRow) cityRow.style.display = isTransit ? '' : 'none';
+  if (amountInput) {
+    amountInput.placeholder = ledgerPricingMode === 'metro'
+      ? '地铁原价，例如 5'
+      : (ledgerPricingMode === 'bus' ? '公交原价，例如 2' : '0.00');
+  }
+  if (!isTransit) {
+    if (cityName) cityName.textContent = '';
+    if (hint) hint.textContent = '普通记账：金额按实际支付填写';
+    return;
+  }
+  if (ledgerPricingMode === 'metro') {
+    const rule = pricingRuleById(ledgerManualRuleId);
+    if (cityName) cityName.textContent = rule ? rule.name : '无折扣';
+    if (hint) hint.textContent = rule
+      ? `${pricingRuleSummary(rule)}${rule.note ? ' · ' + rule.note : ''}；金额按原价填写`
+      : '不做折扣，金额按原价记录';
+  } else {
+    const city = pricingRuleById(ledgerManualCityId);
+    if (cityName) cityName.textContent = city ? cityShortName(city) : '无折扣';
+    if (hint) hint.textContent = city
+      ? `公交刷卡 ${recurringDiscountText(busRateOf(city))}；金额按原价填写`
+      : '不做折扣，金额按原价记录';
+  }
+}
+
+function selectLedgerPricingMode(mode) {
+  ledgerPricingMode = mode === 'metro' || mode === 'bus' ? mode : 'normal';
+  renderLedgerPricingBlock();
+  updateLedgerWorkPreview();
+}
+
+function openLedgerCityPicker() {
+  if (ledgerPricingMode !== 'metro' && ledgerPricingMode !== 'bus') return;
+  openCityPicker(ledgerPricingMode, 'ledger');
 }
 
 function deleteLedgerCategory(id) {
@@ -4342,14 +4971,28 @@ function submitLedgerRecord() {
   if (ledgerEditingId) {
     const idx = ledgerRecords.findIndex(r => r.id === ledgerEditingId);
     if (idx !== -1) {
-      ledgerRecords[idx] = {
-        ...ledgerRecords[idx],
+      const prev = ledgerRecords[idx];
+      const catChanged = prev.categoryId !== cat.id;
+      // 分类未变时保留原名称与图标，避免周期模板 / 地铁记录的自定义名称被覆盖
+      const next = {
+        ...prev,
         categoryId: cat.id,
-        name: cat.name,
-        icon: cat.icon,
+        name: catChanged || !prev.name ? cat.name : prev.name,
+        icon: catChanged || !prev.icon ? cat.icon : prev.icon,
         amount: rounded,
         note
       };
+      if (cat.id !== 'transport') {
+        delete next.pricingId;
+        delete next.baseAmount;
+        delete next.discountRate;
+        delete next.manualAmount;
+      } else if ((prev.pricingId || Number(prev.baseAmount) > 0) && rounded !== Number(prev.amount)) {
+        // 地铁 / 公交记录手动改金额后不再参与自动重算
+        next.manualAmount = true;
+      }
+      ledgerRecords[idx] = next;
+      if (prev.pricingId) recalcAllPricing();
     }
     saveLedgerRecords();
     closeLedgerModal();
@@ -4358,8 +5001,8 @@ function submitLedgerRecord() {
     return;
   }
 
-  ledgerRecords.push({
-    id: 'lr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+  const record = {
+    id: newLedgerRecordId(),
     date: ledgerDate,
     categoryId: cat.id,
     name: cat.name,
@@ -4367,15 +5010,45 @@ function submitLedgerRecord() {
     amount: rounded,
     note,
     createdAt: Date.now()
-  });
+  };
+  // 交通分类下按所选计费方式补充原价 / 定价规则
+  const manualMode = cat.id === 'transport' ? ledgerPricingMode : 'normal';
+  if (manualMode === 'metro') {
+    record.baseAmount = rounded;
+    record.discountRate = 1;
+    const rule = pricingRuleById(ledgerManualRuleId);
+    if (rule) record.pricingId = rule.id;
+  } else if (manualMode === 'bus') {
+    const city = pricingRuleById(ledgerManualCityId);
+    const rate = city ? busRateOf(city) : 1;
+    record.baseAmount = rounded;
+    record.discountRate = rate;
+    record.amount = roundLedgerMoney(rounded * rate);
+  }
+  ledgerRecords.push(record);
+  if (record.pricingId) recalcAllPricing();
   saveLedgerRecords();
   closeLedgerModal();
   renderLedger();
-  showToast('已记账：' + formatMoney(amount));
+  const saved = ledgerRecords.find(r => r.id === record.id);
+  showToast('已记账：' + formatMoney(saved ? saved.amount : record.amount));
 }
 
 function deleteLedgerRecord(id) {
+  const record = ledgerRecords.find(r => r.id === id);
   ledgerRecords = ledgerRecords.filter(r => r.id !== id);
+  // 周期模板生成的记录被删除后记入跳过名单，后续不会再次补生成
+  if (record && record.sourceId) {
+    const template = ledgerRecurring.find(t => t.id === record.sourceId);
+    if (template) {
+      const key = record.periodKey;
+      if (!template.skippedPeriods.includes(key)) {
+        template.skippedPeriods.push(key);
+        saveLedgerRecurring();
+      }
+    }
+  }
+  if (record && record.pricingId) recalcAllPricing();
   saveLedgerRecords();
   if (ledgerEditingId === id) closeLedgerModal();
   renderLedger();
@@ -4387,7 +5060,8 @@ function updateLedgerWorkPreview() {
   const input = document.getElementById('ledgerAmount');
   if (!box || !input) return;
   const amount = parseFloat(input.value);
-  if (!(amount > 0)) {
+  // 地铁 / 公交手动计费展示折后金额由提交后计算，这里不按原价折算工作日
+  if (ledgerPricingMode !== 'normal' || !(amount > 0)) {
     box.classList.remove('show');
     box.innerHTML = '';
     return;
@@ -4400,6 +5074,521 @@ function updateLedgerWorkPreview() {
   }
   box.innerHTML = `<span>这笔钱折算工作日 <strong>${formatLedgerWork(seconds)}</strong></span>
     <span class="ledger-work-precise">精确 ${Math.round(seconds).toLocaleString()} 秒</span>`;
+}
+
+// ---------- 周期支出模板 ----------
+function openLedgerRecurringModal() {
+  closeRecurringForm();
+  renderLedgerRecurringList();
+  const overlay = document.getElementById('ledgerRecurringModal');
+  if (!overlay) return;
+  overlay.classList.add('show');
+  overlay.scrollTop = 0;
+}
+
+function closeLedgerRecurringModal() {
+  const overlay = document.getElementById('ledgerRecurringModal');
+  if (overlay) overlay.classList.remove('show');
+  closeRecurringForm();
+}
+
+function recurringCategoryOf(template) {
+  return ledgerCategoryById(template.categoryId);
+}
+
+function recurringDisplayName(template) {
+  const cat = recurringCategoryOf(template);
+  return template.name || (template.mode === 'metro'
+    ? '地铁通勤'
+    : (template.mode === 'bus' ? '公交通勤' : (cat ? cat.name : '未命名')));
+}
+
+function recurringDisplayIcon(template) {
+  const cat = recurringCategoryOf(template);
+  return template.icon || (template.mode === 'metro'
+    ? '🚇'
+    : (template.mode === 'bus' ? '🚌' : (cat ? cat.icon : '📦')));
+}
+
+function recurringDiscountText(discount) {
+  const rate = Number(discount);
+  if (!isFinite(rate) || rate >= 1) return '全价';
+  return `${Math.round(rate * 100) / 10} 折`;
+}
+
+function recurringRuleText(template) {
+  if (template.mode === 'metro' || template.mode === 'bus') {
+    return `${template.workdayOnly === false ? '每天' : '仅工作日'} · 每天 ${parseInt(template.tripsPerDay, 10) || 1} 次`;
+  }
+  return template.dayMode === 'last' ? '每月最后一天' : `每月 ${parseInt(template.day, 10) || 1} 日`;
+}
+
+function renderLedgerRecurringList() {
+  const list = document.getElementById('ledgerRecurringList');
+  if (!list) return;
+  if (!ledgerRecurring.length) {
+    list.innerHTML = '<div class="ledger-empty-hint">还没有周期模板。房租、会员订阅、通勤交通，设一次就能每月自动记录。</div>';
+    return;
+  }
+  list.innerHTML = ledgerRecurring.map(t => {
+    const isMetro = t.mode === 'metro';
+    const isBus = t.mode === 'bus';
+    const rule = isMetro ? pricingRuleById(t.pricingId) : null;
+    const busCity = isBus ? pricingRuleById(t.busCityId) : null;
+    const busRate = busCity ? busRateOf(busCity) : null;
+    const amountText = isMetro
+      ? `单程 ${formatMoney(t.baseFare)} · ${rule ? rule.name : '无折扣'}`
+      : (isBus
+        ? `单程 ${formatMoney(t.baseFare)} · ${busRate != null ? recurringDiscountText(busRate) : '无折扣'}${busCity ? ' · ' + cityShortName(busCity) : ''}`
+        : formatMoney(t.amount));
+    const startText = t.startDate ? ` · ${formatDateSlash(t.startDate)} 起` : '';
+    return `<div class="ledger-recurring-item${t.enabled === false ? ' paused' : ''}">
+      <span class="ledger-recurring-icon">${escapeLedgerText(recurringDisplayIcon(t))}</span>
+      <span class="ledger-recurring-info">
+        <span class="ledger-recurring-name">${escapeLedgerText(recurringDisplayName(t))}
+          <span class="ledger-recurring-tag">${isMetro ? '地铁' : (isBus ? '公交' : '支出')}</span>
+        </span>
+        <span class="ledger-recurring-meta">${amountText} · ${recurringRuleText(t)}${startText}</span>
+      </span>
+      <span class="ledger-recurring-toggle${t.enabled !== false ? ' on' : ''}">${t.enabled !== false ? '已启用' : '已停用'}</span>
+      <button type="button" class="ledger-recurring-edit" onclick="openRecurringForm('${t.id}')">编辑</button>
+      <button type="button" class="ledger-del" title="删除模板" onclick="deleteRecurringTemplate('${t.id}')">×</button>
+    </div>`;
+  }).join('');
+}
+
+function deleteRecurringTemplate(id) {
+  const template = ledgerRecurring.find(t => t.id === id);
+  if (!template) return;
+  if (!confirm(`确定删除周期模板「${recurringDisplayName(template)}」吗？已生成的记录会保留。`)) return;
+  ledgerRecurring = ledgerRecurring.filter(t => t.id !== id);
+  saveLedgerRecurring();
+  if (recurringEditingId === id) closeRecurringForm();
+  renderLedgerRecurringList();
+  renderLedger();
+  showToast('已删除周期模板');
+}
+
+function openRecurringForm(id) {
+  // 切换模板前先把上一条未落盘的改动存下
+  if (recurringAutoSaveTimer) {
+    clearTimeout(recurringAutoSaveTimer);
+    recurringAutoSaveTimer = null;
+    persistRecurringDraft();
+  }
+  recurringEditingId = id || null;
+  const template = id ? ledgerRecurring.find(t => t.id === id) : null;
+  if (template) {
+    recurringDraft = {
+      mode: template.mode,
+      categoryId: template.categoryId,
+      name: template.name,
+      amount: String(template.amount),
+      baseFare: String(template.baseFare),
+      tripsPerDay: template.tripsPerDay,
+      workdayOnly: template.workdayOnly,
+      pricingId: template.pricingId,
+      busCityId: template.busCityId,
+      enabled: template.enabled !== false,
+      startDate: template.startDate,
+      dayMode: template.dayMode,
+      day: template.day,
+      note: template.note
+    };
+  } else {
+    recurringDraft = {
+      mode: 'fixed', categoryId: 'rent', name: '',
+      amount: '', baseFare: '', tripsPerDay: 2, workdayOnly: true,
+      pricingId: '', busCityId: '',
+      enabled: true,
+      startDate: currentMonthKey() + '-01',
+      dayMode: 'day', day: 1, note: ''
+    };
+  }
+  renderRecurringForm();
+  const form = document.getElementById('ledgerRecurringForm');
+  if (form) {
+    form.style.display = 'block';
+    const modal = form.closest('.ledger-recurring-modal');
+    const overlay = form.closest('.modal-overlay');
+    // 编辑 / 新增时全屏展示表单，收起上方列表
+    if (modal) modal.classList.add('editing');
+    if (overlay) overlay.classList.add('recurring-fullscreen');
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function closeRecurringForm() {
+  // 关闭前把尚未落盘的改动补存一次
+  if (recurringAutoSaveTimer) {
+    clearTimeout(recurringAutoSaveTimer);
+    recurringAutoSaveTimer = null;
+    persistRecurringDraft();
+  }
+  recurringEditingId = null;
+  recurringDraft = null;
+  const form = document.getElementById('ledgerRecurringForm');
+  if (form) {
+    form.style.display = 'none';
+    form.innerHTML = '';
+    const modal = form.closest('.ledger-recurring-modal');
+    const overlay = form.closest('.modal-overlay');
+    if (modal) modal.classList.remove('editing');
+    if (overlay) overlay.classList.remove('recurring-fullscreen');
+  }
+}
+
+function selectRecurringMode(mode) {
+  if (!recurringDraft) return;
+  recurringDraft.mode = mode === 'metro' ? 'metro' : (mode === 'bus' ? 'bus' : 'fixed');
+  if (recurringDraft.mode === 'metro') {
+    recurringDraft.categoryId = 'transport';
+    // 通勤模板名称固定，避免沿用另一种通勤的默认名
+    recurringDraft.name = '地铁通勤';
+  } else if (recurringDraft.mode === 'bus') {
+    recurringDraft.categoryId = 'transport';
+    recurringDraft.name = '公交通勤';
+  } else {
+    // 从通勤切回固定金额时清掉通勤默认名，避免误用
+    if (recurringDraft.name === '地铁通勤' || recurringDraft.name === '公交通勤') {
+      recurringDraft.name = '';
+    }
+    const cats = getLedgerCategories();
+    if (!cats.some(c => c.id === recurringDraft.categoryId)) {
+      recurringDraft.categoryId = cats[0] ? cats[0].id : '';
+    }
+  }
+  renderRecurringForm();
+}
+
+function selectRecurringCategory(id) {
+  if (!recurringDraft) return;
+  const prev = ledgerCategoryById(recurringDraft.categoryId);
+  recurringDraft.categoryId = id;
+  const cat = ledgerCategoryById(id);
+  // 名称留空或仍等于旧分类名时，跟随分类自动更新
+  if (cat && (!recurringDraft.name || (prev && recurringDraft.name === prev.name))) {
+    recurringDraft.name = cat.name;
+  }
+  renderRecurringForm();
+}
+
+function selectRecurringDayMode(mode) {
+  if (!recurringDraft) return;
+  recurringDraft.dayMode = mode === 'last' ? 'last' : 'day';
+  renderRecurringForm();
+}
+
+function selectRecurringTrips(count) {
+  if (!recurringDraft) return;
+  recurringDraft.tripsPerDay = count === 1 ? 1 : 2;
+  renderRecurringForm();
+}
+
+function selectRecurringWorkday(workdayOnly) {
+  if (!recurringDraft) return;
+  recurringDraft.workdayOnly = !!workdayOnly;
+  renderRecurringForm();
+}
+
+function selectRecurringEnabled(enabled) {
+  if (!recurringDraft) return;
+  recurringDraft.enabled = !!enabled;
+  renderRecurringForm();
+}
+
+function renderRecurringForm() {
+  const box = document.getElementById('ledgerRecurringForm');
+  if (!box || !recurringDraft) return;
+  const d = recurringDraft;
+  const isMetro = d.mode === 'metro';
+  const isBus = d.mode === 'bus';
+  const isTransit = isMetro || isBus;
+  const busCity = isBus ? pricingRuleById(d.busCityId) : null;
+  const cats = getLedgerCategories();
+  if (!cats.some(c => c.id === d.categoryId)) {
+    d.categoryId = cats[0] ? cats[0].id : '';
+  }
+
+  const catChips = cats.map(c => `
+    <button type="button" class="ledger-cat${c.id === d.categoryId ? ' active' : ''}" onclick="selectRecurringCategory('${c.id}')">
+      <span>${escapeLedgerText(c.icon)}</span>${escapeLedgerText(c.name)}
+    </button>`).join('');
+
+  let fields = '';
+  if (isMetro) {
+    const rule = pricingRuleById(d.pricingId);
+    fields = `
+      <div class="field-group">
+        <label>单程原价 (¥)</label>
+        <input type="number" inputmode="decimal" min="0" step="0.01" value="${escapeLedgerText(d.baseFare)}" placeholder="例如：5" oninput="recurringDraft.baseFare=this.value">
+      </div>
+      <div class="field-group">
+        <label>每天次数</label>
+        <div class="seg-control">
+          <button type="button" class="seg-btn${Number(d.tripsPerDay) === 1 ? ' active' : ''}" onclick="selectRecurringTrips(1)">1 次</button>
+          <button type="button" class="seg-btn${Number(d.tripsPerDay) === 2 ? ' active' : ''}" onclick="selectRecurringTrips(2)">2 次</button>
+        </div>
+      </div>
+      <div class="field-group" style="grid-column:1/-1">
+        <label>生成范围</label>
+        <div class="seg-control">
+          <button type="button" class="seg-btn${d.workdayOnly !== false ? ' active' : ''}" onclick="selectRecurringWorkday(true)">仅工作日</button>
+          <button type="button" class="seg-btn${d.workdayOnly === false ? ' active' : ''}" onclick="selectRecurringWorkday(false)">每天</button>
+        </div>
+      </div>
+      <div class="field-group" style="grid-column:1/-1">
+        <label>折扣规则</label>
+        <div class="ledger-rule-row">
+          <button type="button" class="ledger-rule-picker" onclick="openCityPicker()">
+            <span>${rule ? escapeLedgerText(rule.name) : '无折扣'}</span>
+            <span class="ledger-rule-picker-arrow">▾</span>
+          </button>
+        </div>
+        <div class="field-hint">${rule
+          ? `${escapeLedgerText(pricingRuleSummary(rule))}${rule.note ? ' · ' + escapeLedgerText(rule.note) : ''}；满额后从下一笔起生效`
+          : '不做折扣，按原价记录'}</div>
+      </div>`;
+  } else if (isBus) {
+    fields = `
+      <div class="field-group">
+        <label>单程原价 (¥)</label>
+        <input type="number" inputmode="decimal" min="0" step="0.01" value="${escapeLedgerText(d.baseFare)}" placeholder="例如：2" oninput="recurringDraft.baseFare=this.value">
+      </div>
+      <div class="field-group">
+        <label>每天次数</label>
+        <div class="seg-control">
+          <button type="button" class="seg-btn${Number(d.tripsPerDay) === 1 ? ' active' : ''}" onclick="selectRecurringTrips(1)">1 次</button>
+          <button type="button" class="seg-btn${Number(d.tripsPerDay) === 2 ? ' active' : ''}" onclick="selectRecurringTrips(2)">2 次</button>
+        </div>
+      </div>
+      <div class="field-group" style="grid-column:1/-1">
+        <label>生成范围</label>
+        <div class="seg-control">
+          <button type="button" class="seg-btn${d.workdayOnly !== false ? ' active' : ''}" onclick="selectRecurringWorkday(true)">仅工作日</button>
+          <button type="button" class="seg-btn${d.workdayOnly === false ? ' active' : ''}" onclick="selectRecurringWorkday(false)">每天</button>
+        </div>
+      </div>
+      <div class="field-group" style="grid-column:1/-1">
+        <label>折扣规则</label>
+        <div class="ledger-rule-row">
+          <button type="button" class="ledger-rule-picker" onclick="openCityPicker('bus')">
+            <span>${busCity ? escapeLedgerText(cityShortName(busCity)) : '无折扣'}</span>
+            <span class="ledger-rule-picker-arrow">▾</span>
+          </button>
+        </div>
+        <div class="field-hint">${busCity && busRateOf(busCity) != null
+          ? `公交刷卡 ${recurringDiscountText(busRateOf(busCity))}`
+          : '不做折扣，按原价生成'}</div>
+      </div>`;
+  } else {
+    fields = `
+      <div class="field-group">
+        <label>金额 (¥)</label>
+        <input type="number" inputmode="decimal" min="0" step="0.01" value="${escapeLedgerText(d.amount)}" placeholder="例如：3500" oninput="recurringDraft.amount=this.value">
+      </div>
+      <div class="field-group">
+        <label>每月日期</label>
+        <input type="number" min="1" max="31" value="${parseInt(d.day, 10) || 1}" ${d.dayMode === 'last' ? 'disabled' : ''} oninput="recurringDraft.day=this.value">
+      </div>
+      <div class="field-group" style="grid-column:1/-1">
+        <div class="seg-control">
+          <button type="button" class="seg-btn${d.dayMode !== 'last' ? ' active' : ''}" onclick="selectRecurringDayMode('day')">按日期</button>
+          <button type="button" class="seg-btn${d.dayMode === 'last' ? ' active' : ''}" onclick="selectRecurringDayMode('last')">每月最后一天</button>
+        </div>
+        <div class="field-hint">日期超出当月天数时按月末生成；只在启用日期之后记录。</div>
+      </div>`;
+  }
+
+  box.innerHTML = `
+    <div class="settings-grid">
+      <div class="field-group" style="grid-column:1/-1">
+        <label>模板模式</label>
+        <div class="seg-control">
+          <button type="button" class="seg-btn${!isTransit ? ' active' : ''}" onclick="selectRecurringMode('fixed')">固定金额</button>
+          <button type="button" class="seg-btn${isBus ? ' active' : ''}" onclick="selectRecurringMode('bus')">公交通勤</button>
+          <button type="button" class="seg-btn${isMetro ? ' active' : ''}" onclick="selectRecurringMode('metro')">地铁通勤</button>
+        </div>
+      </div>
+      <div class="field-group" style="grid-column:1/-1">
+        <label>名称</label>
+        ${isTransit
+          ? `<input type="text" value="${isMetro ? '地铁通勤' : '公交通勤'}" disabled>`
+          : `<input type="text" maxlength="10" value="${escapeLedgerText(d.name)}" placeholder="例如：房租" oninput="recurringDraft.name=this.value">`}
+      </div>
+      ${isTransit ? '' : `<div class="field-group" style="grid-column:1/-1">
+        <label>分类</label>
+        <div class="ledger-cats" style="margin-bottom:0">${catChips}</div>
+      </div>`}
+      ${fields}
+      <div class="field-group" style="grid-column:1/-1">
+        <label>状态</label>
+        <div class="seg-control">
+          <button type="button" class="seg-btn${d.enabled !== false ? ' active' : ''}" onclick="selectRecurringEnabled(true)">启用</button>
+          <button type="button" class="seg-btn${d.enabled === false ? ' active' : ''}" onclick="selectRecurringEnabled(false)">停用</button>
+        </div>
+        <div class="field-hint">${d.enabled !== false ? '按周期自动生成记录' : '暂停生成记录，已生成的记录保留'}</div>
+      </div>
+      <div class="field-group" style="grid-column:1/-1">
+        <label>启用日期</label>
+        <input type="text" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD" value="${escapeLedgerText(formatDateSlash(d.startDate))}" onchange="recurringDraft.startDate=this.value">
+        <div class="field-hint">从这一天开始生成，之前的账期不会记录。</div>
+      </div>
+      <div class="field-group" style="grid-column:1/-1">
+        <label>备注（可选）</label>
+        <input type="text" maxlength="30" value="${escapeLedgerText(d.note)}" placeholder="会写入每条生成的记录" oninput="recurringDraft.note=this.value">
+      </div>
+    </div>`;
+  scheduleRecurringAutoSave();
+}
+
+let recurringAutoSaveTimer = null;
+
+function scheduleRecurringAutoSave() {
+  if (!recurringDraft) return;
+  clearTimeout(recurringAutoSaveTimer);
+  recurringAutoSaveTimer = setTimeout(() => {
+    recurringAutoSaveTimer = null;
+    persistRecurringDraft();
+  }, 400);
+}
+
+function persistRecurringDraft() {
+  if (!recurringDraft) return false;
+  const d = recurringDraft;
+  const isMetro = d.mode === 'metro';
+  const isBus = d.mode === 'bus';
+  const isTransit = isMetro || isBus;
+  if (isBus && d.busCityId && busRateOf(pricingRuleById(d.busCityId)) == null) return false;
+  const cat = isTransit ? ledgerCategoryById('transport') : ledgerCategoryById(d.categoryId);
+  const amount = roundLedgerMoney(isTransit ? d.baseFare : d.amount);
+  if (!(amount > 0)) return false;
+  const startDate = normalizeRecurringDate(d.startDate);
+  if (!startDate) return false;
+  const existing = recurringEditingId ? ledgerRecurring.find(t => t.id === recurringEditingId) : null;
+  // 编辑中的模板已被删除时不再写回
+  if (recurringEditingId && !existing) return false;
+  const name = isTransit
+    ? (isMetro ? '地铁通勤' : '公交通勤')
+    : ((d.name || '').trim() || (cat ? cat.name : '周期支出'));
+  const template = {
+    id: existing ? existing.id : newLedgerRecurringId(),
+    mode: isMetro ? 'metro' : (isBus ? 'bus' : 'fixed'),
+    categoryId: isTransit ? 'transport' : d.categoryId,
+    name,
+    icon: isMetro ? '🚇' : (isBus ? '🚌' : (cat ? cat.icon : '🏷️')),
+    amount: isTransit ? 0 : amount,
+    baseFare: isTransit ? amount : 0,
+    pricingId: isMetro ? d.pricingId : '',
+    busCityId: isBus ? d.busCityId : '',
+    tripsPerDay: Math.min(Math.max(parseInt(d.tripsPerDay, 10) || 1, 1), 4),
+    workdayOnly: d.workdayOnly,
+    dayMode: d.dayMode === 'last' ? 'last' : 'day',
+    day: Math.min(Math.max(parseInt(d.day, 10) || 1, 1), 31),
+    note: (d.note || '').trim(),
+    enabled: d.enabled !== false,
+    startDate,
+    skippedPeriods: existing ? existing.skippedPeriods : [],
+    createdAt: existing ? existing.createdAt : Date.now()
+  };
+  if (existing) {
+    ledgerRecurring[ledgerRecurring.findIndex(t => t.id === existing.id)] = template;
+  } else {
+    ledgerRecurring.push(template);
+    recurringEditingId = template.id;
+  }
+  saveLedgerRecurring();
+  renderLedgerRecurringList();
+  renderLedger();
+  return true;
+}
+
+// ---------- 城市规则选择 ----------
+function openCityPicker(mode, target) {
+  cityPickerTarget = target === 'ledger' ? 'ledger' : 'recurring';
+  cityPickerFor = mode === 'bus' ? 'bus' : 'metro';
+  const title = document.getElementById('ledgerCityTitle');
+  if (title) title.textContent = cityPickerFor === 'bus' ? '选择公交城市' : '选择地铁城市';
+  const search = document.getElementById('ledgerCitySearch');
+  if (search) search.value = '';
+  renderCityPickerList('');
+  const overlay = document.getElementById('ledgerCityModal');
+  if (!overlay) return;
+  overlay.classList.add('show');
+  overlay.scrollTop = 0;
+  setTimeout(() => {
+    if (search && overlay.classList.contains('show')) search.focus();
+  }, 80);
+}
+
+function closeCityPicker() {
+  const overlay = document.getElementById('ledgerCityModal');
+  if (overlay) overlay.classList.remove('show');
+}
+
+function renderCityPickerList(query) {
+  const list = document.getElementById('ledgerCityList');
+  if (!list) return;
+  const q = String(query || '').trim().toLowerCase();
+  const isBus = cityPickerFor === 'bus';
+  const current = cityPickerTarget === 'ledger'
+    ? (isBus ? ledgerManualCityId : ledgerManualRuleId)
+    : (recurringDraft ? (isBus ? recurringDraft.busCityId : recurringDraft.pricingId) : '');
+  // 公交只展示已收录刷卡折扣的城市
+  const source = isBus
+    ? ledgerPricingRules.filter(rule => busRateOf(rule) != null)
+    : ledgerPricingRules;
+  const rules = source.filter(rule =>
+    !q || String(rule.name || '').toLowerCase().includes(q));
+  const showNone = !q || '无折扣'.includes(q);
+  if (!rules.length && !showNone) {
+    list.innerHTML = '<div class="ledger-empty-hint">没有找到匹配的城市</div>';
+    return;
+  }
+  const noneItem = showNone
+    ? `<button type="button" class="ledger-city-item${!current ? ' active' : ''}" onclick="selectCityRule('')">
+        <span class="ledger-city-item-name">无折扣</span>
+        <span class="ledger-city-item-meta">${isBus ? '不做折扣，按原价生成' : '不做折扣，按原价记录'}</span>
+      </button>`
+    : '';
+  list.innerHTML = noneItem + rules.map(rule => {
+    const busRate = isBus ? busRateOf(rule) : null;
+    const meta = isBus
+      ? `公交刷卡 ${recurringDiscountText(busRate)}`
+      : `${pricingRuleSummary(rule)}${rule.note ? ' · ' + rule.note : ''}`;
+    return `<button type="button" class="ledger-city-item${rule.id === current ? ' active' : ''}" onclick="selectCityRule('${rule.id}')">
+      <span class="ledger-city-item-name">${escapeLedgerText(isBus ? cityShortName(rule) : rule.name)}</span>
+      <span class="ledger-city-item-meta">${escapeLedgerText(meta)}</span>
+    </button>`;
+  }).join('');
+}
+
+function selectCityRule(id) {
+  if (cityPickerTarget === 'ledger') {
+    if (cityPickerFor === 'bus') ledgerManualCityId = id || '';
+    else ledgerManualRuleId = id || '';
+    closeCityPicker();
+    renderLedgerPricingBlock();
+    updateLedgerWorkPreview();
+    return;
+  }
+  if (!recurringDraft) return;
+  if (!id) {
+    if (cityPickerFor === 'bus') recurringDraft.busCityId = '';
+    else recurringDraft.pricingId = '';
+    closeCityPicker();
+    renderRecurringForm();
+    return;
+  }
+  const rule = pricingRuleById(id);
+  if (!rule) return;
+  if (cityPickerFor === 'bus') {
+    recurringDraft.busCityId = id;
+  } else {
+    recurringDraft.pricingId = id;
+  }
+  closeCityPicker();
+  renderRecurringForm();
 }
 
 // ============ 分享卡片 ============
@@ -5426,6 +6615,12 @@ document.getElementById('ledgerModal').addEventListener('click', function(e) {
 document.getElementById('ledgerMonthModal').addEventListener('click', function(e) {
   if (e.target === this) closeLedgerMonthModal();
 });
+document.getElementById('ledgerRecurringModal').addEventListener('click', function(e) {
+  if (e.target === this) closeLedgerRecurringModal();
+});
+document.getElementById('ledgerCityModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCityPicker();
+});
 document.getElementById('jobHistoryModal').addEventListener('click', function(e) {
   if (e.target === this) closeJobHistoryModal();
 });
@@ -5435,6 +6630,9 @@ document.getElementById('shareModal').addEventListener('click', function(e) {
 document.getElementById('pickerModal').addEventListener('click', function(e) {
   if (e.target === this) closePicker();
 });
+
+// 周期模板表单自动保存：字段确认修改后延迟落盘，无需保存按钮
+document.getElementById('ledgerRecurringForm').addEventListener('change', scheduleRecurringAutoSave);
 
 // 趋势图：点按任意位置，就近选中对应的日期 / 月份
 document.getElementById('ledgerTrendBars').addEventListener('click', function(e) {
