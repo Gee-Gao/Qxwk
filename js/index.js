@@ -81,6 +81,7 @@ let ledgerCategories = [];    // 自定义记账项目
 let ledgerMonth = '';         // 记账/统计页当前月份（YYYY-MM）
 let ledgerViewDate = '';      // 记账页当前选中的日期（YYYY-MM-DD）
 let ledgerStatsScope = 'month'; // 图表统计范围：month 月度 / year 年度累计
+let lifeScope = 'all';          // 生命消耗大盘口径：all 累计全部工作 / current 仅当前工作
 let ledgerPickerYear = 0;     // 月份快速选择弹窗当前显示的年份
 let ledgerDate = '';          // 当前正在记账的日期（YYYY-MM-DD）
 let ledgerEditingId = null;   // 为空表示新增，否则为正在修改的记录编号
@@ -3505,8 +3506,10 @@ function fmtMoneyCompact(val) {
   return '¥' + Math.round(val).toLocaleString();
 }
 
-// 生命消耗大盘数据：累计工时、最早入职 / 打工天数、折合生命与已换工资（含历史工作）
-function getLifeStats() {
+// 生命消耗大盘数据：累计工时、最早入职 / 打工天数、折合生命与已换工资
+// scope 为 all 时统计全部工作（含历史），为 current 时只看当前工作
+function getLifeStats(scope) {
+  const onlyCurrent = scope === 'current';
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let workDays = 0;
@@ -3516,6 +3519,7 @@ function getLifeStats() {
   let firstHire = null;
 
   getAllJobs().forEach(job => {
+    if (onlyCurrent && job !== settings) return;
     const hire = parseDateKey(job.hireDate || '');
     if (!hire) return;
     let end = today;
@@ -3543,21 +3547,43 @@ function getLifeStats() {
   };
 }
 
+// 切换大盘口径：当前工作 / 累计工作
+function selectLifeScope(scope) {
+  lifeScope = scope;
+  document.querySelectorAll('#lifeScope .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.scope === scope);
+  });
+  updateLifePanel();
+}
+
 function updateLifePanel() {
   const panel = document.getElementById('lifePanel');
   if (!panel) return;
 
-  const stats = getLifeStats();
+  const isCurrent = lifeScope === 'current';
+  const desc = document.getElementById('lifeDesc');
+  if (desc) {
+    desc.textContent = isCurrent
+      ? '只算当前这份工作，从入职那天起你的生命就在按小时计价'
+      : '从第一份工作入职那天起，你的生命就在按小时计价（含历史工作）';
+  }
+
+  const stats = getLifeStats(lifeScope);
   if (stats.workDays <= 0) {
-    panel.innerHTML = '<div class="life-empty">去「设置」页填上入职日期（或补一段历史工作），看看这些年你把多少生命换成了工资。</div>';
+    panel.innerHTML = isCurrent
+      ? '<div class="life-empty">去「设置」页填上当前工作的入职日期，看看这份工作消耗了多少生命。</div>'
+      : '<div class="life-empty">去「设置」页填上入职日期（或补一段历史工作），看看这些年你把多少生命换成了工资。</div>';
     return;
   }
 
   const { workDays, totalHours, totalEarned, lifeDays, tenureDays, jobCount } = stats;
+  const note = isCurrent
+    ? (jobHistory.length ? '<div class="life-note">仅统计当前工作，不含历史工作</div>' : '')
+    : (jobCount > 1 ? `<div class="life-note">已累计 ${jobCount} 段工作经历</div>` : '');
   panel.innerHTML = `
     <div class="life-hero">
       <div class="life-hours">${Math.round(totalHours).toLocaleString()}<span class="unit">小时</span></div>
-      <div class="life-hours-label">累计卖给工位的时间</div>
+      <div class="life-hours-label">${isCurrent ? '当前工作卖给工位的时间' : '累计卖给工位的时间'}</div>
     </div>
     <div class="life-grid">
       <div class="life-stat"><div class="v">${tenureDays.toLocaleString()}<small>天</small></div><div class="k">入职天数</div></div>
@@ -3565,7 +3591,7 @@ function updateLifePanel() {
       <div class="life-stat"><div class="v">${lifeDays.toFixed(1)}<small>天</small></div><div class="k">折合生命</div></div>
       <div class="life-stat"><div class="v">${fmtMoneyCompact(totalEarned)}</div><div class="k">已换工资</div></div>
     </div>
-    ${jobCount > 1 ? `<div class="life-note">已累计 ${jobCount} 段工作经历</div>` : ''}
+    ${note}
   `;
 }
 
