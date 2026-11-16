@@ -5173,9 +5173,13 @@ function openRecurringForm(id) {
   recurringEditingId = id || null;
   const template = id ? ledgerRecurring.find(t => t.id === id) : null;
   if (template) {
+    const isTransitTemplate = template.mode === 'metro' || template.mode === 'bus';
     recurringDraft = {
       mode: template.mode,
       categoryId: template.categoryId,
+      // 固定金额独立的分类与名称，切到通勤再切回时恢复
+      fixedCategoryId: isTransitTemplate ? 'rent' : template.categoryId,
+      fixedName: isTransitTemplate ? '' : template.name,
       name: template.name,
       amount: String(template.amount),
       baseFare: String(template.baseFare),
@@ -5193,7 +5197,7 @@ function openRecurringForm(id) {
     // 固定金额默认使用当前分类名称
     const defaultCat = ledgerCategoryById('rent');
     recurringDraft = {
-      mode: 'fixed', categoryId: 'rent', name: defaultCat ? defaultCat.name : '',
+      mode: 'fixed', categoryId: 'rent', fixedCategoryId: 'rent', fixedName: defaultCat ? defaultCat.name : '', name: defaultCat ? defaultCat.name : '',
       amount: '', baseFare: '', tripsPerDay: 2, workdayOnly: true,
       pricingId: '', busCityId: '',
       enabled: true,
@@ -5230,6 +5234,11 @@ function closeRecurringForm() {
 
 function selectRecurringMode(mode) {
   if (!recurringDraft) return;
+  // 离开固定金额前记住它自己的分类与名称，避免被通勤覆盖
+  if (recurringDraft.mode === 'fixed') {
+    recurringDraft.fixedCategoryId = recurringDraft.categoryId;
+    recurringDraft.fixedName = recurringDraft.name;
+  }
   recurringDraft.mode = mode === 'metro' ? 'metro' : (mode === 'bus' ? 'bus' : 'fixed');
   if (recurringDraft.mode === 'metro') {
     recurringDraft.categoryId = 'transport';
@@ -5239,15 +5248,20 @@ function selectRecurringMode(mode) {
     recurringDraft.categoryId = 'transport';
     recurringDraft.name = '公交通勤';
   } else {
-    // 切回固定金额：名称默认取当前分类名
+    // 切回固定金额：恢复固定金额自己的分类与名称
     const cats = getLedgerCategories();
-    if (!cats.some(c => c.id === recurringDraft.categoryId)) {
-      recurringDraft.categoryId = cats[0] ? cats[0].id : '';
-    }
-    if (!recurringDraft.name || recurringDraft.name === '地铁通勤' || recurringDraft.name === '公交通勤') {
-      const cat = ledgerCategoryById(recurringDraft.categoryId);
+    let catId = recurringDraft.fixedCategoryId;
+    if (!cats.some(c => c.id === catId)) catId = cats[0] ? cats[0].id : '';
+    recurringDraft.categoryId = catId;
+    recurringDraft.fixedCategoryId = catId;
+    const fixedName = (recurringDraft.fixedName || '').trim();
+    if (fixedName) {
+      recurringDraft.name = fixedName;
+    } else {
+      const cat = ledgerCategoryById(catId);
       recurringDraft.name = cat ? cat.name : '';
     }
+    recurringDraft.fixedName = recurringDraft.name;
   }
   renderRecurringForm();
 }
@@ -5256,6 +5270,7 @@ function selectRecurringCategory(id) {
   if (!recurringDraft) return;
   const prev = ledgerCategoryById(recurringDraft.categoryId);
   recurringDraft.categoryId = id;
+  recurringDraft.fixedCategoryId = id;
   const cat = ledgerCategoryById(id);
   // 名称留空或仍等于旧分类名时，跟随分类自动更新
   if (cat && (!recurringDraft.name || (prev && recurringDraft.name === prev.name))) {
