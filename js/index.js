@@ -6564,6 +6564,22 @@ function updateAll() {
   renderLedger();
 }
 
+// 判断是否以 PWA / 安卓 App 等「无地址栏」方式打开
+function isStandaloneApp() {
+  if (window.navigator.standalone === true) return true; // iOS 添加到主屏幕
+  const modes = ['standalone', 'fullscreen', 'minimal-ui', 'window-controls-overlay'];
+  if (modes.some(mode => window.matchMedia('(display-mode: ' + mode + ')').matches)) return true;
+  if (/; wv\)/i.test(navigator.userAgent)) return true; // 安卓 WebView / App 内置页面
+  return false;
+}
+
+// 浏览器打开时才展示 App 安装引导，已装为 App 时无需重复提示
+function initAppInstallTip() {
+  const tip = document.getElementById('appInstallTip');
+  if (tip && !isStandaloneApp()) tip.style.display = 'block';
+}
+initAppInstallTip();
+
 // ============ 初始化 ============
 // 首次进入（本地还没保存过参数）时直接停在设置页，先把工作参数填了
 let isFirstRun = false;
