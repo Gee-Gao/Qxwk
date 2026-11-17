@@ -128,10 +128,10 @@
     <div class="stats-panel active" data-cat="data">
       <div class="life-card">
         <h3>生命消耗大盘</h3>
-        <div class="desc" id="lifeDesc">从第一份工作入职那天起，你的生命就在按小时计价（含历史工作）</div>
+        <div class="desc" id="lifeDesc">只算当前这份工作，从入职那天起你的生命就在按小时计价</div>
         <div class="seg-control" id="lifeScope">
-          <button type="button" class="seg-btn" data-scope="current" onclick="selectLifeScope('current')">当前工作</button>
-          <button type="button" class="seg-btn active" data-scope="all" onclick="selectLifeScope('all')">累计工作</button>
+          <button type="button" class="seg-btn active" data-scope="current" onclick="selectLifeScope('current')">当前工作</button>
+          <button type="button" class="seg-btn" data-scope="all" onclick="selectLifeScope('all')">累计工作</button>
         </div>
         <div id="lifePanel"></div>
       </div>
