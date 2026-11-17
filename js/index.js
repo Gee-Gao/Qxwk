@@ -18,6 +18,7 @@ const DEFAULTS = {
   workDayMode: 'double',
   customWorkMonth: '',     // 自定义日历生效的月份（YYYY-MM）
   customWorkDates: [],     // 该月上班的具体日期（YYYY-MM-DD），空表示未选择，按双休计算
+  customWorkCalendars: {}, // 各月自定义上班日期：{ 'YYYY-MM': ['YYYY-MM-DD', ...] }，用于回看上月的实际工作日
   customWorkdayPromptMonth: '', // 最近一次自动弹窗的月份（YYYY-MM），用于每月只弹一次
   bigSmallWeekStart: '',  // 大小周基准周的周一日期，与 bigSmallWeekType 一起确定每周类型
   bigSmallWeekType: 'big', // 基准周类型：big 双休周（大周）/ small 单休周（小周）
@@ -34,6 +35,12 @@ const DEFAULTS = {
   overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 调休
   overtimeSync: false,     // 加班金额是否计入计时页（仅给钱模式有效）
   overtimePanelShow: 'always', // 计时页加班费卡片展示：always 始终展示 / auto 无数据不展示 / off 隐藏
+  tieredRateTiers: [        // 累计工时模式下的阶梯门槛（累计工时）与对应倍率，门槛以下按 1 倍
+    { hours: 168, rate: 1.5 },
+    { hours: 252, rate: 2 }
+  ],
+  calcMode: 'monthly',      // 计算方式：monthly 固定月薪 / hourly 累计工时（按时薪计薪，工时每月重置）
+  hourlyRate: 0,            // 累计工时模式下的税前时薪（元/小时）
   foreignEnabled: false,   // 计时页是否附加展示外币换算
   foreignCurrency: 'USD'   // 外币换算币种代码
 };
@@ -107,10 +114,11 @@ const JOB_FIELDS = [
   'socialBase', 'fundBase', 'pensionRate', 'medicalRate', 'unemploymentRate', 'fundRate', 'medicalExtra',
   'specialChild', 'specialBaby', 'specialEducation', 'specialLoan', 'specialRent', 'specialElder',
   'hireDate', 'probationMonths', 'regularDate', 'probationRatio',
-  'workDayMode', 'workDaysPerMonth', 'customWorkMonth', 'customWorkDates',
+  'workDayMode', 'workDaysPerMonth', 'customWorkMonth', 'customWorkDates', 'customWorkCalendars',
   'bigSmallWeekStart', 'bigSmallWeekType',
   'startTime', 'endTime', 'lunchStart', 'lunchEnd',
-  'commuteMinutes', 'commuteInputMode', 'commuteMorning', 'commuteEvening', 'commuteInHourly'
+  'commuteMinutes', 'commuteInputMode', 'commuteMorning', 'commuteEvening', 'commuteInHourly',
+  'calcMode', 'hourlyRate', 'tieredRateTiers'
 ];
 let jobHistory = [];      // 历史工作列表（每项含 name / endDate / id + 工作参数快照）
 let jobModalDraft = null; // 历史工作弹窗中正在编辑的草稿
@@ -156,12 +164,22 @@ function load() {
   // 自定义日历：月份非法或与日期不匹配时按「未选择」处理
   if (!/^\d{4}-\d{2}$/.test(settings.customWorkMonth || '')) settings.customWorkMonth = '';
   if (!Array.isArray(settings.customWorkDates)) settings.customWorkDates = [];
+  // 工时阶梯倍率：历史数据没有该字段时补默认档位
+  if (!Array.isArray(settings.tieredRateTiers)) {
+    settings.tieredRateTiers = DEFAULTS.tieredRateTiers.map(t => ({ ...t }));
+  }
+  if (settings.calcMode !== 'hourly') settings.calcMode = 'monthly';
+  // 旧版独立开关已由「计算方式」取代，清理残留字段
+  delete settings.tieredRateEnabled;
+  delete settings.tieredRateStart;
   if (!settings.customWorkMonth) {
     settings.customWorkDates = [];
   } else {
     settings.customWorkDates = [...new Set(settings.customWorkDates
       .filter(k => typeof k === 'string' && k.slice(0, 7) === settings.customWorkMonth))].sort();
   }
+  // 自定义日历按月留存：旧版单月数据迁移进按月表，便于回看上月的实际工作日
+  migrateCustomCalendar(settings);
 }
 
 // ---------- 工作经历：快照与时间轴 ----------
@@ -174,8 +192,32 @@ function snapshotJob(source) {
   const src = source || settings;
   const job = {};
   JOB_FIELDS.forEach(k => {
-    job[k] = Array.isArray(src[k]) ? [...src[k]] : src[k];
+    // 数组 / 对象字段整体复制，避免快照与当前工作互相影响
+    job[k] = (src[k] && typeof src[k] === 'object') ? JSON.parse(JSON.stringify(src[k])) : src[k];
   });
+  return job;
+}
+
+// 规范化「月份 -> 上班日期」表：过滤非法月份与不属于该月的日期
+function normalizeCustomCalendars(map) {
+  const out = {};
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return out;
+  Object.keys(map).forEach(mk => {
+    if (!/^\d{4}-\d{2}$/.test(mk)) return;
+    const list = Array.isArray(map[mk]) ? map[mk] : [];
+    const dates = [...new Set(list.filter(k => typeof k === 'string' && k.slice(0, 7) === mk))].sort();
+    if (dates.length) out[mk] = dates;
+  });
+  return out;
+}
+
+// 兼容旧版单月自定义日历：把 customWorkMonth / customWorkDates 补进按月表
+function migrateCustomCalendar(job) {
+  job.customWorkCalendars = normalizeCustomCalendars(job.customWorkCalendars);
+  if (job.customWorkMonth && Array.isArray(job.customWorkDates) && job.customWorkDates.length
+    && !job.customWorkCalendars[job.customWorkMonth]) {
+    job.customWorkCalendars[job.customWorkMonth] = [...job.customWorkDates];
+  }
   return job;
 }
 
@@ -184,7 +226,7 @@ function normalizeJobHistory() {
   jobHistory = jobHistory
     .filter(o => o && typeof o === 'object')
     .map(o => {
-      const job = snapshotJob({ ...DEFAULTS, ...o });
+      const job = migrateCustomCalendar(snapshotJob({ ...DEFAULTS, ...o }));
       job.id = typeof o.id === 'string' && o.id ? o.id : newJobId();
       job.name = typeof o.name === 'string' ? o.name : '';
       job.endDate = typeof o.endDate === 'string' ? o.endDate : '';
@@ -256,8 +298,10 @@ function hourlyRateForDate(dateKey, grossOnly) {
 
 // 工作参数变化后清空按工作/月份缓存的薪资结果
 let jobPayCache = new Map();
+let tierCumCache = new Map(); // 工时阶梯倍率：按工作+月份缓存每日累计工时
 function invalidateJobCaches() {
   jobPayCache = new Map();
+  tierCumCache = new Map();
   hourlyTrendSig = '';
 }
 
@@ -315,12 +359,18 @@ function currentMonthKey() {
   return monthKeyOf(new Date());
 }
 
+// 指定月份的自定义上班日期：优先取按月留存，旧版单月字段兜底
+function customWorkDatesFor(cfg, monthKey) {
+  const mk = monthKey || currentMonthKey();
+  const map = cfg && cfg.customWorkCalendars;
+  if (map && Array.isArray(map[mk]) && map[mk].length) return map[mk];
+  if (cfg && cfg.customWorkMonth === mk && Array.isArray(cfg.customWorkDates)) return cfg.customWorkDates;
+  return [];
+}
+
 // 指定月度配置是否已有自定义日历（无则按双休兜底）
 function hasCustomWorkDatesFor(cfg, monthKey) {
-  const mk = monthKey || currentMonthKey();
-  return cfg.customWorkMonth === mk
-    && Array.isArray(cfg.customWorkDates)
-    && cfg.customWorkDates.length > 0;
+  return customWorkDatesFor(cfg, monthKey).length > 0;
 }
 
 // 当前工作的自定义日历判断
@@ -344,10 +394,8 @@ function openCustomWorkdayModal() {
   const now = new Date();
   const job = settings;
   customCalendarMonth = monthKeyOf(now);
-  const seed = hasCustomWorkDatesFor(job, customCalendarMonth)
-    ? job.customWorkDates
-    : defaultWorkDatesOfMonth(now.getFullYear(), now.getMonth());
-  customDateDraft = new Set(seed);
+  const seed = customWorkDatesFor(job, customCalendarMonth);
+  customDateDraft = new Set(seed.length ? seed : defaultWorkDatesOfMonth(now.getFullYear(), now.getMonth()));
   renderCustomCalendar();
   document.getElementById('customWorkdayModal').classList.add('show');
 }
@@ -405,8 +453,14 @@ function saveCustomCalendar() {
     return;
   }
   settings.workDayMode = 'custom';
-  settings.customWorkMonth = customCalendarMonth || currentMonthKey();
+  const mk = customCalendarMonth || currentMonthKey();
+  settings.customWorkMonth = mk;
   settings.customWorkDates = [...customDateDraft].sort();
+  // 按月留存，换月后上个月的工作日仍然保留，用于回看当月收入
+  settings.customWorkCalendars = {
+    ...(settings.customWorkCalendars || {}),
+    [mk]: [...settings.customWorkDates]
+  };
   settings.customWorkdayPromptMonth = settings.customWorkMonth;
   const days = customDateDraft.size;
   settings.workDaysPerMonth = days;
@@ -761,9 +815,15 @@ function updateProbationHint() {
   const ratio = isNaN(ratioInput) ? 100 : Math.min(100, Math.max(0, ratioInput));
   const salary = parseFloat(document.getElementById('monthlySalary').value) || 0;
   const months = parseFloat(document.getElementById('probationMonths').value);
+  // 累计工时模式下输入框是时薪，提示文案同步切换
+  const hourly = isHourlyMode();
+  const unit = hourly ? '时薪' : '月薪';
+  const suffix = hourly ? '/小时' : '/月';
+  const digits = hourly ? 2 : 0;
+  const amount = v => `¥${v.toFixed(digits)}${suffix}`;
 
   if (!dateStr) {
-    hint.textContent = '留空入职日期或试用期月数表示无试用期，全部按正式期月薪计算';
+    hint.textContent = `留空入职日期或试用期月数表示无试用期，全部按正式期${unit}计算`;
     return;
   }
   const regular = parseDateKey(dateStr);
@@ -771,11 +831,99 @@ function updateProbationHint() {
   const day = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const dateLabel = formatDateSlash(dateStr);
   if (!regular || day >= regular) {
-    hint.textContent = `${dateLabel} 起已转正，按正式期月薪 ¥${salary.toFixed(0)}/月计算`;
+    hint.textContent = `${dateLabel} 起已转正，按正式期${unit} ${amount(salary)} 计算`;
   } else {
     const mLabel = (isNaN(months) || months <= 0) ? '' : `（${months} 个月）`;
-    hint.textContent = `试用期至 ${dateLabel}${mLabel} 前，月薪按正式期的 ${ratio}% 计算（¥${(salary * ratio / 100).toFixed(0)}/月）`;
+    hint.textContent = `试用期至 ${dateLabel}${mLabel} 前，${unit}按正式期的 ${ratio}% 计算（${amount(salary * ratio / 100)}）`;
   }
+}
+
+// ============ 计算方式：固定月薪 / 累计工时 ============
+// 累计工时模式下，月薪输入框改为时薪输入框，并展开每月重置的倍率阶梯
+function selectSalaryCalcMode(mode) {
+  settings.calcMode = mode === 'hourly' ? 'hourly' : 'monthly';
+  document.querySelectorAll('#salaryCalcMode .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === settings.calcMode);
+  });
+  syncSalaryInputForMode();
+  const tierGroup = document.getElementById('tieredRateGroup');
+  if (tierGroup) tierGroup.style.display = isHourlyMode() ? '' : 'none';
+  updateSalaryCalcModeHint();
+  updateRateTierHint();
+  updateProbationHint();
+}
+
+// 输入框在月薪 / 时薪之间切换，并同步标签
+function syncSalaryInputForMode() {
+  const hourly = isHourlyMode();
+  const label = document.getElementById('salaryInputLabel');
+  if (label) label.textContent = hourly ? '税前时薪 (¥/小时)' : '税前月薪 (¥)';
+  const input = document.getElementById('monthlySalary');
+  if (input) {
+    const v = hourly ? jobHourlyInput(settings) : Math.max(0, parseFloat(settings.monthlySalary) || 0);
+    input.value = v > 0 ? v : '';
+    input.placeholder = hourly ? '例如：30' : '3000';
+  }
+}
+
+function updateSalaryCalcModeHint() {
+  const hint = document.getElementById('salaryCalcModeHint');
+  if (!hint) return;
+  hint.textContent = isHourlyMode()
+    ? '按税前时薪 × 工时计薪，累计工时每月重置；超出门槛的阶梯加成只计入正常工资，不计入加班费'
+    : '按税前月薪折算时薪，维持原有的月薪计算逻辑';
+}
+
+// 渲染倍率阶梯行；每行从上一档之后开始按对应倍率计薪
+function renderRateTiers() {
+  const list = document.getElementById('tieredRateList');
+  if (!list) return;
+  const tiers = Array.isArray(settings.tieredRateTiers) ? settings.tieredRateTiers : [];
+  list.innerHTML = tiers.map((t, i) => `
+    <div class="tier-row">
+      <span class="tier-index">第 ${i + 1} 档</span>
+      <span class="tier-unit">累计满</span>
+      <input type="number" class="tier-hours" min="0" step="1" value="${Number(t.hours) || ''}">
+      <span class="tier-unit">小时后</span>
+      <input type="number" class="tier-rate" min="0" step="0.1" value="${Number(t.rate) || ''}">
+      <span class="tier-unit">倍</span>
+      <button type="button" class="tier-del" onclick="removeRateTier(${i})" title="删除">×</button>
+    </div>`).join('');
+  updateRateTierHint();
+}
+
+// 新增一档：默认在上一档基础上加 84 小时（约 7 天 × 12 小时），倍率加 0.5
+function addRateTier() {
+  const tiers = Array.isArray(settings.tieredRateTiers) ? settings.tieredRateTiers : [];
+  const last = tiers.length ? tiers[tiers.length - 1] : null;
+  const lastHours = last ? (parseFloat(last.hours) || 0) : 0;
+  const lastRate = last ? (parseFloat(last.rate) || 1) : 1;
+  settings.tieredRateTiers = tiers.map(t => ({ ...t }))
+    .concat([{ hours: lastHours + 84, rate: Math.round((lastRate + 0.5) * 10) / 10 }]);
+  renderRateTiers();
+}
+
+function removeRateTier(index) {
+  const tiers = Array.isArray(settings.tieredRateTiers) ? settings.tieredRateTiers : [];
+  settings.tieredRateTiers = tiers.filter((t, i) => i !== index).map(t => ({ ...t }));
+  renderRateTiers();
+}
+
+// 阶梯倍率提示：说明累计周期与门槛顺延逻辑
+function updateRateTierHint() {
+  const hint = document.getElementById('tieredRateHint');
+  if (!hint) return;
+  if (!isHourlyMode()) {
+    hint.textContent = '切换到「累计工时」后，按当前时薪与累计工时计算收入';
+    return;
+  }
+  const tiers = jobRateTiers(settings);
+  if (!tiers.length) {
+    hint.textContent = '先填写有效的累计工时门槛与倍率';
+    return;
+  }
+  const start = formatDateSlash(settings.hireDate || '');
+  hint.textContent = `累计工时每月 1 号重置${start ? `（首月从 ${start} 入职起算）` : ''}；休息日不计工时，门槛会自然顺延；门槛前按 1 倍计薪；阶梯加成计入正常工资，不计入加班费`;
 }
 
 // 收集设置页表单写入当前工作并持久化
@@ -787,7 +935,14 @@ function persistSettings() {
   };
   const companyInput = document.getElementById('companyName');
   if (companyInput) settings.companyName = companyInput.value.trim();
-  job.monthlySalary = num('monthlySalary', DEFAULTS.monthlySalary);
+  // 计算方式：固定月薪读月薪字段，累计工时读时薪字段（同一个输入框，按模式写回）
+  job.calcMode = job.calcMode === 'hourly' ? 'hourly' : 'monthly';
+  const salaryInputVal = num('monthlySalary', 0);
+  if (job.calcMode === 'hourly') {
+    job.hourlyRate = Math.max(0, salaryInputVal);
+  } else {
+    job.monthlySalary = salaryInputVal > 0 ? salaryInputVal : DEFAULTS.monthlySalary;
+  }
   settings.salaryMode = settings.salaryMode || DEFAULTS.salaryMode;
   job.socialBase = num('socialBase', 0);
   job.fundBase = num('fundBase', 0);
@@ -818,6 +973,14 @@ function persistSettings() {
     ? job.commuteMorning + job.commuteEvening
     : commuteTotalInput;
   job.commuteInHourly = !!job.commuteInHourly;
+  // 倍率阶梯：以页面上的阶梯行为准，避免增删档位后与存储状态不同步
+  const tierList = document.getElementById('tieredRateList');
+  if (tierList) {
+    job.tieredRateTiers = [...tierList.querySelectorAll('.tier-row')].map(row => ({
+      hours: Math.max(0, parseFloat(row.querySelector('.tier-hours').value) || 0),
+      rate: Math.max(0, parseFloat(row.querySelector('.tier-rate').value) || 0)
+    }));
+  }
   settings.foreignEnabled = !!settings.foreignEnabled;
   settings.foreignCurrency = currencyOf(settings.foreignCurrency).code;
   updateShiftHint(job);
@@ -866,6 +1029,9 @@ function fillSettingsForm() {
   selectOvertimeSettle(settings.overtimeSettle || DEFAULTS.overtimeSettle);
   selectOvertimeSync(settings.overtimeSync);
   selectOvertimePanelShow(overtimePanelMode());
+  // 计算方式：先按模式同步输入框标签与取值，再渲染倍率阶梯
+  selectSalaryCalcMode(job.calcMode || DEFAULTS.calcMode);
+  renderRateTiers();
   syncProbationFields();
   // 外币：先选中币种，再按开关同步控件的可用状态
   selectForeignCurrency(settings.foreignCurrency || DEFAULTS.foreignCurrency);
@@ -909,12 +1075,15 @@ function renderJobHistory() {
   }
   list.innerHTML = jobs.map(job => {
     const name = job.name || '历史工作';
-    const salary = Math.round(parseFloat(job.monthlySalary) || 0).toLocaleString();
+    // 累计工时工作没有月薪，展示时薪，避免误导
+    const payLabel = job.calcMode === 'hourly'
+      ? `税前时薪 ¥${(parseFloat(job.hourlyRate) || 0).toFixed(2)}/小时 · 累计工时`
+      : `税前月薪 ¥${Math.round(parseFloat(job.monthlySalary) || 0).toLocaleString()}`;
     const hourly = jobHourlyPreview(job);
     return `<div class="job-item" role="button" tabindex="0" onclick="event.stopPropagation(); editHistoryJob('${job.id}')">
       <div class="job-item-main">
         <div class="job-item-name">${escapeLedgerText(name)}</div>
-        <div class="job-item-meta">${jobPeriodLabel(job)}<br>税前月薪 ¥${salary}</div>
+        <div class="job-item-meta">${jobPeriodLabel(job)}<br>${payLabel}</div>
       </div>
       <div class="job-item-pay">${hourly > 0 ? formatMoney(hourly) + '/小时' : '—'}</div>
       <button type="button" class="job-del" title="删除" onclick="event.stopPropagation(); deleteHistoryJob('${job.id}')">×</button>
@@ -943,6 +1112,38 @@ function jobModalCommuteMode() {
 function jobModalCommuteOn() {
   const btn = document.querySelector('#hjCommuteInHourly .seg-btn.active');
   return btn ? btn.dataset.on === 'on' : false;
+}
+
+// 历史工作的计算方式：固定月薪 / 累计工时
+function jobModalCalcMode() {
+  const btn = document.querySelector('#hjCalcMode .seg-btn.active');
+  return btn && btn.dataset.mode === 'hourly' ? 'hourly' : 'monthly';
+}
+
+// 同一个输入框承载月薪 / 时薪：切换前先把当前值写回草稿，再展示另一套字段
+function selectJobModalCalcMode(mode) {
+  if (!jobModalDraft) return;
+  const next = mode === 'hourly' ? 'hourly' : 'monthly';
+  const input = document.getElementById('hjSalary');
+  const v = Math.max(0, parseFloat(input.value) || 0);
+  if (jobModalCalcMode() === 'hourly') jobModalDraft.hourlyRate = v;
+  else jobModalDraft.monthlySalary = v;
+  jobModalDraft.calcMode = next;
+  setJobModalSeg('hjCalcMode', 'mode', next);
+  syncJobModalSalaryInput();
+}
+
+function syncJobModalSalaryInput() {
+  const hourly = jobModalCalcMode() === 'hourly';
+  const label = document.getElementById('hjSalaryLabel');
+  const input = document.getElementById('hjSalary');
+  if (label) label.textContent = hourly ? '税前时薪 (¥/小时)' : '税前月薪 (¥)';
+  if (!input) return;
+  const v = hourly
+    ? (parseFloat(jobModalDraft && jobModalDraft.hourlyRate) || 0)
+    : (parseFloat(jobModalDraft && jobModalDraft.monthlySalary) || 0);
+  input.value = v > 0 ? v : '';
+  input.placeholder = hourly ? '例如：30' : '例如：8000';
 }
 
 // 计算弹窗里「每月工作天数」：按离职日期（没有则入职日期）所在月份折算
@@ -1028,7 +1229,8 @@ function fillJobHistoryModal(job) {
   set('hjName', job.name || '');
   set('hjHireDate', formatDateSlash(job.hireDate || ''));
   set('hjEndDate', formatDateSlash(job.endDate || ''));
-  set('hjSalary', (parseFloat(job.monthlySalary) || 0) > 0 ? job.monthlySalary : '');
+  setJobModalSeg('hjCalcMode', 'mode', job.calcMode === 'hourly' ? 'hourly' : 'monthly');
+  syncJobModalSalaryInput();
   set('hjProbationMonths', job.probationMonths || '');
   set('hjProbationRatio', job.probationRatio === undefined ? DEFAULTS.probationRatio : job.probationRatio);
   set('hjStartTime', job.startTime || DEFAULTS.startTime);
@@ -1064,7 +1266,10 @@ function readJobHistoryModal() {
   job.name = document.getElementById('hjName').value.trim();
   job.hireDate = document.getElementById('hjHireDate').value || '';
   job.endDate = document.getElementById('hjEndDate').value || '';
-  job.monthlySalary = Math.max(0, num('hjSalary', 0));
+  job.calcMode = jobModalCalcMode();
+  const salaryVal = Math.max(0, num('hjSalary', 0));
+  if (job.calcMode === 'hourly') job.hourlyRate = salaryVal;
+  else job.monthlySalary = salaryVal;
   job.workDayMode = jobModalWorkDayMode();
   job.workDaysPerMonth = Math.max(1, num('hjWorkDays', DEFAULTS.workDaysPerMonth));
   job.probationMonths = Math.max(0, num('hjProbationMonths', 0));
@@ -1126,7 +1331,9 @@ function saveJobHistoryModal() {
   if (!hire) { showToast('请选择入职日期'); return; }
   if (!end) { showToast('请选择离职日期'); return; }
   if (end < hire) { showToast('离职日期不能早于入职日期'); return; }
-  if (!(job.monthlySalary > 0)) { showToast('请填写税前月薪'); return; }
+  if (job.calcMode === 'hourly') {
+    if (!(job.hourlyRate > 0)) { showToast('请填写税前时薪'); return; }
+  } else if (!(job.monthlySalary > 0)) { showToast('请填写税前月薪'); return; }
 
   const isNew = jobModalIsNew;
   if (isNew) {
@@ -1144,12 +1351,13 @@ function saveJobHistoryModal() {
   showToast(isNew ? '已添加历史工作' : '历史工作已保存');
 }
 
-// 新增一段历史工作：沿用当前工作的作息 / 通勤 / 税后参数，月薪与起止日期留空待填
+// 新增一段历史工作：沿用当前工作的作息 / 通勤 / 税后参数，薪资与起止日期留空待填
 function addHistoryJob() {
   const draft = snapshotJob(settings);
   draft.id = newJobId();
   draft.name = '';
-  draft.monthlySalary = '';
+  if (draft.calcMode === 'hourly') draft.hourlyRate = '';
+  else draft.monthlySalary = '';
   draft.hireDate = '';
   draft.endDate = '';
   draft.regularDate = '';
@@ -1200,7 +1408,12 @@ function editHistoryJob(id) {
   const job = jobHistory.find(j => j.id === id);
   if (!job) return;
   // 编辑副本，取消时不影响原记录
-  openJobHistoryModal({ ...job, customWorkDates: [...(job.customWorkDates || [])] }, false);
+  openJobHistoryModal({
+    ...job,
+    customWorkDates: [...(job.customWorkDates || [])],
+    customWorkCalendars: JSON.parse(JSON.stringify(job.customWorkCalendars || {})),
+    tieredRateTiers: (job.tieredRateTiers || []).map(t => ({ ...t }))
+  }, false);
 }
 
 function deleteHistoryJob(id) {
@@ -1366,12 +1579,33 @@ function readTaxParams(read) {
   };
 }
 
+// ============ 计算方式：固定月薪 / 累计工时 ============
+// 累计工时模式直接按税前时薪计薪，月薪相关口径按「时薪 × 每日工时 × 月工作日」折算
+function isHourlyMode(job) {
+  return (job || settings).calcMode === 'hourly';
+}
+
+function jobHourlyInput(job) {
+  return Math.max(0, parseFloat((job || settings).hourlyRate) || 0);
+}
+
+// 整月税前工资：固定月薪取月薪，累计工时取「时薪 × 每日实际工时 × 月工作日」折算
+// （通勤不是工资，不参与整月工资；开启通勤折算后只影响展示的等效时薪）
+function monthlyGrossOfJob(job) {
+  const cfg = job || settings;
+  if (!isHourlyMode(cfg)) return Math.max(0, parseFloat(cfg.monthlySalary) || 0);
+  const workDays = Math.max(1, parseFloat(cfg.workDaysPerMonth) || DEFAULTS.workDaysPerMonth);
+  return jobHourlyInput(cfg) * getDailyHours(cfg) * workDays;
+}
+
 function taxParamsFromJob(job) {
   const cfg = job || settings;
-  return readTaxParams(key => {
+  const params = readTaxParams(key => {
     const v = parseFloat(cfg[key]);
     return isNaN(v) ? 0 : v;
   });
+  params.gross = monthlyGrossOfJob(cfg);
+  return params;
 }
 
 function taxParamsFromSettings() {
@@ -1396,6 +1630,15 @@ function salaryFactorFor(date, job) {
 function getMonthlyNet(job) {
   const cfg = job || settings;
   const mode = settings.salaryMode || DEFAULTS.salaryMode;
+  if (isHourlyMode(cfg)) {
+    const gross = monthlyGrossOfJob(cfg) * salaryFactorFor(new Date(), cfg);
+    if (mode === 'gross') return gross;
+    const profile = calcNetProfile(taxParamsFromJob(cfg), cfg);
+    const phase = isInProbationAt(new Date(), cfg)
+      ? (profile.probation || profile.regular)
+      : (profile.regular || profile.probation);
+    return phase ? phase.net : gross;
+  }
   if (mode === 'gross') return cfg.monthlySalary * salaryFactorFor(new Date(), cfg);
   const profile = calcNetProfile(taxParamsFromJob(cfg), cfg);
   const phase = isInProbationAt(new Date(), cfg)
@@ -1407,7 +1650,7 @@ function getMonthlyNet(job) {
 // 税前月薪（不扣五险一金与个税），用于税后/对比口径下的对照展示（含试用期折算）
 function getMonthlyGross(job) {
   const cfg = job || settings;
-  return cfg.monthlySalary * salaryFactorFor(new Date(), cfg);
+  return monthlyGrossOfJob(cfg) * salaryFactorFor(new Date(), cfg);
 }
 
 // 「HH:MM」-> 当天分钟数
@@ -1552,6 +1795,7 @@ function getCurrentWorkState() {
     progress: 0,
     earnedToday: 0,
     remainingValue: 0,
+    tierMultiplier: 1,
     crossDay: shift.crossDay,
     shiftDate: anchor,
     commuteBefore,
@@ -1622,6 +1866,8 @@ function getCurrentWorkState() {
   // 收益口径仍包含通勤：工作时长 + 已完成的通勤时长
   const paidWorked = Math.max(0, Math.min(totalPaidMinutes, workWorked + commuteElapsed));
   const remainingMinutes = Math.max(0, workMinutes - workWorked);
+  // 工时阶梯倍率：按本班次已工作工时落在累计工时的哪一档折算
+  const tierMultiplier = tieredMultiplierFor(settings, anchor, workWorked / 60);
 
   return {
     workedMinutes: paidWorked,
@@ -1634,8 +1880,9 @@ function getCurrentWorkState() {
     isCommuting,
     isRest: false,
     progress: workMinutes > 0 ? (workWorked / workMinutes) * 100 : 0,
-    earnedToday: paidWorked * getMinuteRate(),
+    earnedToday: paidWorked * getMinuteRate() * tierMultiplier,
     remainingValue: Math.max(0, totalPaidMinutes - paidWorked) * getMinuteRate(),
+    tierMultiplier,
     crossDay: shift.crossDay,
     shiftDate: anchor,
     commuteBefore,
@@ -1995,6 +2242,8 @@ function applyHolidayData(year, holidays, workdays) {
     holidays: new Set(holidays),
     workdays: new Set(workdays)
   };
+  // 工作日变化会影响累计工时，清掉阶梯倍率的月份缓存
+  tierCumCache = new Map();
 }
 
 function readHolidayCache(year) {
@@ -2070,9 +2319,10 @@ function dayType(date) {
 function isWorkdayByConfig(date, cfg, mode) {
   const job = cfg || settings;
   const m = mode || job.workDayMode;
-  // 自定义：当月日历里的上班日期为准（含手动把节假日改成上班）
-  if (m === 'custom' && hasCustomWorkDatesFor(job, monthKeyOf(date))) {
-    return job.customWorkDates.includes(fmtDateKey(date));
+  // 自定义：按该月留存的上班日期为准（含手动把节假日改成上班），无记录时回落到双休
+  if (m === 'custom') {
+    const dates = customWorkDatesFor(job, monthKeyOf(date));
+    if (dates.length) return dates.includes(fmtDateKey(date));
   }
   const t = dayType(date);
   if (t === 'makeup') return true;   // 调休补班日：按工作日计
@@ -2116,6 +2366,8 @@ function autoWorkDaysPerMonth(mode) {
 function syncAutoWorkDays() {
   const days = autoWorkDaysPerMonth(settings.workDayMode);
   settings.workDaysPerMonth = days;
+  // 工作日数变化会影响累计工时与按时薪折算的到手时薪，清掉相关缓存
+  invalidateJobCaches();
   const input = document.getElementById('workDaysPerMonth');
   if (!input) return;
   input.value = days;
@@ -2307,7 +2559,8 @@ function updateTimer() {
   document.getElementById('earnedToday').textContent = formatMoney(state.earnedToday + overtimeToday);
   setFxName('earnedFxName');
   setFxLine('earnedTodayFx', state.earnedToday + overtimeToday);
-  const hourlyRate = getHourlyRate();
+  // 时薪随累计工时档位变化：已过门槛时展示 1.5 / 2 倍后的时薪
+  const hourlyRate = getHourlyRate() * currentTierMultiplier(state);
   document.getElementById('hourlyRate').textContent = formatMoney(hourlyRate) + '/小时';
   setFxLine('earnedHourlyFx', hourlyRate, '/小时');
 
@@ -2371,8 +2624,9 @@ function updatePreTaxCard(state, monthWorked) {
   row.style.display = showCompare ? '' : 'none';
   if (!showCompare) return;
 
-  const grossRate = getGrossHourlyRate();
-  const grossToday = state.workedMinutes * grossRate / 60;
+  const baseGrossRate = getGrossHourlyRate();
+  const grossRate = baseGrossRate * currentTierMultiplier(state);
+  const grossToday = state.workedMinutes * baseGrossRate / 60 * state.tierMultiplier;
   const grossOvertimeToday = linkedOvertime(overtimeOnDay(fmtDateKey(new Date())), undefined, true);
   document.getElementById('preTaxEarnedToday').textContent = formatMoney(grossToday + grossOvertimeToday);
   setFxName('preTaxFxName');
@@ -2442,6 +2696,13 @@ function updateStats() {
 
   document.getElementById('monthEarned').textContent = formatMoney(monthEarned);
   document.getElementById('monthDays').textContent = `已工作 ${formatDays(monthWorked)} 天 / ${monthTotalDays} 天`;
+  // 上月已赚：按上个月留存的自定义工作日逐日累计，方便核对不固定的月工作天数
+  const prevMonthEl = document.getElementById('prevMonthEarned');
+  if (prevMonthEl) {
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevLabel = `${prevMonthDate.getFullYear()}/${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+    prevMonthEl.textContent = `${prevLabel} 已赚 ${formatMoney(getPreviousMonthEarned())}`;
+  }
   document.getElementById('monthEarnedBar').style.width = (monthTotal > 0 ? Math.min(100, monthEarned / monthTotal * 100) : 0) + '%';
   document.getElementById('monthEarnedVal').textContent = formatMoney(monthEarned);
   document.getElementById('monthProgress').style.width = monthProgress.toFixed(0) + '%';
@@ -2513,11 +2774,40 @@ function getMonthlyPayForMonth(monthStart, job, grossOnly) {
 
 // 某段工作在指定日期的时薪：按该月满月工作日数折算，避免部分在职月份被抬高
 function jobHourlyAt(job, date, grossOnly) {
+  const cfg = job || settings;
+  if (isHourlyMode(cfg)) return hourlyForJobAtDate(cfg, date, grossOnly);
   const dailyHours = getPaidDailyHours(job);
   const workDays = countWorkdaysInMonthFor(date.getFullYear(), date.getMonth(), job);
   if (!(dailyHours > 0) || !(workDays > 0)) return 0;
   const pay = getMonthlyPayForMonth(new Date(date.getFullYear(), date.getMonth(), 1), job, grossOnly);
   return pay / (dailyHours * workDays);
+}
+
+// 累计工时模式：按配置的税前时薪计算，税后口径按等价月薪估算到手后折回时薪
+function hourlyForJobAtDate(job, date, grossOnly) {
+  const cfg = job || settings;
+  const probation = isInProbationAt(date, cfg);
+  const mode = grossOnly ? 'gross' : (settings.salaryMode || DEFAULTS.salaryMode);
+  const cacheKey = `${jobKeyOf(cfg)}|hourly|${date.getFullYear()}-${date.getMonth()}|${mode}|${probation ? 1 : 0}`;
+  if (jobPayCache.has(cacheKey)) return jobPayCache.get(cacheKey);
+
+  const ratioPct = parseFloat(cfg.probationRatio);
+  const ratio = (isNaN(ratioPct) || ratioPct <= 0 ? 100 : Math.min(100, ratioPct)) / 100;
+  const baseRate = jobHourlyInput(cfg) * (probation ? ratio : 1);
+  // 通勤并入时薪折算时：按「工作时长 / (工作时长 + 通勤)」折算真实时薪，
+  // 通勤时间也按这个等效时薪计时，整日收入与不计通勤时保持一致
+  const workHours = getDailyHours(cfg);
+  const paidHours = getPaidDailyHours(cfg);
+  let rate = (workHours > 0 && paidHours > 0) ? baseRate * workHours / paidHours : baseRate;
+  if (mode !== 'gross') {
+    const workDays = Math.max(1, countWorkdaysInMonthFor(date.getFullYear(), date.getMonth(), cfg));
+    const monthlyHours = getPaidDailyHours(cfg) * workDays;
+    const profile = calcNetProfile(taxParamsFromJob(cfg), cfg);
+    const phase = probation ? (profile.probation || profile.regular) : (profile.regular || profile.probation);
+    if (phase && monthlyHours > 0) rate = phase.net / monthlyHours;
+  }
+  jobPayCache.set(cacheKey, rate);
+  return rate;
 }
 
 // 某段工作在某天的日收益（时薪 × 每日计时时长）
@@ -2530,7 +2820,102 @@ function jobDailyPay(job, date, grossOnly, cache) {
     hourly = jobHourlyAt(job, date, grossOnly);
     if (cache) cache.set(key, hourly);
   }
-  return hourly * getPaidDailyHours(job);
+  return hourly * getPaidDailyHours(job) * tieredMultiplierFor(job, date, getDailyHours(job));
+}
+
+// ============ 工时阶梯倍率 ============
+// 按工作日历与班次累计工时，门槛以下按 1 倍，达到门槛后的部分按对应倍率计薪；
+// 只影响计时页 / 统计页的收入，不写入加班记录
+function normalizeRateTiers(tiers) {
+  if (!Array.isArray(tiers)) return [];
+  return tiers
+    .map(t => ({
+      hours: Math.max(0, parseFloat(t && t.hours) || 0),
+      rate: Math.max(0, parseFloat(t && t.rate) || 0)
+    }))
+    .filter(t => t.hours > 0 && t.rate > 0)
+    .sort((a, b) => a.hours - b.hours);
+}
+
+function jobRateTiers(job) {
+  return normalizeRateTiers((job || settings).tieredRateTiers);
+}
+
+// 是否启用阶梯倍率：只有「累计工时」计算方式且配置了有效阶梯时生效
+function isTieredRateOn(job) {
+  const cfg = job || settings;
+  return isHourlyMode(cfg) && jobRateTiers(cfg).length > 0;
+}
+
+// 从累计工时 cum 起、再工作 hours 小时的平均倍率：超过门槛的部分按对应档位折算
+function tieredRateFor(cum, hours, tiers) {
+  if (!(hours > 0)) return 1;
+  const list = Array.isArray(tiers) ? tiers : [];
+  if (!list.length) return 1;
+  const start = Math.max(0, cum);
+  const end = start + hours;
+  let weighted = 0;
+  let prevHours = 0;
+  let prevRate = 1;
+  list.forEach(t => {
+    // 上一档区间 [prevHours, t.hours)
+    if (t.hours > prevHours) {
+      const from = Math.max(start, prevHours);
+      const to = Math.min(end, t.hours);
+      if (to > from) weighted += (to - from) * prevRate;
+      prevHours = t.hours;
+    }
+    prevRate = t.rate;
+  });
+  // 最后一档一直延续下去
+  const from = Math.max(start, prevHours);
+  if (end > from) weighted += (end - from) * prevRate;
+  return weighted / hours;
+}
+
+// 指定日期之前（不含当天）在当前累计周期内的工时；
+// 周期按自然月重置，首月从入职日期起算
+function tieredCumulativeBefore(job, date) {
+  const cfg = job || settings;
+  if (!isTieredRateOn(cfg)) return 0;
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const key = `${jobKeyOf(cfg)}|${y}-${m}`;
+  let map = tierCumCache.get(key);
+  if (!map) {
+    map = new Map();
+    const days = new Date(y, m + 1, 0).getDate();
+    const start = parseDateKey(cfg.hireDate || '');
+    let cum = 0;
+    for (let i = 1; i <= days; i++) {
+      const d = new Date(y, m, i);
+      map.set(i, cum);
+      // 起始日期之前不计工时；只累计属于该段工作的上班日
+      if (start && d < start) continue;
+      if (jobOnDate(d) !== cfg) continue;
+      if (!isWorkdayByConfig(d, cfg)) continue;
+      cum += getDailyHours(cfg);
+    }
+    tierCumCache.set(key, map);
+  }
+  return map.get(date.getDate()) || 0;
+}
+
+// 指定日期已工作 hours 小时的平均倍率
+function tieredMultiplierFor(job, date, hours) {
+  const cfg = job || settings;
+  if (!isTieredRateOn(cfg) || !(hours > 0)) return 1;
+  return tieredRateFor(tieredCumulativeBefore(cfg, date), hours, jobRateTiers(cfg));
+}
+
+// 当前所处档位的倍率：按今天已工作工时推进累计位置，用于计时页「时薪」展示
+// （休息日也按已累计工时判断，已过门槛就显示对应倍率后的时薪）
+function currentTierMultiplier(state) {
+  if (!isTieredRateOn(settings)) return 1;
+  const anchor = getShiftAnchorDate(new Date());
+  const cum = tieredCumulativeBefore(settings, anchor);
+  const worked = state && !state.isRest ? Math.max(0, state.workWorkedMinutes || 0) / 60 : 0;
+  return tieredRateFor(cum + worked, 1, jobRateTiers(settings));
 }
 
 // 曲线数据：从最早入职月（或 11 个月前）到今天所在的月份；无工作的月份跳过
@@ -2587,7 +2972,8 @@ function renderHourlyTrend() {
   const sig = JSON.stringify([
     settings.salaryMode,
     jobHistory.map(j => [j.id, j.endDate, ...JOB_FIELDS.map(k => j[k])]),
-    settings.monthlySalary, settings.workDayMode, settings.workDaysPerMonth,
+    settings.monthlySalary, settings.calcMode, settings.hourlyRate,
+    settings.workDayMode, settings.workDaysPerMonth,
     settings.startTime, settings.endTime, settings.lunchStart, settings.lunchEnd,
     settings.commuteInHourly, settings.commuteInputMode, settings.commuteMinutes,
     settings.commuteMorning, settings.commuteEvening,
@@ -4444,7 +4830,7 @@ function getYearEarnedThroughMonth(year, endMonth, grossOnly) {
       const state = getCurrentWorkState();
       if (!state.isRest) {
         earned += grossOnly
-          ? state.workedMinutes * getGrossHourlyRate() / 60
+          ? state.workedMinutes * getGrossHourlyRate() / 60 * state.tierMultiplier
           : state.earnedToday;
       }
     } else if (liveJob && isWorkdayByConfig(shiftAnchor, liveJob)) {
@@ -4472,6 +4858,16 @@ function getCurrentMonthEarned(grossOnly) {
   const month = now.getMonth() + 1;
   return getYearEarnedThroughMonth(year, month, grossOnly)
     - getYearEarnedThroughMonth(year, month - 1, grossOnly);
+}
+
+// 上月已赚：与本月同口径，跨年时自动回到上一年 12 月
+function getPreviousMonthEarned(grossOnly) {
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const year = prev.getFullYear();
+  const month = prev.getMonth() + 1;
+  return getYearEarnedThroughMonth(year, month, grossOnly)
+    - (month > 1 ? getYearEarnedThroughMonth(year, month - 1, grossOnly) : 0);
 }
 
 // 统计区间内的记账记录：年度为 1 月至所选月份累计

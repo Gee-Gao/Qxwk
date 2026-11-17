@@ -1958,6 +1958,83 @@ body {
   pointer-events: none;
 }
 
+/* 工时阶梯倍率：档位行与新增按钮 */
+.tier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tier-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.tier-row .tier-index {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.tier-row .tier-unit {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.tier-row input {
+  width: 60px;
+  min-width: 56px;
+  flex: 1 1 60px;
+  padding: 6px 8px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color .2s;
+}
+.tier-row input:focus { border-color: var(--accent); }
+.tier-row .tier-del {
+  margin-left: 0;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #888;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.tier-row .tier-del:hover {
+  color: #ff5252;
+  background: rgba(255, 82, 82, .12);
+}
+.tier-add {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  background: transparent;
+  border: 1px dashed #3a3a3a;
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.tier-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* 移动端适配：窄屏下日期/数字输入并排会挤，改为单列 */
 @media (max-width: 380px) {
   :root { --screen-pad: 12px; }

@@ -152,6 +152,7 @@
         <h3>本月概览</h3>
         <div class="big-val" id="monthEarned">¥0.00</div>
         <div class="sub-val" id="monthDays">已工作 0 天 / 22 天</div>
+        <div class="sub-val" id="prevMonthEarned" style="margin-top:4px">上月已赚 ¥0.00</div>
         <div class="overtime-line" id="monthOvertimeLine" style="display:none"></div>
         <div style="margin-top:16px">
           <div class="stats-bar-row">
@@ -550,6 +551,14 @@
           <input type="text" id="companyName" maxlength="20" placeholder="例如：当前公司">
         </div>
         <div class="field-group" style="grid-column:1/-1">
+          <label>计算方式</label>
+          <div class="seg-control" id="salaryCalcMode">
+            <button type="button" class="seg-btn" data-mode="monthly" onclick="selectSalaryCalcMode('monthly')">固定月薪</button>
+            <button type="button" class="seg-btn" data-mode="hourly" onclick="selectSalaryCalcMode('hourly')">累计工时</button>
+          </div>
+          <div class="field-hint" id="salaryCalcModeHint"></div>
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
           <label>休息制度</label>
           <div class="seg-control" id="workDayMode">
             <button type="button" class="seg-btn" data-mode="double" onclick="selectWorkDayMode('double')">双休</button>
@@ -568,13 +577,19 @@
           <div class="field-hint" id="bigSmallWeekHint"></div>
         </div>
         <div class="field-group">
-          <label>税前月薪 (¥)</label>
+          <label id="salaryInputLabel">税前月薪 (¥)</label>
           <input type="number" id="monthlySalary" placeholder="3000" value="3000" oninput="updateProbationHint()">
         </div>
         <div class="field-group">
           <label>每月工作天数</label>
           <input type="number" id="workDaysPerMonth" placeholder="22" value="22">
           <div class="field-hint" id="workDaysHint"></div>
+        </div>
+        <div class="field-group" id="tieredRateGroup" style="grid-column:1/-1; display:none">
+          <label>工时阶梯倍率（每月重置）</label>
+          <div class="tier-list" id="tieredRateList"></div>
+          <button type="button" class="tier-add" onclick="addRateTier()">＋ 添加一档</button>
+          <div class="field-hint" id="tieredRateHint"></div>
         </div>
         <div class="field-group">
           <label>入职日期</label>
@@ -797,7 +812,7 @@
     <div class="modal">
       <h3><span>自定义工作日</span> <button class="close" onclick="closeCustomWorkdayModal()">×</button></h3>
       <div style="font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:12px">
-        点击日期切换上班 / 休息，默认按双休预填。每月工作天数将按日历自动计算。
+        点击日期切换上班 / 休息，默认按双休预填。每月工作天数将按日历自动计算；各月日历会分别保存，换月后仍能回看上月收入。
       </div>
       <div class="cal-head" id="customCalendarTitle"></div>
       <div class="cal-weekdays">
@@ -902,6 +917,13 @@
             <input type="text" id="hjName" maxlength="20" placeholder="例如：上一家公司">
           </div>
           <div class="field-group" style="grid-column:1/-1">
+            <label>计算方式</label>
+            <div class="seg-control" id="hjCalcMode">
+              <button type="button" class="seg-btn" data-mode="monthly" onclick="selectJobModalCalcMode('monthly')">固定月薪</button>
+              <button type="button" class="seg-btn" data-mode="hourly" onclick="selectJobModalCalcMode('hourly')">累计工时</button>
+            </div>
+          </div>
+          <div class="field-group" style="grid-column:1/-1">
             <label>休息制度</label>
             <div class="seg-control" id="hjWorkDayMode">
               <button type="button" class="seg-btn" data-mode="double" onclick="selectJobModalWorkDayMode('double')">双休</button>
@@ -912,7 +934,7 @@
             <div class="field-hint">自定义日历沿用当前设置页保存的日历</div>
           </div>
           <div class="field-group">
-            <label>税前月薪 (¥)</label>
+            <label id="hjSalaryLabel">税前月薪 (¥)</label>
             <input type="number" id="hjSalary" min="0" placeholder="例如：8000">
           </div>
           <div class="field-group">
