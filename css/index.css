@@ -851,6 +851,7 @@ body {
 
 /* 统计页卡片 */
 .stats-card {
+  position: relative;
   background: #1a1a1a;
   border: 1px solid #2a2a2a;
   border-radius: var(--radius);
@@ -868,6 +869,20 @@ body {
   position: absolute;
   top: 18px;
   right: 20px;
+}
+/* 统计卡片右上角工资口径徽章：税前 / 税后统一荧光绿 */
+.mode-badge {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid #46520f;
+  background: rgba(200, 255, 0, .08);
+  color: var(--accent);
+  white-space: nowrap;
 }
 .stats-card .big-val {
   font-size: 36px;
@@ -1848,6 +1863,7 @@ body {
 
 /* 生命消耗大盘 */
 .life-card {
+  position: relative;
   background: #1a1a1a;
   border: 1px solid #2a2a2a;
   border-radius: var(--radius);

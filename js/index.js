@@ -2473,20 +2473,36 @@ function getYearOverview(year, shiftAnchor) {
 }
 
 // ============ 界面更新 ============
+// 当前所处阶段：无转正日期返回 null（不展示），试用期内带比例
+function periodBadgeState(job) {
+  const cfg = job || settings;
+  if (!getRegularDateOf(cfg)) return null;
+  const factor = salaryFactorFor(new Date(), cfg);
+  return factor < 1
+    ? { probation: true, text: `试用期 · ${Math.round(factor * 100)}%` }
+    : { probation: false, text: '正式期' };
+}
+
 // 计时卡片内的标识：配置了转正日期才显示，试用期内显示比例
 function updatePeriodBadge() {
   const el = document.getElementById('periodBadge');
   if (!el) return;
-  if (!getRegularDate()) { el.style.display = 'none'; return; }
-  const factor = salaryFactorFor(new Date());
+  const state = periodBadgeState(settings);
+  if (!state) { el.style.display = 'none'; return; }
   el.style.display = '';
-  if (factor < 1) {
-    el.className = 'period-badge probation';
-    el.textContent = `试用期 · ${Math.round(factor * 100)}%`;
-  } else {
-    el.className = 'period-badge';
-    el.textContent = '正式期';
-  }
+  el.className = state.probation ? 'period-badge probation' : 'period-badge';
+  el.textContent = state.text;
+}
+
+// 统计卡片右上角的工资口径徽章：税前 / 税后
+function updateSalaryModeBadges() {
+  const gross = (settings.salaryMode || DEFAULTS.salaryMode) === 'gross';
+  ['lifeModeBadge', 'monthModeBadge', 'hourlyModeBadge', 'annualModeBadge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = gross ? '税前' : '税后';
+    el.className = 'mode-badge ' + (gross ? 'gross' : 'net');
+  });
 }
 
 function updateTimer() {
@@ -2641,6 +2657,9 @@ function updatePreTaxCard(state, monthWorked) {
 }
 
 function updateStats() {
+  // 卡片右上角的口径徽章跟随设置里的工资口径
+  updateSalaryModeBadges();
+
   updatePaidLeave();
 
   // 设备成本：使用时长随时间增长，需要定时重算
@@ -2719,9 +2738,16 @@ function updateStats() {
     taxCard.style.display = showTax ? '' : 'none';
     if (showTax) {
       const row = currentMonthTax(taxParamsFromSettings());
+      // 阶段徽章与计时页共用同一口径：按今天的日期判断，而不是整月
+      const state = periodBadgeState(settings);
       const badge = document.getElementById('monthTaxBadge');
-      badge.textContent = row.probation ? '试用期' : '正式期';
-      badge.className = 'period-badge' + (row.probation ? ' probation' : '');
+      if (state) {
+        badge.style.display = '';
+        badge.textContent = state.text;
+        badge.className = state.probation ? 'period-badge probation' : 'period-badge';
+      } else {
+        badge.style.display = 'none';
+      }
       document.getElementById('monthTaxDesc').innerHTML =
         (!settings.hireDate ? '未填入职日期，按全年在职估算' : '') + '个税为累计预扣法下的当月应扣';
       document.getElementById('monthTaxGross').textContent = formatMoney(row.gross);

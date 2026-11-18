@@ -127,6 +127,7 @@
     <!-- 看一看 -->
     <div class="stats-panel active" data-cat="data">
       <div class="life-card">
+        <span class="mode-badge" id="lifeModeBadge">税前</span>
         <h3>生命消耗大盘</h3>
         <div class="desc" id="lifeDesc">只算当前这份工作，从入职那天起你的生命就在按小时计价</div>
         <div class="seg-control" id="lifeScope">
@@ -148,7 +149,22 @@
         <div class="deduct-row total"><span class="lbl">实发工资</span><span class="val" id="monthTaxNet">¥0.00</span></div>
       </div>
 
+      <div class="stats-card" id="hourlyTrendCard">
+        <span class="mode-badge" id="hourlyModeBadge">税前</span>
+        <h3>时薪波动曲线</h3>
+        <div class="desc">每个点代表当月平均时薪：当月薪资（按当前工资口径）÷（每日计时工时 × 当月工作日数）；同月跨两段工作时按工作日加权，空档月显示为 0。</div>
+        <div class="hourly-trend-head">
+          <div class="hourly-trend-now">
+            <span class="hourly-trend-val" id="hourlyTrendNow">¥0.00</span>
+            <span class="hourly-trend-unit" id="hourlyTrendUnit">/ 小时 · 本月</span>
+          </div>
+          <div class="hourly-trend-delta" id="hourlyTrendDelta">与上月持平</div>
+        </div>
+        <div class="hourly-trend-chart" id="hourlyTrendChart"></div>
+      </div>
+
       <div class="stats-card">
+        <span class="mode-badge" id="monthModeBadge">税前</span>
         <h3>本月概览</h3>
         <div class="big-val" id="monthEarned">¥0.00</div>
         <div class="sub-val" id="monthDays">已工作 0 天 / 22 天</div>
@@ -173,20 +189,8 @@
         </div>
       </div>
 
-      <div class="stats-card" id="hourlyTrendCard">
-        <h3>时薪波动曲线</h3>
-        <div class="desc">每个点代表当月平均时薪：当月薪资（按当前工资口径）÷（每日计时工时 × 当月工作日数）；同月跨两段工作时按工作日加权，空档月显示为 0。</div>
-        <div class="hourly-trend-head">
-          <div class="hourly-trend-now">
-            <span class="hourly-trend-val" id="hourlyTrendNow">¥0.00</span>
-            <span class="hourly-trend-unit" id="hourlyTrendUnit">/ 小时 · 本月</span>
-          </div>
-          <div class="hourly-trend-delta" id="hourlyTrendDelta">与上月持平</div>
-        </div>
-        <div class="hourly-trend-chart" id="hourlyTrendChart"></div>
-      </div>
-
       <div class="stats-card">
+        <span class="mode-badge" id="annualModeBadge">税前</span>
         <h3>年度概览</h3>
         <div class="big-val" id="annualEarned">¥0.00</div>
         <div class="sub-val" id="annualDays">已过 0 天 / 0 天</div>
