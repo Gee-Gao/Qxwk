@@ -677,12 +677,27 @@ body {
 /* 自定义工作日：当月日历 */
 .cal-head {
   display: flex;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
   margin-bottom: 10px;
 }
+.cal-nav-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #222;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+}
+.cal-nav-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.cal-nav-btn:disabled { opacity: .35; cursor: default; }
+#customCalendarTitle { cursor: pointer; }
 .cal-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -1142,13 +1157,6 @@ body {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
-/* 月份标签可点击，尾部小箭头提示可弹出快速选择 */
-.ledger-month-label::after {
-  content: '▾';
-  margin-left: 4px;
-  font-size: 10px;
-  color: var(--text-dim);
-}
 .ledger-month-btn {
   width: 30px;
   height: 30px;
@@ -1193,6 +1201,8 @@ body {
   transition: color .15s, border-color .15s, background .15s;
 }
 .month-picker-item:hover { border-color: #3a3a3a; }
+.month-picker-item:disabled { opacity: .35; cursor: default; }
+.month-picker-item:disabled:hover { border-color: #2a2a2a; }
 .month-picker-item.today { color: var(--accent); border-color: rgba(200, 255, 0, .35); }
 .month-picker-item.active {
   background: var(--accent);

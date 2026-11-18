@@ -389,15 +389,30 @@ function defaultWorkDatesOfMonth(year, month) {
   return list;
 }
 
-// 打开弹窗：已保存过本月则带入，否则按双休预填
+// 打开弹窗：默认本月，已保存过则带入，否则按双休预填
 function openCustomWorkdayModal() {
-  const now = new Date();
-  const job = settings;
-  customCalendarMonth = monthKeyOf(now);
-  const seed = customWorkDatesFor(job, customCalendarMonth);
-  customDateDraft = new Set(seed.length ? seed : defaultWorkDatesOfMonth(now.getFullYear(), now.getMonth()));
+  customCalendarMonth = currentMonthKey();
+  loadCustomCalendarDraft();
   renderCustomCalendar();
   document.getElementById('customWorkdayModal').classList.add('show');
+}
+
+// 载入当前编辑月份：优先取该月已保存的日历，否则按双休预填
+function loadCustomCalendarDraft() {
+  const [y, m] = customCalendarMonth.split('-').map(Number);
+  const seed = customWorkDatesFor(settings, customCalendarMonth);
+  customDateDraft = new Set(seed.length ? seed : defaultWorkDatesOfMonth(y, m - 1));
+}
+
+// 切换月份：可向前补录以前月份，最多到当前月
+function shiftCustomCalendarMonth(delta) {
+  if (!customCalendarMonth) return;
+  const [y, m] = customCalendarMonth.split('-').map(Number);
+  const next = monthKeyOf(new Date(y, m - 1 + delta, 1));
+  if (next > currentMonthKey()) return;
+  customCalendarMonth = next;
+  loadCustomCalendarDraft();
+  renderCustomCalendar();
 }
 
 function closeCustomWorkdayModal() {
@@ -407,6 +422,52 @@ function closeCustomWorkdayModal() {
   customCalendarMonth = '';
 }
 
+// ---------- 自定义工作日：月份快速选择 ----------
+let customPickerYear = 0;
+
+// 点击标题打开月份选择面板，快速跳到任意历史月份
+function openCustomMonthPicker() {
+  if (!customCalendarMonth) return;
+  customPickerYear = Number(customCalendarMonth.split('-')[0]);
+  renderCustomMonthPicker();
+  document.getElementById('customMonthModal').classList.add('show');
+}
+
+function closeCustomMonthModal() {
+  const overlay = document.getElementById('customMonthModal');
+  if (overlay) overlay.classList.remove('show');
+}
+
+function shiftCustomPickerYear(delta) {
+  customPickerYear += delta;
+  renderCustomMonthPicker();
+}
+
+function renderCustomMonthPicker() {
+  const yearEl = document.getElementById('customPickerYear');
+  const gridEl = document.getElementById('customPickerMonths');
+  if (!yearEl || !gridEl) return;
+  yearEl.textContent = customPickerYear + ' 年';
+  const current = currentMonthKey();
+  let html = '';
+  for (let m = 1; m <= 12; m++) {
+    const key = `${customPickerYear}-${String(m).padStart(2, '0')}`;
+    const cls = ['month-picker-item'];
+    if (key === customCalendarMonth) cls.push('active');
+    if (key === current) cls.push('today');
+    const future = key > current;
+    html += `<button type="button" class="${cls.join(' ')}"${future ? ' disabled' : ` onclick="pickCustomMonth('${key}')"`}>${m} 月</button>`;
+  }
+  gridEl.innerHTML = html;
+}
+
+function pickCustomMonth(monthKey) {
+  closeCustomMonthModal();
+  customCalendarMonth = monthKey;
+  loadCustomCalendarDraft();
+  renderCustomCalendar();
+}
+
 function renderCustomCalendar() {
   const grid = document.getElementById('customCalendarGrid');
   const title = document.getElementById('customCalendarTitle');
@@ -414,6 +475,9 @@ function renderCustomCalendar() {
 
   const [y, m] = customCalendarMonth.split('-').map(Number);
   if (title) title.textContent = `${y} 年 ${m} 月`;
+  // 最远只能录到本月，避免提前生成未来月份的日历
+  const nextBtn = document.getElementById('customNextMonth');
+  if (nextBtn) nextBtn.disabled = customCalendarMonth >= currentMonthKey();
 
   const offset = (new Date(y, m - 1, 1).getDay() + 6) % 7; // 周一排第一列
   const days = new Date(y, m, 0).getDate();
@@ -434,8 +498,11 @@ function renderCustomCalendar() {
 function updateCustomWorkdayHint() {
   const hint = document.getElementById('customWorkdayHint');
   if (!hint || !customDateDraft) return;
+  const isCurrent = customCalendarMonth === currentMonthKey();
   hint.textContent = customDateDraft.size
-    ? `本月上班 ${customDateDraft.size} 天 · 每月工作天数将同步为 ${customDateDraft.size}`
+    ? (isCurrent
+      ? `本月上班 ${customDateDraft.size} 天 · 每月工作天数将同步为 ${customDateDraft.size}`
+      : `该月上班 ${customDateDraft.size} 天 · 仅用于回看该月收入，不影响本月工作天数`)
     : '至少选择一天上班；未选择时按双休（周一至周五）计算';
 }
 
@@ -454,18 +521,22 @@ function saveCustomCalendar() {
   }
   settings.workDayMode = 'custom';
   const mk = customCalendarMonth || currentMonthKey();
-  settings.customWorkMonth = mk;
-  settings.customWorkDates = [...customDateDraft].sort();
+  const isCurrentMonth = mk === currentMonthKey();
+  const dates = [...customDateDraft].sort();
   // 按月留存，换月后上个月的工作日仍然保留，用于回看当月收入
   settings.customWorkCalendars = {
     ...(settings.customWorkCalendars || {}),
-    [mk]: [...settings.customWorkDates]
+    [mk]: dates
   };
-  settings.customWorkdayPromptMonth = settings.customWorkMonth;
-  const days = customDateDraft.size;
-  settings.workDaysPerMonth = days;
-  const input = document.getElementById('workDaysPerMonth');
-  if (input) input.value = days;
+  // 只有保存本月时才同步「每月工作天数」等当月口径，补录历史月份不影响本月
+  if (isCurrentMonth) {
+    settings.customWorkMonth = mk;
+    settings.customWorkDates = dates;
+    settings.customWorkdayPromptMonth = mk;
+    settings.workDaysPerMonth = customDateDraft.size;
+    const input = document.getElementById('workDaysPerMonth');
+    if (input) input.value = customDateDraft.size;
+  }
   persistSettings();
   closeCustomWorkdayModal();
   selectWorkDayMode('custom');
@@ -7051,6 +7122,9 @@ setInterval(() => {
 // 点击遮罩空白处关闭弹窗
 document.getElementById('customWorkdayModal').addEventListener('click', function(e) {
   if (e.target === this) closeCustomWorkdayModal();
+});
+document.getElementById('customMonthModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCustomMonthModal();
 });
 document.getElementById('ledgerModal').addEventListener('click', function(e) {
   if (e.target === this) closeLedgerModal();
