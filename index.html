@@ -40,6 +40,7 @@
       <div class="timer-status" id="workStatus">
         <span class="dot"></span>
         <span id="statusText">工作中</span>
+        <span class="shift-badge" id="shiftBadge" style="display:none"></span>
         <span class="period-badge" id="periodBadge" style="display:none"></span>
         <span class="commute-badge" id="commuteBadge" style="display:none"></span>
       </div>
@@ -614,21 +615,38 @@
         <div class="field-group" style="grid-column:1/-1">
           <div class="field-hint" id="probationHint"></div>
         </div>
-        <div class="field-group">
+        <div class="field-group" id="startTimeGroup">
           <label>上班时间</label>
           <input type="text" id="startTime" class="picker-input" data-picker="time" readonly placeholder="HH:MM" value="09:00">
         </div>
-        <div class="field-group">
+        <div class="field-group" id="endTimeGroup">
           <label>下班时间</label>
           <input type="text" id="endTime" class="picker-input" data-picker="time" readonly placeholder="HH:MM" value="18:00">
         </div>
-        <div class="field-group">
+        <div class="field-group" id="lunchStartGroup">
           <label id="lunchStartLabel">午休开始</label>
           <input type="text" id="lunchStart" class="picker-input" data-picker="time" readonly placeholder="HH:MM" value="12:00">
         </div>
-        <div class="field-group">
+        <div class="field-group" id="lunchEndGroup">
           <label id="lunchEndLabel">午休结束</label>
           <input type="text" id="lunchEnd" class="picker-input" data-picker="time" readonly placeholder="HH:MM" value="13:00">
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <label>班次轮换</label>
+          <div class="seg-control" id="shiftRotationMode">
+            <button type="button" class="seg-btn" data-on="off" onclick="selectShiftRotationEnabled(false)">关闭</button>
+            <button type="button" class="seg-btn" data-on="on" onclick="selectShiftRotationEnabled(true)">开启</button>
+          </div>
+          <div class="field-hint" id="shiftRotationModeHint"></div>
+        </div>
+        <div class="field-group" id="shiftRotationStartGroup" style="grid-column:1/-1; display:none">
+          <label>轮换起始日（第一轮第一天）</label>
+          <input type="text" id="shiftRotationStart" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD" onchange="persistSettings()">
+        </div>
+        <div class="field-group" id="shiftRotationListGroup" style="grid-column:1/-1; display:none">
+          <label>轮换班次（按顺序循环）</label>
+          <div class="shift-rotation-list" id="shiftRotationList"></div>
+          <button type="button" class="tier-add" onclick="addShiftRotation()">＋ 添加班次</button>
         </div>
         <div class="field-group" style="grid-column:1/-1">
           <div class="field-hint" id="shiftTimeHint"></div>

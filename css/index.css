@@ -83,6 +83,17 @@ body {
   border-color: #46520f;
   background: rgba(200, 255, 0, .08);
 }
+/* 计时卡片顶部：当前轮换班次标识 */
+.shift-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #3a3a3a;
+  background: #1d1d1d;
+  color: #cfcfcf;
+  white-space: nowrap;
+}
 /* 计时卡片顶部：时薪已含通勤时间的标识 */
 .commute-badge {
   font-size: 11px;
@@ -2060,6 +2071,91 @@ body {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* 班次轮换：每段班次的名称、天数与上下班/休息时间 */
+.shift-rotation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.shift-rotation-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 8px;
+}
+.shift-rotation-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shift-rotation-head .shift-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 2px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shift-rotation-head .shift-days {
+  width: 56px;
+  flex: none;
+  padding: 6px 4px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color .2s;
+}
+.shift-rotation-head .shift-unit {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.shift-rotation-head .shift-days:focus { border-color: var(--accent); }
+.shift-rotation-times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.shift-rotation-times label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.shift-rotation-times label span {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.shift-rotation-times input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 4px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color .2s;
+}
+.shift-rotation-times input:focus { border-color: var(--accent); }
 
 /* 移动端适配：窄屏下日期/数字输入并排会挤，改为单列 */
 @media (max-width: 380px) {

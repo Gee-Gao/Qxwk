@@ -27,6 +27,12 @@ const DEFAULTS = {
   endTime: '18:00',
   lunchStart: '12:00',
   lunchEnd: '13:00',
+  shiftRotationEnabled: false, // 是否按周期轮换班次（如白班 / 夜班交替）
+  shiftRotationStart: '',      // 轮换起始日（第一段班次的第一天）
+  shiftRotationSegments: [     // 轮换班次：按顺序循环，days 为连续天数，名称按序号自动生成
+    { name: '班次1', days: 2, startTime: '08:00', endTime: '20:00', lunchStart: '12:00', lunchEnd: '13:00' },
+    { name: '班次2', days: 2, startTime: '20:00', endTime: '08:00', lunchStart: '00:00', lunchEnd: '01:00' }
+  ],
   commuteMinutes: 0,      // 每日通勤合计（分钟，往返）；纳入时薪时按往返各半拆分
   commuteInputMode: 'total', // 通勤计时方式：total 一天合计自动÷2 / split 往返分开填
   commuteMorning: 0,      // 早通勤（去程，分钟），仅 split 模式使用
@@ -117,6 +123,7 @@ const JOB_FIELDS = [
   'workDayMode', 'workDaysPerMonth', 'customWorkMonth', 'customWorkDates', 'customWorkCalendars',
   'bigSmallWeekStart', 'bigSmallWeekType',
   'startTime', 'endTime', 'lunchStart', 'lunchEnd',
+  'shiftRotationEnabled', 'shiftRotationStart', 'shiftRotationSegments',
   'commuteMinutes', 'commuteInputMode', 'commuteMorning', 'commuteEvening', 'commuteInHourly',
   'calcMode', 'hourlyRate', 'tieredRateTiers'
 ];
@@ -180,6 +187,7 @@ function load() {
   }
   // 自定义日历按月留存：旧版单月数据迁移进按月表，便于回看上月的实际工作日
   migrateCustomCalendar(settings);
+  normalizeShiftRotation(settings);
 }
 
 // ---------- 工作经历：快照与时间轴 ----------
@@ -221,12 +229,39 @@ function migrateCustomCalendar(job) {
   return job;
 }
 
+// 「HH:MM」格式校验
+function isClockKey(v) {
+  return /^\d{1,2}:\d{2}$/.test(String(v || ''));
+}
+
+// 班次轮换：补齐默认班次、裁剪非法天数与时间，起始日非法时按未设置处理
+function normalizeShiftRotation(job) {
+  const list = Array.isArray(job.shiftRotationSegments) ? job.shiftRotationSegments : [];
+  const segments = list
+    .filter(s => s && typeof s === 'object')
+    .map((s, i) => ({
+      name: `班次${i + 1}`,
+      days: Math.min(31, Math.max(1, parseInt(s.days, 10) || 1)),
+      startTime: isClockKey(s.startTime) ? s.startTime : DEFAULTS.startTime,
+      endTime: isClockKey(s.endTime) ? s.endTime : DEFAULTS.endTime,
+      lunchStart: isClockKey(s.lunchStart) ? s.lunchStart : DEFAULTS.lunchStart,
+      lunchEnd: isClockKey(s.lunchEnd) ? s.lunchEnd : DEFAULTS.lunchEnd
+    }));
+  job.shiftRotationSegments = segments.length
+    ? segments
+    : DEFAULTS.shiftRotationSegments.map(s => ({ ...s }));
+  job.shiftRotationEnabled = !!job.shiftRotationEnabled;
+  const rotationStart = parseDateKey(job.shiftRotationStart || '');
+  job.shiftRotationStart = rotationStart ? fmtDateKey(rotationStart) : '';
+  return job;
+}
+
 // 兼容旧数据：补齐缺失字段、标准化字段类型
 function normalizeJobHistory() {
   jobHistory = jobHistory
     .filter(o => o && typeof o === 'object')
     .map(o => {
-      const job = migrateCustomCalendar(snapshotJob({ ...DEFAULTS, ...o }));
+      const job = normalizeShiftRotation(migrateCustomCalendar(snapshotJob({ ...DEFAULTS, ...o })));
       job.id = typeof o.id === 'string' && o.id ? o.id : newJobId();
       job.name = typeof o.name === 'string' ? o.name : '';
       job.endDate = typeof o.endDate === 'string' ? o.endDate : '';
@@ -945,6 +980,93 @@ function updateSalaryCalcModeHint() {
     : '按税前月薪折算时薪，维持原有的月薪计算逻辑';
 }
 
+// ============ 班次轮换 ============
+// 开启/关闭轮换：开启时隐藏固定班次输入，改为按循环班次计算
+function selectShiftRotationEnabled(on) {
+  settings.shiftRotationEnabled = !!on;
+  if (on && !settings.shiftRotationStart) settings.shiftRotationStart = fmtDateKey(new Date());
+  if (on && (!Array.isArray(settings.shiftRotationSegments) || !settings.shiftRotationSegments.length)) {
+    settings.shiftRotationSegments = DEFAULTS.shiftRotationSegments.map(s => ({ ...s }));
+  }
+  document.querySelectorAll('#shiftRotationMode .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.on === (on ? 'on' : 'off'));
+  });
+  ['startTimeGroup', 'endTimeGroup', 'lunchStartGroup', 'lunchEndGroup'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = on ? 'none' : '';
+  });
+  const startGroup = document.getElementById('shiftRotationStartGroup');
+  const listGroup = document.getElementById('shiftRotationListGroup');
+  if (startGroup) startGroup.style.display = on ? '' : 'none';
+  if (listGroup) listGroup.style.display = on ? '' : 'none';
+  const startInput = document.getElementById('shiftRotationStart');
+  if (startInput) startInput.value = settings.shiftRotationStart ? formatDateSlash(settings.shiftRotationStart) : '';
+  const hint = document.getElementById('shiftRotationModeHint');
+  if (hint) {
+    hint.innerHTML = on
+      ? '轮换按自然日连续计算，休息日已包含在「连续天数」内，无需单独添加休息班次当天是否上班仍按休息制度或自定义日历判定'
+      : '关闭时按上方固定的上下班时间计算';
+  }
+  renderShiftRotations();
+  invalidateJobCaches();
+  updateShiftHint(settings);
+  updateCommuteHint();
+  localStorage.setItem('qianxwk_settings', JSON.stringify(settings));
+}
+
+// 渲染轮换班次行：名称 + 连续天数 + 上下班/休息时间
+function renderShiftRotations() {
+  const list = document.getElementById('shiftRotationList');
+  if (!list) return;
+  const segments = Array.isArray(settings.shiftRotationSegments) ? settings.shiftRotationSegments : [];
+  list.innerHTML = segments.map((s, i) => `
+    <div class="shift-rotation-row">
+      <div class="shift-rotation-head">
+        <span class="shift-label">班次${i + 1}</span>
+        <span class="shift-unit">连续</span>
+        <input type="number" class="shift-days" min="1" max="31" step="1" value="${parseInt(s.days, 10) || 1}" oninput="persistSettings()">
+        <span class="shift-unit">天</span>
+        <button type="button" class="tier-del" onclick="removeShiftRotation(${i})" title="删除">×</button>
+      </div>
+      <div class="shift-rotation-times">
+        <label><span>上班</span><input type="text" class="shift-start" data-picker="time" readonly value="${s.startTime}" onchange="persistSettings()"></label>
+        <label><span>下班</span><input type="text" class="shift-end" data-picker="time" readonly value="${s.endTime}" onchange="persistSettings()"></label>
+        <label><span>休息</span><input type="text" class="shift-lunch-start" data-picker="time" readonly value="${s.lunchStart}" onchange="persistSettings()"></label>
+        <label><span>结束</span><input type="text" class="shift-lunch-end" data-picker="time" readonly value="${s.lunchEnd}" onchange="persistSettings()"></label>
+      </div>
+    </div>`).join('');
+  updateShiftHint(settings);
+}
+
+// 新增一段班次：默认沿用上一段的上下班时间，连续 1 天
+function addShiftRotation() {
+  const segments = (Array.isArray(settings.shiftRotationSegments) ? settings.shiftRotationSegments : [])
+    .map(s => ({ ...s }));
+  const base = segments.length ? segments[segments.length - 1] : DEFAULTS.shiftRotationSegments[0];
+  segments.push({
+    name: `班次${segments.length + 1}`,
+    days: 1,
+    startTime: base.startTime,
+    endTime: base.endTime,
+    lunchStart: base.lunchStart,
+    lunchEnd: base.lunchEnd
+  });
+  settings.shiftRotationSegments = segments;
+  renderShiftRotations();
+  persistSettings();
+}
+
+function removeShiftRotation(index) {
+  const segments = Array.isArray(settings.shiftRotationSegments) ? settings.shiftRotationSegments : [];
+  if (segments.length <= 1) {
+    showToast('至少保留一个班次');
+    return;
+  }
+  settings.shiftRotationSegments = segments.filter((_, i) => i !== index).map(s => ({ ...s }));
+  renderShiftRotations();
+  persistSettings();
+}
+
 // 渲染倍率阶梯行；每行从上一档之后开始按对应倍率计薪
 function renderRateTiers() {
   const list = document.getElementById('tieredRateList');
@@ -1035,6 +1157,24 @@ function persistSettings() {
   job.endTime = document.getElementById('endTime').value || DEFAULTS.endTime;
   job.lunchStart = document.getElementById('lunchStart').value || DEFAULTS.lunchStart;
   job.lunchEnd = document.getElementById('lunchEnd').value || DEFAULTS.lunchEnd;
+  // 班次轮换：以页面上的班次行为准，避免增删后与存储状态不同步
+  const rotationList = document.getElementById('shiftRotationList');
+  if (rotationList) {
+    const rows = [...rotationList.querySelectorAll('.shift-rotation-row')];
+    if (rows.length) {
+      job.shiftRotationSegments = rows.map((row, i) => ({
+        // 名称按当前顺序自动编号，删除或新增后序号自动补齐
+        name: `班次${i + 1}`,
+        days: Math.min(31, Math.max(1, parseInt(row.querySelector('.shift-days').value, 10) || 1)),
+        startTime: row.querySelector('.shift-start').value || DEFAULTS.startTime,
+        endTime: row.querySelector('.shift-end').value || DEFAULTS.endTime,
+        lunchStart: row.querySelector('.shift-lunch-start').value || DEFAULTS.lunchStart,
+        lunchEnd: row.querySelector('.shift-lunch-end').value || DEFAULTS.lunchEnd
+      }));
+    }
+  }
+  const rotationStartInput = document.getElementById('shiftRotationStart');
+  if (rotationStartInput) job.shiftRotationStart = rotationStartInput.value || '';
   // 通勤：两种录入方式各自保存，合计始终同步，供计时与时薪折算使用
   job.commuteInputMode = job.commuteInputMode === 'split' ? 'split' : 'total';
   job.commuteMorning = Math.max(0, num('commuteMorning', 0));
@@ -1055,6 +1195,7 @@ function persistSettings() {
   settings.foreignEnabled = !!settings.foreignEnabled;
   settings.foreignCurrency = currencyOf(settings.foreignCurrency).code;
   updateShiftHint(job);
+  updateCommuteHint();
   invalidateJobCaches();
   localStorage.setItem('qianxwk_settings', JSON.stringify(settings));
 }
@@ -1092,6 +1233,8 @@ function fillSettingsForm() {
   document.getElementById('lunchStart').value = job.lunchStart;
   document.getElementById('lunchEnd').value = job.lunchEnd;
   updateShiftHint(job);
+  // 班次轮换：同步开关、起始日与班次行（内部会刷新班次提示）
+  selectShiftRotationEnabled(!!job.shiftRotationEnabled);
   document.getElementById('commuteMinutes').value = job.commuteMinutes > 0 ? job.commuteMinutes : '';
   document.getElementById('commuteMorning').value = job.commuteMorning > 0 ? job.commuteMorning : '';
   document.getElementById('commuteEvening').value = job.commuteEvening > 0 ? job.commuteEvening : '';
@@ -1666,7 +1809,7 @@ function monthlyGrossOfJob(job) {
   const cfg = job || settings;
   if (!isHourlyMode(cfg)) return Math.max(0, parseFloat(cfg.monthlySalary) || 0);
   const workDays = Math.max(1, parseFloat(cfg.workDaysPerMonth) || DEFAULTS.workDaysPerMonth);
-  return jobHourlyInput(cfg) * getDailyHours(cfg) * workDays;
+  return jobHourlyInput(cfg) * getAvgDailyHours(cfg) * workDays;
 }
 
 function taxParamsFromJob(job) {
@@ -1732,17 +1875,16 @@ function timeToMinutes(t) {
   return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 }
 
-// 班次时间轴：下班时间早于上班时间时视为跨天夜班，
+// 单段班次的时间轴：下班时间早于上班时间时视为跨天夜班，
 // 下班与午休统一换算成「距上班当天 0 点」的分钟数（可能超过 1440）
-function getShiftTimes(job) {
-  const cfg = job || settings;
-  const start = timeToMinutes(cfg.startTime);
-  let end = timeToMinutes(cfg.endTime);
+function shiftTimesOf(src) {
+  const start = timeToMinutes(src.startTime);
+  let end = timeToMinutes(src.endTime);
   const crossDay = end < start;
   if (crossDay) end += 1440;
 
-  let lunchStart = timeToMinutes(cfg.lunchStart);
-  let lunchEnd = timeToMinutes(cfg.lunchEnd);
+  let lunchStart = timeToMinutes(src.lunchStart);
+  let lunchEnd = timeToMinutes(src.lunchEnd);
   if (lunchEnd < lunchStart) lunchEnd += 1440; // 午休本身跨天（如 23:00-00:00）
   // 夜班午休常落在凌晨（如 02:00-03:00），平移对齐到上班之后的那一次
   while (lunchEnd <= start) {
@@ -1765,16 +1907,56 @@ function getShiftTimes(job) {
   };
 }
 
+// 两个日期相差的自然天数（忽略时分秒）
+function dayDiff(from, to) {
+  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const b = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((b - a) / 86400000);
+}
+
+// 轮换班次：指定日期落在循环中的哪一段；未启用或配置无效时返回 null
+function rotationSegmentForDate(job, date) {
+  const cfg = job || settings;
+  if (!cfg.shiftRotationEnabled) return null;
+  const segments = Array.isArray(cfg.shiftRotationSegments) ? cfg.shiftRotationSegments : [];
+  if (!segments.length) return null;
+  const anchor = parseDateKey(cfg.shiftRotationStart || '');
+  if (!anchor) return null;
+  const totalDays = segments.reduce((sum, s) => sum + (parseInt(s.days, 10) || 0), 0);
+  if (!(totalDays > 0)) return null;
+  const ref = date || new Date();
+  let pos = ((dayDiff(anchor, ref) % totalDays) + totalDays) % totalDays;
+  for (let i = 0; i < segments.length; i++) {
+    const days = parseInt(segments[i].days, 10) || 0;
+    if (pos < days) {
+      return { segment: segments[i], index: i, dayInSegment: pos, totalDays };
+    }
+    pos -= days;
+  }
+  return null;
+}
+
+// 班次时间轴：指定日期（默认当前班次归属日）适用的班次，
+// 启用轮换时取当天所属的那一段，否则取固定上下班时间
+function getShiftTimes(job, date) {
+  const cfg = job || settings;
+  const ref = date || (cfg === settings ? getShiftAnchorDate(new Date()) : new Date());
+  const rotation = rotationSegmentForDate(cfg, ref);
+  const times = shiftTimesOf(rotation ? rotation.segment : cfg);
+  times.rotation = rotation;
+  return times;
+}
+
 // 计时口径下的「当前班次归属日」：跨天夜班的凌晨时段仍算前一天
 function getShiftAnchorDate(now) {
   const d = now || new Date();
-  const shift = getShiftTimes();
-  const anchor = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const today = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
   const nowMinutes = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
-  // 下班时刻（含返程通勤）之前的凌晨，属于昨天开始的那一班
-  const paidEnd = shift.end + getCommuteSplit().after;
-  if (shift.crossDay && nowMinutes < paidEnd % 1440) anchor.setDate(anchor.getDate() - 1);
-  return anchor;
+  // 昨天那一班（含返程通勤）还没结束时，仍属于昨天开始的班次
+  const paidEnd = getShiftTimes(settings, yesterday).end + getCommuteSplit().after;
+  return nowMinutes + 1440 < paidEnd ? yesterday : today;
 }
 
 // 每日通勤分钟数：仅在「纳入时薪折算」开启时计入计时
@@ -1800,17 +1982,37 @@ function getCommuteSplit(job) {
   return { before: total / 2, after: total / 2, total };
 }
 
-// 计入通勤后的每日计时总长（小时），按天折算收益时使用
-function getPaidDailyHours(job) {
+// 计入通勤后的每日计时总长（小时），按天折算收益时使用；
+// 传入日期时取该日所属班次，否则取当前班次归属日
+function getPaidDailyHours(job, date) {
   const cfg = job || settings;
-  return (getShiftTimes(cfg).workMinutes + getCommuteMinutes(cfg)) / 60;
+  return (getShiftTimes(cfg, date).workMinutes + getCommuteMinutes(cfg)) / 60;
+}
+
+// 轮换周期内按天数加权的平均每日工时：时薪折算用时避免各段班次长短不一产生偏差
+function getAvgDailyHours(job) {
+  const cfg = job || settings;
+  const segments = Array.isArray(cfg.shiftRotationSegments) ? cfg.shiftRotationSegments : [];
+  if (!cfg.shiftRotationEnabled || !segments.length || !parseDateKey(cfg.shiftRotationStart || '')) {
+    return getDailyHours(cfg);
+  }
+  const totalDays = segments.reduce((sum, s) => sum + (parseInt(s.days, 10) || 0), 0);
+  if (!(totalDays > 0)) return getDailyHours(cfg);
+  const minutes = segments.reduce((sum, s) => sum + shiftTimesOf(s).workMinutes * (parseInt(s.days, 10) || 0), 0);
+  return minutes / totalDays / 60;
+}
+
+// 平均每日计时总长（含通勤）
+function getAvgPaidDailyHours(job) {
+  const cfg = job || settings;
+  return getAvgDailyHours(cfg) + getCommuteMinutes(cfg) / 60;
 }
 
 // 月薪 -> 时薪，按每日实际工作时长与月工作天数折算（开启后通勤时长一并计入分母）
 function calcHourlyRate(salary, job) {
   const cfg = job || settings;
   const workDays = cfg.workDaysPerMonth;
-  const dailyHours = getPaidDailyHours(cfg);
+  const dailyHours = getAvgPaidDailyHours(cfg);
   const monthlyHours = dailyHours * workDays;
   return monthlyHours > 0 ? salary / monthlyHours : 0;
 }
@@ -1829,16 +2031,17 @@ function getMinuteRate() {
   return getHourlyRate() / 60;
 }
 
-// 每个工作日的实际工作时长（小时，已扣除午休；跨天夜班按完整班次计）
-function getDailyHours(job) {
-  return getShiftTimes(job).workMinutes / 60;
+// 每个工作日的实际工作时长（小时，已扣除午休；跨天夜班按完整班次计）；
+// 传入日期时取该日所属班次
+function getDailyHours(job, date) {
+  return getShiftTimes(job, date).workMinutes / 60;
 }
 
 function getCurrentWorkState() {
   const now = new Date();
-  const shift = getShiftTimes();
   // 跨天夜班的凌晨时段仍属于前一天开始的班次
   const anchor = getShiftAnchorDate(now);
+  const shift = getShiftTimes(settings, anchor);
   const prevDayShift = fmtDateKey(anchor) !== fmtDateKey(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
   // 当前时刻距本班次上班的分钟数；负数表示还没上班
@@ -1869,6 +2072,8 @@ function getCurrentWorkState() {
     tierMultiplier: 1,
     crossDay: shift.crossDay,
     shiftDate: anchor,
+    rotation: shift.rotation,
+    shiftName: shift.rotation ? shift.rotation.segment.name : '',
     commuteBefore,
     commuteAfter,
     commuteTotal,
@@ -1956,6 +2161,8 @@ function getCurrentWorkState() {
     tierMultiplier,
     crossDay: shift.crossDay,
     shiftDate: anchor,
+    rotation: shift.rotation,
+    shiftName: shift.rotation ? shift.rotation.segment.name : '',
     commuteBefore,
     commuteAfter,
     commuteTotal,
@@ -2208,7 +2415,7 @@ function updateCommuteBadge() {
   el.style.display = active ? '' : 'none';
 }
 
-// 设置页：班次提示，下班早于上班时按跨天夜班解释
+// 设置页：班次提示，轮换时说明当前班次与循环，否则按跨天夜班解释
 function updateShiftHint(job) {
   const cfg = job || settings;
   const el = document.getElementById('shiftTimeHint');
@@ -2219,6 +2426,14 @@ function updateShiftHint(job) {
   if (startLabel) startLabel.textContent = shift.crossDay ? '休息开始' : '午休开始';
   if (endLabel) endLabel.textContent = shift.crossDay ? '休息结束' : '午休结束';
   if (!el) return;
+
+  if (shift.rotation) {
+    const rot = shift.rotation;
+    const endText = shift.crossDay ? `次日 ${minutesToClock(shift.end)}` : minutesToClock(shift.end);
+    el.textContent = `当前班次：${rot.segment.name}（第 ${rot.dayInSegment + 1}/${rot.segment.days} 天）${minutesToClock(shift.start)} - ${endText} · ${rot.totalDays} 天一轮`;
+    return;
+  }
+
   if (!shift.crossDay) { el.textContent = ''; return; }
   el.textContent = `下班早于上班，按跨天夜班计算：${cfg.startTime} 上班，次日 ${cfg.endTime} 下班，每天工作 ${fmtDurationMinutes(shift.workMinutes)}。`;
 }
@@ -2587,6 +2802,13 @@ function updateTimer() {
 
   updatePeriodBadge();
   updateCommuteBadge();
+  // 班次轮换：显示当前班次与处于该班次的第几天
+  const shiftBadge = document.getElementById('shiftBadge');
+  if (shiftBadge) {
+    const rot = state.rotation;
+    shiftBadge.textContent = rot ? `${rot.segment.name} · 第 ${rot.dayInSegment + 1}/${rot.segment.days} 天` : '';
+    shiftBadge.style.display = rot ? '' : 'none';
+  }
   const countdownEl = document.getElementById('countdownDisplay');
   const countdownLabel = document.getElementById('countdownLabel');
 
@@ -2630,8 +2852,8 @@ function updateTimer() {
     statusEl.classList.add('paused');
   }
 
-  // 计时区间只按班次时间，通勤不影响上下班计时
-  const shift = getShiftTimes();
+  // 计时区间只按班次时间，通勤不影响上下班计时；轮换时取当前班次所属日
+  const shift = getShiftTimes(settings, state.shiftDate);
   document.getElementById('startTimeLabel').textContent = minutesToClock(shift.start);
   document.getElementById('endTimeLabel').textContent =
     ((state.crossDay || shift.end >= 1440) ? '次日 ' : '') + minutesToClock(shift.end);
@@ -2873,7 +3095,7 @@ function getMonthlyPayForMonth(monthStart, job, grossOnly) {
 function jobHourlyAt(job, date, grossOnly) {
   const cfg = job || settings;
   if (isHourlyMode(cfg)) return hourlyForJobAtDate(cfg, date, grossOnly);
-  const dailyHours = getPaidDailyHours(job);
+  const dailyHours = getAvgPaidDailyHours(job);
   const workDays = countWorkdaysInMonthFor(date.getFullYear(), date.getMonth(), job);
   if (!(dailyHours > 0) || !(workDays > 0)) return 0;
   const pay = getMonthlyPayForMonth(new Date(date.getFullYear(), date.getMonth(), 1), job, grossOnly);
@@ -2893,12 +3115,12 @@ function hourlyForJobAtDate(job, date, grossOnly) {
   const baseRate = jobHourlyInput(cfg) * (probation ? ratio : 1);
   // 通勤并入时薪折算时：按「工作时长 / (工作时长 + 通勤)」折算真实时薪，
   // 通勤时间也按这个等效时薪计时，整日收入与不计通勤时保持一致
-  const workHours = getDailyHours(cfg);
-  const paidHours = getPaidDailyHours(cfg);
+  const workHours = getAvgDailyHours(cfg);
+  const paidHours = getAvgPaidDailyHours(cfg);
   let rate = (workHours > 0 && paidHours > 0) ? baseRate * workHours / paidHours : baseRate;
   if (mode !== 'gross') {
     const workDays = Math.max(1, countWorkdaysInMonthFor(date.getFullYear(), date.getMonth(), cfg));
-    const monthlyHours = getPaidDailyHours(cfg) * workDays;
+    const monthlyHours = getAvgPaidDailyHours(cfg) * workDays;
     const profile = calcNetProfile(taxParamsFromJob(cfg), cfg);
     const phase = probation ? (profile.probation || profile.regular) : (profile.regular || profile.probation);
     if (phase && monthlyHours > 0) rate = phase.net / monthlyHours;
@@ -2917,7 +3139,7 @@ function jobDailyPay(job, date, grossOnly, cache) {
     hourly = jobHourlyAt(job, date, grossOnly);
     if (cache) cache.set(key, hourly);
   }
-  return hourly * getPaidDailyHours(job) * tieredMultiplierFor(job, date, getDailyHours(job));
+  return hourly * getPaidDailyHours(job, date) * tieredMultiplierFor(job, date, getDailyHours(job, date));
 }
 
 // ============ 工时阶梯倍率 ============
@@ -2991,7 +3213,7 @@ function tieredCumulativeBefore(job, date) {
       if (start && d < start) continue;
       if (jobOnDate(d) !== cfg) continue;
       if (!isWorkdayByConfig(d, cfg)) continue;
-      cum += getDailyHours(cfg);
+      cum += getDailyHours(cfg, d);
     }
     tierCumCache.set(key, map);
   }
@@ -3072,6 +3294,7 @@ function renderHourlyTrend() {
     settings.monthlySalary, settings.calcMode, settings.hourlyRate,
     settings.workDayMode, settings.workDaysPerMonth,
     settings.startTime, settings.endTime, settings.lunchStart, settings.lunchEnd,
+    settings.shiftRotationEnabled, settings.shiftRotationStart, settings.shiftRotationSegments,
     settings.commuteInHourly, settings.commuteInputMode, settings.commuteMinutes,
     settings.commuteMorning, settings.commuteEvening,
     settings.hireDate, settings.probationMonths, settings.probationRatio,
@@ -3504,7 +3727,8 @@ function sumLeaveEarned(match) {
 // 已调休记录折算成小时数：按「天」录入时，一天按当前制度的每日工时算
 function leaveUsedHours(record) {
   const amount = Math.max(0, parseFloat(record.amount) || 0);
-  return record.unit === 'day' ? amount * getDailyHours() : amount;
+  const d = parseDateKey(record.date);
+  return record.unit === 'day' ? amount * getDailyHours(settings, d || undefined) : amount;
 }
 
 // 累计已使用的调休时长
@@ -3569,7 +3793,7 @@ function overtimeHours(record) {
   if (record.unit !== 'day') return amount;
   const d = parseDateKey(record.date);
   const job = d ? jobOnDate(d) : null;
-  return amount * getDailyHours(job || settings);
+  return amount * getDailyHours(job || settings, d || undefined);
 }
 
 // 应得加班费 = 小时数 × 该记录所属工作的时薪 × 倍率
@@ -3985,16 +4209,17 @@ function getJobWorkdayStats(job, endDate) {
   const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
   const d = new Date(hire.getFullYear(), hire.getMonth(), hire.getDate());
   if (d > end) return { workDays: 0, hours: 0, earned: 0 };
-  const dailyHours = getPaidDailyHours(job);
   const cache = new Map();
   let workDays = 0;
+  let hours = 0;
   let earned = 0;
   for (; d <= end; d.setDate(d.getDate() + 1)) {
     if (!isWorkdayByConfig(d, job)) continue;
     workDays++;
+    hours += getPaidDailyHours(job, d);
     earned += jobDailyPay(job, d, false, cache);
   }
-  return { workDays, hours: workDays * dailyHours, earned };
+  return { workDays, hours, earned };
 }
 
 // 大额金额压缩显示，避免窄屏把卡片顶破
@@ -4126,7 +4351,7 @@ function updateCalculator() {
   const raw = parseFloat(input.value);
   const val = isNaN(raw) || raw < 0 ? 0 : raw;
   const hourlyRate = getHourlyRate();
-  const dailyHours = getDailyHours();
+  const dailyHours = getAvgDailyHours();
   const labelEl = document.getElementById('calcResultLabel');
   const noteEl = document.getElementById('calcResultNote');
 
@@ -4779,7 +5004,7 @@ function formatLedgerWork(seconds) {
   if (seconds <= 0) return '0 秒';
   if (seconds < 60) return Math.max(1, Math.round(seconds)) + ' 秒';
   if (seconds < 3600) return Math.round(seconds / 60) + ' 分钟';
-  const dailySeconds = getPaidDailyHours() * 3600;
+  const dailySeconds = getAvgPaidDailyHours() * 3600;
   if (!(dailySeconds > 0)) {
     const fallback = seconds / 86400;
     return (fallback < 10 ? fallback.toFixed(1) : Math.round(fallback)) + ' 天';
