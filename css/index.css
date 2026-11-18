@@ -1983,12 +1983,12 @@ body {
 .tier-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 4px;
   background: #222;
   border: 1px solid #333;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 8px;
 }
 .tier-row .tier-index {
   font-size: 12px;
@@ -2001,10 +2001,10 @@ body {
   white-space: nowrap;
 }
 .tier-row input {
-  width: 60px;
-  min-width: 56px;
-  flex: 1 1 60px;
-  padding: 6px 8px;
+  width: 56px;
+  min-width: 0;
+  flex: 1 1 48px;
+  padding: 6px 4px;
   background: #1a1a1a;
   border: 1px solid #333;
   border-radius: 6px;
@@ -2060,6 +2060,11 @@ body {
   /* 金额位数多时 28px 会顶出卡片，窄屏缩小并收紧内边距 */
   .stat-card { padding: 12px; }
   .stat-card .value { font-size: 22px; }
+  /* 窄屏下阶梯行不换行：缩小文号与间距，把宽度让给输入框 */
+  .tier-row { gap: 3px; padding: 8px 6px; }
+  .tier-row .tier-index,
+  .tier-row .tier-unit { font-size: 11px; }
+  .tier-row input { padding: 6px 2px; }
 }
 /* 横屏 / 矮屏：避免计时卡片把内容顶出屏幕 */
 @media (max-height: 560px) {
