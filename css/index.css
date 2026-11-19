@@ -2157,11 +2157,18 @@ body {
 }
 .shift-rotation-times input:focus { border-color: var(--accent); }
 
-/* 移动端适配：窄屏下日期/数字输入并排会挤，改为单列 */
+/* 移动端适配：窄屏下仍保持两列并排，只收紧内边距与间距，避免被挤成单列 */
 @media (max-width: 380px) {
   :root { --screen-pad: 12px; }
-  .cost-fields { grid-template-columns: 1fr; }
-  .settings-grid { grid-template-columns: 1fr; }
+  .settings-card { padding: 14px; }
+  .settings-grid { gap: 8px; }
+  .settings-grid .field-group > input,
+  .settings-grid .field-group > select,
+  .cost-fields .field-group > input {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .cost-fields { gap: 8px; }
   .timer-display { font-size: 48px; letter-spacing: 1px; }
   /* 金额位数多时 28px 会顶出卡片，窄屏缩小并收紧内边距 */
   .stat-card { padding: 12px; }
