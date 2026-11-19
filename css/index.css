@@ -612,6 +612,33 @@ body {
 }
 .overtime-item .overtime-del:hover { background: #3a3a3a; color: #fff; }
 
+/* 每月补贴 */
+.allowance-list { margin-top: 8px; }
+.allowance-total {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.allowance-empty {
+  padding-top: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+/* 补贴列表：金额与删除按钮随两行文案轻微下移，视觉上更居中 */
+.allowance-item .overtime-amount { transform: translateY(2px); }
+.allowance-item .overtime-del { top: calc(50% + 2px); }
+.allowance-stop {
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 /* 底部导航栏 */
 .bottom-nav {
   position: absolute;
@@ -1184,6 +1211,8 @@ body {
   transition: color .15s, border-color .15s;
 }
 .ledger-month-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+.ledger-month-btn:disabled { opacity: .35; cursor: default; }
+.ledger-month-btn:disabled:hover { color: var(--text-dim); border-color: #2a2a2a; }
 
 /* 月份快速选择弹窗 */
 .month-picker-year {

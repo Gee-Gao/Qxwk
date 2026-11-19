@@ -143,6 +143,7 @@
         <h3>本月扣缴明细</h3>
         <div class="desc" id="monthTaxDesc">按当前参数计算，个税为累计预扣法下的当月应扣</div>
         <div class="deduct-row"><span class="lbl">应发工资</span><span class="val" id="monthTaxGross">¥0.00</span></div>
+        <div class="deduct-row"><span class="lbl">其中补贴</span><span class="val" id="monthTaxAllowance">¥0.00</span></div>
         <div class="deduct-row"><span class="lbl">社保个人</span><span class="val" id="monthTaxSocial">¥0.00</span></div>
         <div class="deduct-row"><span class="lbl">公积金个人</span><span class="val" id="monthTaxFund">¥0.00</span></div>
         <div class="deduct-row"><span class="lbl">个税（当月）</span><span class="val" id="monthTaxTax">¥0.00</span></div>
@@ -653,41 +654,6 @@
         </div>
       </div>
     </div>
-    <div class="settings-card" id="commuteCard">
-      <h3>🚌 通勤时间</h3>
-      <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
-      <div class="settings-grid">
-        <div class="field-group">
-          <label>纳入时薪计算</label>
-          <div class="seg-control" id="commuteInHourly">
-            <button type="button" class="seg-btn" data-on="on" onclick="selectCommuteInHourly(true)">开启</button>
-            <button type="button" class="seg-btn" data-on="off" onclick="selectCommuteInHourly(false)">关闭</button>
-          </div>
-        </div>
-        <div class="field-group">
-          <label>计时方式</label>
-          <div class="seg-control" id="commuteInputMode">
-            <button type="button" class="seg-btn" data-mode="total" onclick="selectCommuteInputMode('total')">合计</button>
-            <button type="button" class="seg-btn" data-mode="split" onclick="selectCommuteInputMode('split')">往返</button>
-          </div>
-        </div>
-        <div class="field-group" id="commuteTotalField" style="grid-column:1/-1">
-          <label>每日通勤合计 (分钟)</label>
-          <input type="number" id="commuteMinutes" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
-        </div>
-        <div class="field-group" id="commuteMorningField" style="display:none">
-          <label>去程 (分钟)</label>
-          <input type="number" id="commuteMorning" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
-        </div>
-        <div class="field-group" id="commuteEveningField" style="display:none">
-          <label>返程 (分钟)</label>
-          <input type="number" id="commuteEvening" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
-        </div>
-        <div class="field-group" style="grid-column:1/-1">
-          <div class="field-hint" id="commuteHint"></div>
-        </div>
-      </div>
-    </div>
     <div class="settings-card" id="taxCard">
       <h3>🧾 税后测算</h3>
       <div class="desc">填得越细估算越准，税后口径的时薪与统计都按这里的参数算出</div>
@@ -749,6 +715,82 @@
         <div class="field-group">
           <label>赡养老人（元）</label>
           <input type="number" id="specialElder" placeholder="0">
+        </div>
+      </div>
+    </div>
+    <div class="settings-card" id="allowanceCard">
+      <h3>🎁 收入补贴</h3>
+      <div class="desc">按月录入餐补、交通补、房补等，作为税前收入计入应发工资并参与个税测算</div>
+      <div class="ledger-month-nav">
+        <button type="button" class="ledger-month-btn" onclick="shiftAllowanceMonth(-1)" aria-label="上个月">‹</button>
+        <div class="ledger-month-label" id="allowanceMonthLabel" onclick="openAllowanceMonthPicker()" title="点击快速选择月份"></div>
+        <button type="button" class="ledger-month-btn" id="allowanceNextMonthBtn" onclick="shiftAllowanceMonth(1)" aria-label="下个月">›</button>
+      </div>
+      <div class="settings-grid">
+        <div class="field-group">
+          <label>补贴名称</label>
+          <input type="text" id="allowanceName" maxlength="12" placeholder="例如：餐补">
+        </div>
+        <div class="field-group">
+          <label>补贴金额 (¥)</label>
+          <input type="number" id="allowanceAmount" min="0" step="0.01" placeholder="0.00">
+        </div>
+      </div>
+      <div class="settings-grid" style="margin-top:12px">
+        <div class="field-group">
+          <label>下月是否同步</label>
+          <div class="seg-control" id="allowanceRepeat">
+            <button type="button" class="seg-btn active" data-repeat="on" onclick="selectAllowanceRepeat(true)">同步</button>
+            <button type="button" class="seg-btn" data-repeat="off" onclick="selectAllowanceRepeat(false)">不同步</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>是否计税</label>
+          <div class="seg-control" id="allowanceTaxable">
+            <button type="button" class="seg-btn active" data-taxable="on" onclick="selectAllowanceTaxable(true)">计税</button>
+            <button type="button" class="seg-btn" data-taxable="off" onclick="selectAllowanceTaxable(false)">不计税</button>
+          </div>
+        </div>
+        <div class="field-hint" style="grid-column:1/-1">计税补贴计入应发工资并参与个税测算，不计税只计入收入；开启同步后从下月起每月自动延续，可随时停止</div>
+      </div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" onclick="addAllowance()">＋ 添加补贴</button>
+      </div>
+      <div class="allowance-total" id="allowanceTotal" style="display:none"></div>
+      <div class="allowance-list" id="allowanceList"></div>
+    </div>
+    <div class="settings-card" id="commuteCard">
+      <h3>🚌 通勤时间</h3>
+      <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
+      <div class="settings-grid">
+        <div class="field-group">
+          <label>纳入时薪计算</label>
+          <div class="seg-control" id="commuteInHourly">
+            <button type="button" class="seg-btn" data-on="on" onclick="selectCommuteInHourly(true)">开启</button>
+            <button type="button" class="seg-btn" data-on="off" onclick="selectCommuteInHourly(false)">关闭</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>计时方式</label>
+          <div class="seg-control" id="commuteInputMode">
+            <button type="button" class="seg-btn" data-mode="total" onclick="selectCommuteInputMode('total')">合计</button>
+            <button type="button" class="seg-btn" data-mode="split" onclick="selectCommuteInputMode('split')">往返</button>
+          </div>
+        </div>
+        <div class="field-group" id="commuteTotalField" style="grid-column:1/-1">
+          <label>每日通勤合计 (分钟)</label>
+          <input type="number" id="commuteMinutes" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group" id="commuteMorningField" style="display:none">
+          <label>去程 (分钟)</label>
+          <input type="number" id="commuteMorning" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group" id="commuteEveningField" style="display:none">
+          <label>返程 (分钟)</label>
+          <input type="number" id="commuteEvening" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <div class="field-hint" id="commuteHint"></div>
         </div>
       </div>
     </div>

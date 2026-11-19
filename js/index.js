@@ -131,6 +131,15 @@ let jobHistory = [];      // 历史工作列表（每项含 name / endDate / id 
 let jobModalDraft = null; // 历史工作弹窗中正在编辑的草稿
 let jobModalIsNew = false; // 当前弹窗是否为新增
 
+// ============ 每月补贴 ============
+// 补贴按月录入，作为税前收入计入应发工资，并参与个税测算
+const ALLOWANCE_KEY = 'qianxwk_allowances';
+let allowances = [];             // { id, month: 'YYYY-MM', name, amount, taxable, repeat, endMonth }
+let allowanceMonth = currentMonthKey(); // 补贴录入当前查看的月份
+let allowanceTaxableDraft = true;       // 新增补贴是否计税，默认计税
+let allowanceRepeatDraft = true;        // 新增补贴是否从下月起每月同步，默认同步
+let monthPickerTarget = 'ledger';       // 月份快速选择回填目标：ledger / allowance
+
 // ============ 持久化 ============
 function load() {
   try {
@@ -143,6 +152,7 @@ function load() {
     ledgerCategories = JSON.parse(localStorage.getItem('qianxwk_ledger_categories')) || [];
     ledgerRecurring = JSON.parse(localStorage.getItem(LEDGER_RECURRING_KEY)) || [];
     jobHistory = JSON.parse(localStorage.getItem(JOB_HISTORY_KEY)) || [];
+    allowances = JSON.parse(localStorage.getItem(ALLOWANCE_KEY)) || [];
   } catch(e) {
     settings = {...DEFAULTS};
     devices = [];
@@ -153,6 +163,7 @@ function load() {
     ledgerCategories = [];
     ledgerRecurring = [];
     jobHistory = [];
+    allowances = [];
   }
   if (!Array.isArray(ledgerRecords)) ledgerRecords = [];
   if (!Array.isArray(ledgerCategories)) ledgerCategories = [];
@@ -161,6 +172,7 @@ function load() {
   normalizeLedgerRecurring();
   if (!Array.isArray(jobHistory)) jobHistory = [];
   normalizeJobHistory();
+  allowances = normalizeAllowances(allowances);
   // 兼容旧版「整天/小数」开关：小数 -> 1 位，其余（整天/未设置）-> 0 位
   if (settings.workedDaysDecimals === undefined) {
     settings.workedDaysDecimals = settings.workedDaysMode === 'decimal' ? 1 : 0;
@@ -1305,6 +1317,165 @@ function renderJobHistory() {
   }).join('');
 }
 
+// ============ 每月补贴录入 ============
+// 补贴只能录入已经到来的月份，不允许提前录入未来月份
+function isFutureMonth(monthKey) {
+  return monthKey > currentMonthKey();
+}
+
+function shiftAllowanceMonth(delta) {
+  const [y, m] = (allowanceMonth || currentMonthKey()).split('-').map(Number);
+  const next = monthKeyOf(new Date(y, m - 1 + delta, 1));
+  if (isFutureMonth(next)) {
+    showToast('补贴只能录入到当前月份');
+    return;
+  }
+  allowanceMonth = next;
+  renderAllowance();
+}
+
+function jumpAllowanceMonth(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(monthKey || '')) return;
+  if (isFutureMonth(monthKey)) {
+    showToast('补贴只能录入到当前月份');
+    return;
+  }
+  allowanceMonth = monthKey;
+  renderAllowance();
+}
+
+function openAllowanceMonthPicker() {
+  monthPickerTarget = 'allowance';
+  openMonthPickerFor(allowanceMonth);
+}
+
+// 新增补贴的计税 / 同步开关：默认计税、下月同步
+function syncAllowanceFormUI() {
+  document.querySelectorAll('#allowanceTaxable .seg-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.taxable === 'on') === allowanceTaxableDraft);
+  });
+  document.querySelectorAll('#allowanceRepeat .seg-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.repeat === 'on') === allowanceRepeatDraft);
+  });
+}
+
+function selectAllowanceTaxable(on) {
+  allowanceTaxableDraft = !!on;
+  syncAllowanceFormUI();
+}
+
+function selectAllowanceRepeat(on) {
+  allowanceRepeatDraft = !!on;
+  syncAllowanceFormUI();
+}
+
+function renderAllowance() {
+  const label = document.getElementById('allowanceMonthLabel');
+  if (!label) return;
+  if (!/^\d{4}-\d{2}$/.test(allowanceMonth || '')) allowanceMonth = currentMonthKey();
+  const [y, m] = allowanceMonth.split('-').map(Number);
+  label.textContent = `${y} 年 ${m} 月`;
+  const nextBtn = document.getElementById('allowanceNextMonthBtn');
+  if (nextBtn) nextBtn.disabled = allowanceMonth >= currentMonthKey();
+  syncAllowanceFormUI();
+
+  const listEl = document.getElementById('allowanceList');
+  const totalEl = document.getElementById('allowanceTotal');
+  const rows = allowancesOfMonth(allowanceMonth);
+  const total = allowanceTotalOfMonth(allowanceMonth);
+
+  if (totalEl) {
+    totalEl.textContent = `本月补贴合计 ${formatMoney(total)}`;
+    totalEl.style.display = rows.length ? '' : 'none';
+  }
+  if (!listEl) return;
+  if (!rows.length) {
+    listEl.innerHTML = '<div class="allowance-empty">本月还没有补贴，填一笔加上</div>';
+    return;
+  }
+  listEl.innerHTML = rows.map(a => {
+    const meta = `计入应发工资 · ${a.taxable ? '参与个税测算' : '不计税'}` +
+      (a.repeat ? ' · 每月同步' : '');
+    const stopBtn = a.repeat
+      ? `<button type="button" class="allowance-stop" onclick="stopAllowanceSync('${a.id}')" title="从当前查看月份起停止同步">停止同步</button>`
+      : '';
+    const delTitle = a.repeat ? '删除（含后续同步）' : '删除';
+    return `
+    <div class="overtime-item allowance-item">
+      <button class="overtime-del" onclick="deleteAllowance('${a.id}')" title="${delTitle}">×</button>
+      <div>
+        <div class="overtime-date">${escapeLedgerText(a.name)}</div>
+        <div class="overtime-meta">${meta}${stopBtn}</div>
+      </div>
+      <div class="overtime-amount">${formatMoney(a.amount)}</div>
+    </div>`;
+  }).join('');
+}
+
+function addAllowance() {
+  if (isFutureMonth(allowanceMonth)) {
+    showToast('补贴只能录入到当前月份');
+    return;
+  }
+  const nameEl = document.getElementById('allowanceName');
+  const amountEl = document.getElementById('allowanceAmount');
+  if (!amountEl) return;
+  const amount = Math.max(0, parseFloat(amountEl.value) || 0);
+  if (!(amount > 0)) {
+    showToast('请填写补贴金额');
+    amountEl.focus();
+    return;
+  }
+  const name = ((nameEl && nameEl.value) || '').trim().slice(0, 12) || '补贴';
+  const repeat = allowanceRepeatDraft;
+  allowances.push({
+    id: newAllowanceId(),
+    month: allowanceMonth,
+    name,
+    amount: Math.round(amount * 100) / 100,
+    taxable: allowanceTaxableDraft,
+    repeat,
+    endMonth: ''
+  });
+  saveAllowances();
+  if (nameEl) nameEl.value = '';
+  amountEl.value = '';
+  // 每条补贴单独选择计税与同步方式，添加后回到默认值（计税、同步下月）
+  allowanceTaxableDraft = true;
+  allowanceRepeatDraft = true;
+  renderAllowance();
+  updateAll();
+  showToast(repeat ? '补贴已添加，下月起每月同步' : '补贴已添加');
+}
+
+// 停止同步：从当前查看的月份起不再生效，之前的月份保留
+function stopAllowanceSync(id) {
+  const item = allowances.find(a => a.id === id);
+  if (!item || !item.repeat) return;
+  const [y, m] = allowanceMonth.split('-').map(Number);
+  const endMonth = monthKeyOf(new Date(y, m - 2, 1));
+  if (endMonth < item.month) {
+    // 起始月就停止，等价于删除整条补贴
+    allowances = allowances.filter(a => a.id !== id);
+  } else {
+    item.endMonth = endMonth;
+  }
+  saveAllowances();
+  renderAllowance();
+  updateAll();
+  showToast('已停止同步');
+}
+
+function deleteAllowance(id) {
+  const idx = allowances.findIndex(a => a.id === id);
+  if (idx < 0) return;
+  allowances.splice(idx, 1);
+  saveAllowances();
+  renderAllowance();
+  updateAll();
+  showToast('补贴已删除');
+}
+
 // ============ 历史工作弹窗 ============
 // 历史工作录入弹窗：字段与当前工作保持一致，并额外提供离职日期
 function setJobModalSeg(containerId, attr, value) {
@@ -1683,13 +1854,68 @@ function parseDateKey(str) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// ============ 每月补贴 ============
+function newAllowanceId() {
+  return 'allowance_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+// 兼容历史 / 手工修改的数据：月份非法或金额非正的记录直接丢弃；旧数据默认计税、不重复
+function normalizeAllowances(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map(a => {
+    if (!a || typeof a !== 'object') return null;
+    const month = /^\d{4}-\d{2}$/.test(a.month || '') ? a.month : '';
+    const amount = parseFloat(a.amount);
+    if (!month || !(amount > 0)) return null;
+    const repeat = a.repeat === true;
+    const endMonth = /^\d{4}-\d{2}$/.test(a.endMonth || '') ? a.endMonth : '';
+    // 已停止且结束月早于起始月的同步补贴不再生效
+    if (repeat && endMonth && endMonth < month) return null;
+    return {
+      id: a.id || newAllowanceId(),
+      month,
+      name: String(a.name || '补贴').slice(0, 12),
+      amount: Math.round(amount * 100) / 100,
+      taxable: a.taxable !== false,
+      repeat,
+      endMonth
+    };
+  }).filter(Boolean);
+}
+
+function saveAllowances() {
+  try { localStorage.setItem(ALLOWANCE_KEY, JSON.stringify(allowances)); } catch (e) { /* 本地存储不可用时忽略 */ }
+  invalidateJobCaches();
+}
+
+// 单条补贴是否在指定月份生效：普通补贴只看当月，同步补贴从起始月延续到结束月（空表示一直延续）
+function allowanceAppliesTo(a, monthKey) {
+  if (!a.repeat) return a.month === monthKey;
+  if (monthKey < a.month) return false;
+  return !a.endMonth || monthKey <= a.endMonth;
+}
+
+function allowancesOfMonth(monthKey) {
+  return allowances.filter(a => allowanceAppliesTo(a, monthKey));
+}
+
+// 某月补贴合计（税前收入，计入应发工资）
+function allowanceTotalOfMonth(monthKey) {
+  return allowancesOfMonth(monthKey).reduce((sum, a) => sum + a.amount, 0);
+}
+
+// 某月计税补贴合计（不计税的补贴只计入收入，不并入个税应纳税所得额）
+function allowanceTaxableTotalOfMonth(monthKey) {
+  return allowancesOfMonth(monthKey).reduce((sum, a) => sum + (a.taxable ? a.amount : 0), 0);
+}
+
 // 以入职时间为起点生成当年的逐月明细：入职前不计收入，转正前按试用期比例计薪，
-// 入职当月按 21.75 天折算实际出勤工资，个税按累计预扣法逐月计算
+// 入职当月按 21.75 天折算实际出勤工资，每月补贴计入应发工资，个税按累计预扣法逐月计算
 // （累计应纳所得额 × 年税率 - 速算扣除数，再减去已预扣部分）
-function buildMonthlySchedule(o, job) {
+function buildMonthlySchedule(o, job, year) {
   const cfg = job || settings;
   const now = new Date();
-  const year = now.getFullYear();
+  year = year || now.getFullYear();
   const grossFull = Math.max(0, o.gross || 0);
   const special = o.special || 0;
   const ratioPct = parseFloat(o.probationRatio);
@@ -1708,7 +1934,7 @@ function buildMonthlySchedule(o, job) {
     const monthEnd = new Date(year, m + 1, 0);
     const probation = !!regular && monthStart < regular;
     const monthPay = probation ? grossFull * ratio : grossFull;
-    let gross;
+    let basePay;
     if (regular && regular > monthStart && regular <= monthEnd) {
       // 转正当月：转正前按试用期比例、转正后按正式月薪，按实际工作日加权折算
       let probationDays = 0;
@@ -1720,49 +1946,35 @@ function buildMonthlySchedule(o, job) {
         else regularDays++;
       }
       const weighted = (probationDays * ratio + regularDays) / STANDARD_MONTH_DAYS;
-      gross = grossFull * Math.min(1, weighted);
+      basePay = grossFull * Math.min(1, weighted);
     } else if (hire && hire.getFullYear() === year && hire.getMonth() === m) {
       // 入职当月按 21.75 天折算：只计入职日到月底的工作日；五险一金仍按整月工资作基数
       let attended = 0;
       for (let d = new Date(hire); d <= monthEnd; d.setDate(d.getDate() + 1)) {
         if (isWorkdayByConfig(d, cfg)) attended++;
       }
-      gross = monthPay * Math.min(1, attended / STANDARD_MONTH_DAYS);
+      basePay = monthPay * Math.min(1, attended / STANDARD_MONTH_DAYS);
     } else {
-      gross = monthPay;
+      basePay = monthPay;
     }
+    // 当月补贴计入应发工资；只有计税补贴参与个税，五险一金缴费基数仍按月薪计算
+    const monthKey = `${year}-${String(m + 1).padStart(2, '0')}`;
+    const allowance = allowanceTotalOfMonth(monthKey);
+    const taxableAllowance = allowanceTaxableTotalOfMonth(monthKey);
+    const gross = basePay + allowance;
     const ins = calcMonthlyInsurance(gross, o, monthPay);
-    const taxable = gross - ins.insurance - special - IIT_THRESHOLD_MONTHLY;
+    const taxable = basePay + taxableAllowance - ins.insurance - special - IIT_THRESHOLD_MONTHLY;
     cumTaxable += taxable;
     const cumTax = calcIIT(cumTaxable);
     const tax = Math.max(0, cumTax - prevTax);
     prevTax = cumTax;
     rows.push({
-      month: m, probation, gross,
+      month: m, probation, gross, allowance, taxableAllowance,
       social: ins.social, fund: ins.fund, insurance: ins.insurance,
       tax, cumTax, net: gross - ins.insurance - tax
     });
   }
   return rows;
-}
-
-// 汇总试用期 / 转正后两个阶段的月均到手，并返回全年个税
-function calcNetProfile(o, job) {
-  const rows = buildMonthlySchedule(o, job);
-  const avg = (arr, key) => arr.reduce((s, x) => s + x[key], 0) / arr.length;
-  const summarize = arr => arr.length ? {
-    months: arr.length,
-    net: avg(arr, 'net'),
-    social: avg(arr, 'social'),
-    fund: avg(arr, 'fund'),
-    insurance: avg(arr, 'insurance'),
-    tax: avg(arr, 'tax')
-  } : null;
-  return {
-    probation: summarize(rows.filter(r => r.probation)),
-    regular: summarize(rows.filter(r => !r.probation)),
-    annualTax: rows.reduce((s, r) => s + r.tax, 0)
-  };
 }
 
 // 指定日期是否处于某段工作的试用期（未配置试用期时视为已转正）
@@ -1840,31 +2052,43 @@ function salaryFactorFor(date, job) {
   return (isNaN(ratio) ? 100 : Math.min(100, Math.max(0, ratio))) / 100;
 }
 
-// 统计口径：税前模式只算税前月薪；税后与对比模式按入职起的逐月明细取当前阶段（试用期/转正后）月均到手
+// 指定月份的逐月明细行（含补贴与当月个税），无该月记录时返回 null
+function monthlyScheduleRow(cfg, year, month) {
+  const rows = buildMonthlySchedule(taxParamsFromJob(cfg), cfg, year);
+  return rows.find(r => r.month === month) || null;
+}
+
+// 某个月的收入（含补贴）：税前口径按月薪折算加补贴，税后口径取逐月明细里的当月到手
+function monthlyIncomeOf(cfg, date, grossOnly) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const allowance = allowanceTotalOfMonth(monthKeyOf(new Date(year, month, 1)));
+  if (grossOnly) {
+    const base = isHourlyMode(cfg)
+      ? monthlyGrossOfJob(cfg)
+      : Math.max(0, parseFloat(cfg.monthlySalary) || 0);
+    return base * salaryFactorFor(date, cfg) + allowance;
+  }
+  const row = monthlyScheduleRow(cfg, year, month);
+  if (row) return row.net;
+  // 逐月明细里没有该月（如当年前几个月已跨年）时按税前收入兜底
+  const base = isHourlyMode(cfg)
+    ? monthlyGrossOfJob(cfg)
+    : Math.max(0, parseFloat(cfg.monthlySalary) || 0);
+  return base * salaryFactorFor(date, cfg) + allowance;
+}
+
+// 统计口径：税前模式只算税前月薪；税后与对比模式取当月逐月明细的到手（含补贴与个税）
 function getMonthlyNet(job) {
   const cfg = job || settings;
   const mode = settings.salaryMode || DEFAULTS.salaryMode;
-  if (isHourlyMode(cfg)) {
-    const gross = monthlyGrossOfJob(cfg) * salaryFactorFor(new Date(), cfg);
-    if (mode === 'gross') return gross;
-    const profile = calcNetProfile(taxParamsFromJob(cfg), cfg);
-    const phase = isInProbationAt(new Date(), cfg)
-      ? (profile.probation || profile.regular)
-      : (profile.regular || profile.probation);
-    return phase ? phase.net : gross;
-  }
-  if (mode === 'gross') return cfg.monthlySalary * salaryFactorFor(new Date(), cfg);
-  const profile = calcNetProfile(taxParamsFromJob(cfg), cfg);
-  const phase = isInProbationAt(new Date(), cfg)
-    ? (profile.probation || profile.regular)
-    : (profile.regular || profile.probation);
-  return phase ? phase.net : cfg.monthlySalary * salaryFactorFor(new Date(), cfg);
+  return monthlyIncomeOf(cfg, new Date(), mode === 'gross');
 }
 
-// 税前月薪（不扣五险一金与个税），用于税后/对比口径下的对照展示（含试用期折算）
+// 税前月薪（不扣五险一金与个税），用于税后/对比口径下的对照展示（含试用期折算与当月补贴）
 function getMonthlyGross(job) {
   const cfg = job || settings;
-  return monthlyGrossOfJob(cfg) * salaryFactorFor(new Date(), cfg);
+  return monthlyIncomeOf(cfg, new Date(), true);
 }
 
 // 「HH:MM」-> 当天分钟数
@@ -3042,8 +3266,10 @@ function updateStats() {
         badge.style.display = 'none';
       }
       document.getElementById('monthTaxDesc').innerHTML =
-        (!settings.hireDate ? '未填入职日期，按全年在职估算' : '') + '个税为累计预扣法下的当月应扣';
+        (!settings.hireDate ? '未填入职日期，按全年在职估算' : '') + '个税为累计预扣法下的当月应扣，补贴已计入应发工资';
       document.getElementById('monthTaxGross').textContent = formatMoney(row.gross);
+      const monthTaxAllowance = document.getElementById('monthTaxAllowance');
+      if (monthTaxAllowance) monthTaxAllowance.textContent = formatMoney(row.allowance || 0);
       document.getElementById('monthTaxSocial').textContent = formatMoney(row.social);
       document.getElementById('monthTaxFund').textContent = formatMoney(row.fund);
       document.getElementById('monthTaxTax').textContent = formatMoney(row.tax);
@@ -3059,7 +3285,7 @@ function updateStats() {
 // 只展示最近 12 个月，且不早于最早一段工作经历的入职当月；跨工作的月份按工作日加权
 let hourlyTrendSig = '';
 
-// 指定月份、指定工作的月薪：转正前按试用期，之后按正式期；口径跟随设置里的税前 / 税后
+// 指定月份、指定工作的月薪（含当月补贴）：转正前按试用期，之后按正式期；口径跟随设置里的税前 / 税后
 function getMonthlyPayForMonth(monthStart, job, grossOnly) {
   const cfg = job || settings;
   const y = monthStart.getFullYear();
@@ -3068,25 +3294,7 @@ function getMonthlyPayForMonth(monthStart, job, grossOnly) {
   if (jobPayCache.has(cacheKey)) return jobPayCache.get(cacheKey);
 
   const mode = grossOnly ? 'gross' : (settings.salaryMode || DEFAULTS.salaryMode);
-  const regular = parseDateKey(getRegularDateOf(cfg));
-  const probation = !!regular && monthStart < regular;
-  const ratioPct = parseFloat(cfg.probationRatio);
-  const ratio = (isNaN(ratioPct) || ratioPct <= 0 ? 100 : Math.min(100, ratioPct)) / 100;
-  const full = Math.max(0, parseFloat(cfg.monthlySalary) || 0);
-  let pay;
-  if (mode === 'gross') {
-    pay = full * (probation ? ratio : 1);
-  } else {
-    const profile = calcNetProfile(taxParamsFromJob(cfg), cfg);
-    if (probation) {
-      pay = profile.probation
-        ? profile.probation.net
-        // 跨年入职时当年明细里没有试用期月份，按正式到手 × 试用期比例近似
-        : (profile.regular ? profile.regular.net * ratio : full * ratio);
-    } else {
-      pay = profile.regular ? profile.regular.net : full;
-    }
-  }
+  const pay = monthlyIncomeOf(cfg, monthStart, mode === 'gross');
   jobPayCache.set(cacheKey, pay);
   return pay;
 }
@@ -3118,12 +3326,21 @@ function hourlyForJobAtDate(job, date, grossOnly) {
   const workHours = getAvgDailyHours(cfg);
   const paidHours = getAvgPaidDailyHours(cfg);
   let rate = (workHours > 0 && paidHours > 0) ? baseRate * workHours / paidHours : baseRate;
+
+  const workDays = Math.max(1, countWorkdaysInMonthFor(date.getFullYear(), date.getMonth(), cfg));
+  const monthlyHours = getAvgPaidDailyHours(cfg) * workDays;
+  const allowance = allowanceTotalOfMonth(monthKeyOf(new Date(date.getFullYear(), date.getMonth(), 1)));
   if (mode !== 'gross') {
-    const workDays = Math.max(1, countWorkdaysInMonthFor(date.getFullYear(), date.getMonth(), cfg));
-    const monthlyHours = getAvgPaidDailyHours(cfg) * workDays;
-    const profile = calcNetProfile(taxParamsFromJob(cfg), cfg);
-    const phase = probation ? (profile.probation || profile.regular) : (profile.regular || profile.probation);
-    if (phase && monthlyHours > 0) rate = phase.net / monthlyHours;
+    // 税后口径：取逐月明细中当月到手（含补贴与个税），再折回时薪
+    const row = monthlyScheduleRow(cfg, date.getFullYear(), date.getMonth());
+    if (row && monthlyHours > 0) {
+      rate = row.net / monthlyHours;
+    } else if (monthlyHours > 0) {
+      rate += allowance / monthlyHours;
+    }
+  } else if (monthlyHours > 0) {
+    // 税前口径：补贴均摊到当月计时工时，随每天计时一起累计
+    rate += allowance / monthlyHours;
   }
   jobPayCache.set(cacheKey, rate);
   return rate;
@@ -5402,12 +5619,17 @@ function jumpLedgerMonth(monthKey) {
 }
 
 // ---------- 月份快速选择 ----------
-function openLedgerMonthPicker() {
-  ledgerPickerYear = (ledgerMonth || currentMonthKey()).split('-').map(Number)[0];
+function openMonthPickerFor(activeMonth) {
+  ledgerPickerYear = (activeMonth || currentMonthKey()).split('-').map(Number)[0];
   renderLedgerMonthPicker();
   const overlay = document.getElementById('ledgerMonthModal');
   overlay.classList.add('show');
   overlay.scrollTop = 0;
+}
+
+function openLedgerMonthPicker() {
+  monthPickerTarget = 'ledger';
+  openMonthPickerFor(ledgerMonth);
 }
 
 function closeLedgerMonthModal() {
@@ -5426,20 +5648,29 @@ function renderLedgerMonthPicker() {
   if (!yearEl || !gridEl) return;
   yearEl.textContent = ledgerPickerYear + ' 年';
   const current = currentMonthKey();
+  const isAllowance = monthPickerTarget === 'allowance';
+  const active = isAllowance ? allowanceMonth : ledgerMonth;
   let html = '';
   for (let m = 1; m <= 12; m++) {
     const key = `${ledgerPickerYear}-${String(m).padStart(2, '0')}`;
     const cls = ['month-picker-item'];
-    if (key === ledgerMonth) cls.push('active');
+    if (key === active) cls.push('active');
     if (key === current) cls.push('today');
-    html += `<button type="button" class="${cls.join(' ')}" onclick="pickLedgerMonth('${key}')">${m} 月</button>`;
+    // 补贴不允许选择未来月份
+    const future = isAllowance && isFutureMonth(key);
+    html += `<button type="button" class="${cls.join(' ')}"${future ? ' disabled' : ''} onclick="pickLedgerMonth('${key}')">${m} 月</button>`;
   }
   gridEl.innerHTML = html;
 }
 
 function pickLedgerMonth(monthKey) {
+  if (monthPickerTarget === 'allowance' && isFutureMonth(monthKey)) {
+    showToast('补贴只能录入到当前月份');
+    return;
+  }
   closeLedgerMonthModal();
-  jumpLedgerMonth(monthKey);
+  if (monthPickerTarget === 'allowance') jumpAllowanceMonth(monthKey);
+  else jumpLedgerMonth(monthKey);
 }
 
 // ---------- 记账弹窗 ----------
@@ -7308,6 +7539,7 @@ populateCurrencySelect();
 fillSettingsForm();
 renderDevices();
 renderJobHistory();
+renderAllowance();
 initOvertime();
 initShareOptionDrag();
 updateAll();
