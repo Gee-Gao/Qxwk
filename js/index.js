@@ -6580,6 +6580,354 @@ function shareRoundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// ============ 二维码（分享图页脚） ============
+// 自绘极简 QR 编码器：字节模式 + M 级纠错 + 自动选择版本与掩码，离线可用
+const SHARE_SITE_URL = 'https://gaoyunqiang.netlify.app';
+// 下标即版本号：M 级每块纠错码字数 / 分块数量（版本 1-10 足够容纳网址）
+const QR_ECC_PER_BLOCK = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26];
+const QR_BLOCK_COUNT = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
+
+// 指定版本除去功能区后可放置的数据模块数
+function qrRawDataModules(ver) {
+  let result = (16 * ver + 128) * ver + 64;
+  if (ver >= 2) {
+    const numAlign = Math.floor(ver / 7) + 2;
+    result -= (25 * numAlign - 10) * numAlign - 55;
+    if (ver >= 7) result -= 36;
+  }
+  return result;
+}
+
+function qrTotalCodewords(ver) {
+  return Math.floor(qrRawDataModules(ver) / 8);
+}
+
+// 单版本可承载的数据码字数（已扣除纠错码）
+function qrDataCodewords(ver) {
+  return qrTotalCodewords(ver) - QR_ECC_PER_BLOCK[ver] * QR_BLOCK_COUNT[ver];
+}
+
+// GF(256) 乘法，生成多项式底为 0x11D
+function qrGfMul(a, b) {
+  let z = 0;
+  for (let i = 7; i >= 0; i--) {
+    z = (z << 1) ^ ((z >>> 7) * 0x11d);
+    z ^= ((b >>> i) & 1) * a;
+  }
+  return z & 0xff;
+}
+
+function qrRsDivisor(degree) {
+  const result = new Array(degree).fill(0);
+  result[degree - 1] = 1;
+  let root = 1;
+  for (let i = 0; i < degree; i++) {
+    for (let j = 0; j < degree; j++) {
+      result[j] = qrGfMul(result[j], root);
+      if (j + 1 < degree) result[j] ^= result[j + 1];
+    }
+    root = qrGfMul(root, 0x02);
+  }
+  return result;
+}
+
+function qrRsRemainder(data, divisor) {
+  const result = new Array(divisor.length).fill(0);
+  data.forEach(byte => {
+    const factor = byte ^ result.shift();
+    result.push(0);
+    divisor.forEach((coef, i) => { result[i] ^= qrGfMul(coef, factor); });
+  });
+  return result;
+}
+
+// 字节模式编码：选最小版本、补结束符、填充容量
+function qrEncodeBytes(text) {
+  const bytes = new TextEncoder().encode(text);
+  let ver = 0;
+  for (let v = 1; v <= 10; v++) {
+    const countBits = v <= 9 ? 8 : 16;
+    if (4 + countBits + bytes.length * 8 <= qrDataCodewords(v) * 8) { ver = v; break; }
+  }
+  if (!ver) throw new Error('二维码内容过长');
+
+  const bits = [];
+  const push = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  push(0b0100, 4);
+  push(bytes.length, ver <= 9 ? 8 : 16);
+  bytes.forEach(b => push(b, 8));
+
+  const capacityBits = qrDataCodewords(ver) * 8;
+  push(0, Math.min(4, capacityBits - bits.length));
+  while (bits.length % 8 !== 0) bits.push(0);
+
+  const data = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let byte = 0;
+    for (let j = 0; j < 8; j++) byte = (byte << 1) | bits[i + j];
+    data.push(byte);
+  }
+  // 剩余容量交替填充 0xEC / 0x11
+  for (let pad = 0xec; data.length < qrDataCodewords(ver); pad ^= 0xec ^ 0x11) data.push(pad);
+  return { ver, data };
+}
+
+// 分块计算纠错码并按列交织
+function qrAddEccAndInterleave(data, ver) {
+  const numBlocks = QR_BLOCK_COUNT[ver];
+  const blockEccLen = QR_ECC_PER_BLOCK[ver];
+  const rawCodewords = qrTotalCodewords(ver);
+  const numShortBlocks = numBlocks - rawCodewords % numBlocks;
+  const shortBlockLen = Math.floor(rawCodewords / numBlocks);
+
+  const blocks = [];
+  for (let i = 0, k = 0; i < numBlocks; i++) {
+    const dat = data.slice(k, k + shortBlockLen - blockEccLen + (i < numShortBlocks ? 0 : 1));
+    k += dat.length;
+    const ecc = qrRsRemainder(dat, qrRsDivisor(blockEccLen));
+    if (i < numShortBlocks) dat.push(0); // 短块补位，交织时跳过
+    blocks.push(dat.concat(ecc));
+  }
+
+  const result = [];
+  for (let i = 0; i < blocks[0].length; i++) {
+    blocks.forEach((block, j) => {
+      if (i !== shortBlockLen - blockEccLen || j >= numShortBlocks) result.push(block[i]);
+    });
+  }
+  return result;
+}
+
+// 校正图形坐标：从右下角按步长回推，左上角固定 6
+function qrAlignPositions(ver, size) {
+  if (ver === 1) return [];
+  const numAlign = Math.floor(ver / 7) + 2;
+  const step = Math.ceil((ver * 4 + 4) / (numAlign * 2 - 2)) * 2;
+  const result = [6];
+  for (let pos = size - 7; result.length < numAlign; pos -= step) result.splice(1, 0, pos);
+  return result;
+}
+
+// 掩码规则：返回 true 表示该位置取反
+function qrMaskBit(mask, x, y) {
+  switch (mask) {
+    case 0: return (x + y) % 2 === 0;
+    case 1: return y % 2 === 0;
+    case 2: return x % 3 === 0;
+    case 3: return (x + y) % 3 === 0;
+    case 4: return (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
+    case 5: return ((x * y) % 2) + ((x * y) % 3) === 0;
+    case 6: return (((x * y) % 2) + ((x * y) % 3)) % 2 === 0;
+    case 7: return (((x + y) % 2) + ((x * y) % 3)) % 2 === 0;
+    default: return false;
+  }
+}
+
+function qrApplyMask(modules, isFunction, size, mask) {
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (!isFunction[y][x] && qrMaskBit(mask, x, y)) modules[y][x] = !modules[y][x];
+    }
+  }
+}
+
+// 掩码评估：连续同色、2×2 同色、类定位图形、黑白比例偏差
+function qrPenalty(modules, size) {
+  const N1 = 3, N2 = 3, N3 = 40, N4 = 10;
+  let result = 0;
+
+  const addHistory = (len, hist) => {
+    if (hist[0] === 0) len += size; // 首段补上左侧静区
+    hist.pop();
+    hist.unshift(len);
+  };
+  const countPatterns = hist => {
+    const n = hist[1];
+    const core = n > 0 && hist[2] === n && hist[3] === n * 3 && hist[4] === n && hist[5] === n;
+    if (!core) return 0;
+    return ((hist[0] >= n * 4 && hist[6] >= n) ? 1 : 0) + ((hist[6] >= n * 4 && hist[0] >= n) ? 1 : 0);
+  };
+  const terminate = (runColor, runLen, hist) => {
+    if (runColor) {
+      addHistory(runLen, hist);
+      runLen = 0;
+    }
+    runLen += size; // 补上右侧静区
+    addHistory(runLen, hist);
+    return countPatterns(hist);
+  };
+
+  const scanLine = get => {
+    let runColor = false, runLen = 0, hist = [0, 0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < size; i++) {
+      const color = get(i);
+      if (color === runColor) {
+        runLen++;
+        if (runLen === 5) result += N1;
+        else if (runLen > 5) result++;
+      } else {
+        addHistory(runLen, hist);
+        if (!runColor) result += countPatterns(hist) * N3;
+        runColor = color;
+        runLen = 1;
+      }
+    }
+    result += terminate(runColor, runLen, hist) * N3;
+  };
+  for (let y = 0; y < size; y++) scanLine(x => modules[y][x]);
+  for (let x = 0; x < size; x++) scanLine(y => modules[y][x]);
+
+  for (let y = 0; y < size - 1; y++) {
+    for (let x = 0; x < size - 1; x++) {
+      const c = modules[y][x];
+      if (c === modules[y][x + 1] && c === modules[y + 1][x] && c === modules[y + 1][x + 1]) result += N2;
+    }
+  }
+
+  let dark = 0;
+  for (const row of modules) for (const cell of row) if (cell) dark++;
+  const total = size * size;
+  result += (Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1) * N4;
+  return result;
+}
+
+// 生成二维码模块矩阵：绘制功能区 → 写入数据 → 择优掩码
+function qrBuildMatrix(ver, codewords) {
+  const size = ver * 4 + 17;
+  const modules = Array.from({ length: size }, () => new Array(size).fill(false));
+  const isFunction = Array.from({ length: size }, () => new Array(size).fill(false));
+  const setFn = (x, y, dark) => {
+    modules[y][x] = dark;
+    isFunction[y][x] = true;
+  };
+
+  // 定时图形
+  for (let i = 0; i < size; i++) {
+    setFn(6, i, i % 2 === 0);
+    setFn(i, 6, i % 2 === 0);
+  }
+
+  // 三个定位图形（含白色隔离带）
+  const drawFinder = (cx, cy) => {
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const x = cx + dx, y = cy + dy;
+        if (x >= 0 && x < size && y >= 0 && y < size) {
+          const dist = Math.max(Math.abs(dx), Math.abs(dy));
+          setFn(x, y, dist !== 2 && dist !== 4);
+        }
+      }
+    }
+  };
+  drawFinder(3, 3);
+  drawFinder(size - 4, 3);
+  drawFinder(3, size - 4);
+
+  // 校正图形：跳过与定位图形重叠的三个角
+  const alignPos = qrAlignPositions(ver, size);
+  const alignCount = alignPos.length;
+  for (let i = 0; i < alignCount; i++) {
+    for (let j = 0; j < alignCount; j++) {
+      if ((i === 0 && j === 0) || (i === 0 && j === alignCount - 1) || (i === alignCount - 1 && j === 0)) continue;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          setFn(alignPos[i] + dx, alignPos[j] + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+        }
+      }
+    }
+  }
+
+  // 格式信息（M 级 = 0b00），选好掩码后需重画
+  const drawFormat = mask => {
+    const data = mask; // (0b00 << 3) | mask
+    let rem = data;
+    for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+    const bits = ((data << 10) | rem) ^ 0x5412;
+    for (let i = 0; i <= 5; i++) setFn(8, i, ((bits >>> i) & 1) !== 0);
+    setFn(8, 7, ((bits >>> 6) & 1) !== 0);
+    setFn(8, 8, ((bits >>> 7) & 1) !== 0);
+    setFn(7, 8, ((bits >>> 8) & 1) !== 0);
+    for (let i = 9; i < 15; i++) setFn(14 - i, 8, ((bits >>> i) & 1) !== 0);
+    for (let i = 0; i < 8; i++) setFn(size - 1 - i, 8, ((bits >>> i) & 1) !== 0);
+    for (let i = 8; i < 15; i++) setFn(8, size - 15 + i, ((bits >>> i) & 1) !== 0);
+    setFn(8, size - 8, true); // 固定暗模块
+  };
+  drawFormat(0);
+
+  // 版本信息（版本 7 起需要）
+  if (ver >= 7) {
+    let rem = ver;
+    for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+    const bits = (ver << 12) | rem;
+    for (let i = 0; i < 18; i++) {
+      const dark = ((bits >>> i) & 1) !== 0;
+      const a = size - 11 + (i % 3), b = Math.floor(i / 3);
+      setFn(a, b, dark);
+      setFn(b, a, dark);
+    }
+  }
+
+  // 数据按两列一组蛇形填入
+  let bitIdx = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5; // 跳过竖向定时图形列
+    for (let vert = 0; vert < size; vert++) {
+      for (let j = 0; j < 2; j++) {
+        const x = right - j;
+        const upward = ((right + 1) & 2) === 0;
+        const y = upward ? size - 1 - vert : vert;
+        if (!isFunction[y][x] && bitIdx < codewords.length * 8) {
+          modules[y][x] = ((codewords[bitIdx >>> 3] >>> (7 - (bitIdx & 7))) & 1) !== 0;
+          bitIdx++;
+        }
+      }
+    }
+  }
+
+  // 逐掩码试算，取惩罚分最低者
+  let bestMask = 0, bestScore = Infinity;
+  for (let mask = 0; mask < 8; mask++) {
+    qrApplyMask(modules, isFunction, size, mask);
+    drawFormat(mask);
+    const score = qrPenalty(modules, size);
+    if (score < bestScore) { bestScore = score; bestMask = mask; }
+    qrApplyMask(modules, isFunction, size, mask); // 再次异或即可还原
+  }
+  qrApplyMask(modules, isFunction, size, bestMask);
+  drawFormat(bestMask);
+  return { size, modules };
+}
+
+// 同一网址只生成一次
+const qrCache = {};
+function getShareQr() {
+  if (!qrCache[SHARE_SITE_URL]) {
+    const { ver, data } = qrEncodeBytes(SHARE_SITE_URL);
+    qrCache[SHARE_SITE_URL] = qrBuildMatrix(ver, qrAddEccAndInterleave(data, ver));
+  }
+  return qrCache[SHARE_SITE_URL];
+}
+
+// 绘制白底二维码卡片，四周留 4 模块静区
+function drawShareQr(ctx, x, y, size) {
+  shareRoundRect(ctx, x, y, size, size, 20);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  const qr = getShareQr();
+  const totalModules = qr.size + 8;
+  const scale = Math.max(1, Math.floor(size / totalModules));
+  const offset = Math.floor((size - totalModules * scale) / 2) + 4 * scale;
+  ctx.fillStyle = '#0f0f0f';
+  for (let row = 0; row < qr.size; row++) {
+    for (let col = 0; col < qr.size; col++) {
+      if (qr.modules[row][col]) {
+        ctx.fillRect(x + offset + col * scale, y + offset + row * scale, scale, scale);
+      }
+    }
+  }
+}
+
 function shareCardName() {
   return 'qianxwk-' + fmtDateKey(new Date()) + '.png';
 }
@@ -6841,7 +7189,9 @@ function drawShareCard() {
     : (key === 'salary' ? salaryBlockH + 76 : statH + statGap);
   const contentBottom = 300 + visibleOrder.reduce((sum, key) => sum + sectionHeight(key), 0);
   const footerY = Math.max(1736, contentBottom + 30);
-  const H = Math.max(1920, footerY + 184);
+  // 页脚右侧放二维码，画布高度按二维码卡片预留
+  const qrCardSize = 200;
+  const H = Math.max(1920, footerY + qrCardSize + 60);
 
   const canvas = document.createElement('canvas');
   canvas.width = W;
@@ -7084,14 +7434,23 @@ function drawShareCard() {
   ctx.font = `500 26px ${SHARE_FONT}`;
   ctx.fillStyle = faint;
   ctx.fillText('千薪万苦 · 把薪水变成看得见的时间', pad, footerY + 54);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = '#9bc200';
-  ctx.fillText('gaoyunqiang.netlify.app', W - pad, footerY + 54);
-  ctx.textAlign = 'left';
 
   ctx.font = `400 22px ${SHARE_FONT}`;
   ctx.fillStyle = '#555';
   ctx.fillText('数据仅保存在本地，不上传任何服务器', pad, footerY + 102);
+
+  // 右侧网站二维码：白底卡片 + 左侧访问说明
+  const qrX = W - pad - qrCardSize;
+  const qrY = footerY + 30;
+  drawShareQr(ctx, qrX, qrY, qrCardSize);
+  ctx.textAlign = 'right';
+  ctx.font = `600 28px ${SHARE_FONT}`;
+  ctx.fillStyle = '#ddd';
+  ctx.fillText('扫码访问网站', qrX - 24, qrY + 84);
+  ctx.font = `400 24px ${SHARE_FONT}`;
+  ctx.fillStyle = '#9bc200';
+  ctx.fillText(SHARE_SITE_URL.replace(/^https?:\/\//, ''), qrX - 24, qrY + 124);
+  ctx.textAlign = 'left';
 
   return canvas;
 }
