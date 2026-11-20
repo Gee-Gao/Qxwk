@@ -1185,10 +1185,26 @@
         <button type="button" class="share-option active" data-section="life" onclick="toggleShareSection('life')">生命消耗</button>
         <button type="button" class="share-option active" data-section="year" onclick="toggleShareSection('year')">年度概览</button>
       </div>
-      <div class="share-preview"><img id="sharePreviewImg" alt="今日战绩分享图"></div>
+      <div class="share-preview">
+        <img id="sharePreviewImg" alt="今日战绩分享图" title="点击放大查看" onclick="openShareImageViewer()">
+      </div>
+      <div class="share-preview-hint">点击图片可放大预览</div>
       <div class="share-actions">
         <button type="button" class="btn btn-primary" id="shareNativeBtn" onclick="shareNativeCard()">分享</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 分享图放大预览：点击图片进入，支持双指缩放、滚轮缩放与拖动 -->
+  <div class="image-viewer" id="shareImageViewer">
+    <div class="image-viewer-stage" id="shareViewerStage">
+      <img id="shareViewerImg" alt="今日战绩分享图" draggable="false">
+    </div>
+    <button type="button" class="image-viewer-close" onclick="closeShareImageViewer()" aria-label="关闭预览">×</button>
+    <div class="image-viewer-tools">
+      <button type="button" onclick="zoomShareImageViewer(-1)" aria-label="缩小">−</button>
+      <button type="button" class="image-viewer-zoom" id="shareViewerZoomLabel" onclick="resetShareImageViewer()">适应</button>
+      <button type="button" onclick="zoomShareImageViewer(1)" aria-label="放大">＋</button>
     </div>
   </div>
 

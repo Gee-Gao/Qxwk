@@ -7690,6 +7690,7 @@ async function openShareModal() {
 
 function closeShareModal() {
   shareRenderToken++; // 取消尚未完成的预览图生成
+  closeShareImageViewer();
   const modal = document.getElementById('shareModal');
   if (modal) modal.classList.remove('show');
   const img = document.getElementById('sharePreviewImg');
@@ -7700,6 +7701,235 @@ function closeShareModal() {
     shareCardUrl = '';
   }
 }
+
+// ============ 分享图放大预览 ============
+// scale 为相对「适应屏幕」的倍数，x / y 为图像中心相对预览区中心的偏移
+const shareViewerState = { scale: 1, x: 0, y: 0 };
+const SHARE_VIEWER_MIN = 1;
+const SHARE_VIEWER_MAX = 6;
+const shareViewerPointers = new Map();
+let shareViewerDrag = null;   // 单指 / 鼠标拖动起点
+let shareViewerPinch = null;  // 双指缩放起始状态
+let shareViewerLastTap = 0;   // 双击 / 双触判定
+let shareViewerMoved = false; // 拖动后不再触发「点空白关闭」
+
+function shareViewerIsOpen() {
+  const el = document.getElementById('shareImageViewer');
+  return !!(el && el.classList.contains('show'));
+}
+
+function applyShareViewerTransform() {
+  const img = document.getElementById('shareViewerImg');
+  if (!img) return;
+  const s = shareViewerState;
+  img.style.transform = `translate(${s.x}px, ${s.y}px) scale(${s.scale})`;
+  img.classList.toggle('zoomed', s.scale > 1.001);
+  const label = document.getElementById('shareViewerZoomLabel');
+  if (label) label.textContent = s.scale > 1.001 ? Math.round(s.scale * 100) + '%' : '适应';
+}
+
+// 放大后限制平移范围，避免把图片拖出屏幕
+function clampShareViewerPan() {
+  const img = document.getElementById('shareViewerImg');
+  const stage = document.getElementById('shareViewerStage');
+  if (!img || !stage) return;
+  const s = shareViewerState;
+  const maxX = Math.max(0, (img.clientWidth * s.scale - stage.clientWidth) / 2);
+  const maxY = Math.max(0, (img.clientHeight * s.scale - stage.clientHeight) / 2);
+  s.x = Math.min(maxX, Math.max(-maxX, s.x));
+  s.y = Math.min(maxY, Math.max(-maxY, s.y));
+}
+
+// 以指定屏幕坐标为锚点缩放
+function zoomShareViewerAt(nextScale, clientX, clientY) {
+  const stage = document.getElementById('shareViewerStage');
+  if (!stage) return;
+  const s = shareViewerState;
+  const rect = stage.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const anchorX = clientX == null ? cx : clientX;
+  const anchorY = clientY == null ? cy : clientY;
+  const target = Math.min(SHARE_VIEWER_MAX, Math.max(SHARE_VIEWER_MIN, nextScale));
+
+  // 让锚点下的图像位置保持不动
+  const ux = (anchorX - cx - s.x) / s.scale;
+  const uy = (anchorY - cy - s.y) / s.scale;
+  s.scale = target;
+  s.x = (anchorX - cx) - ux * target;
+  s.y = (anchorY - cy) - uy * target;
+  if (target <= 1.001) {
+    s.scale = 1;
+    s.x = 0;
+    s.y = 0;
+  } else {
+    clampShareViewerPan();
+  }
+  applyShareViewerTransform();
+}
+
+function zoomShareImageViewer(dir) {
+  if (!shareViewerIsOpen()) return;
+  zoomShareViewerAt(dir > 0 ? shareViewerState.scale * 1.5 : shareViewerState.scale / 1.5);
+}
+
+function resetShareImageViewer() {
+  shareViewerState.scale = 1;
+  shareViewerState.x = 0;
+  shareViewerState.y = 0;
+  applyShareViewerTransform();
+}
+
+function openShareImageViewer() {
+  if (!shareCardUrl) return;
+  const overlay = document.getElementById('shareImageViewer');
+  const img = document.getElementById('shareViewerImg');
+  if (!overlay || !img) return;
+  img.src = shareCardUrl;
+  resetShareImageViewer();
+  overlay.classList.add('show');
+}
+
+function closeShareImageViewer() {
+  const overlay = document.getElementById('shareImageViewer');
+  if (overlay) overlay.classList.remove('show');
+  const img = document.getElementById('shareViewerImg');
+  if (img) img.removeAttribute('src');
+  shareViewerPointers.clear();
+  shareViewerDrag = null;
+  shareViewerPinch = null;
+  shareViewerMoved = false;
+  shareViewerLastTap = 0;
+}
+
+function initShareImageViewer() {
+  const stage = document.getElementById('shareViewerStage');
+  const img = document.getElementById('shareViewerImg');
+  if (!stage || !img) return;
+
+  const pointers = () => Array.from(shareViewerPointers.values());
+  const stageCenter = () => {
+    const r = stage.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  };
+
+  stage.addEventListener('pointerdown', e => {
+    if (!shareViewerIsOpen()) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    shareViewerPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    shareViewerMoved = false;
+
+    if (shareViewerPointers.size === 1) {
+      shareViewerDrag = { x: e.clientX, y: e.clientY, ox: shareViewerState.x, oy: shareViewerState.y };
+      shareViewerPinch = null;
+    } else if (shareViewerPointers.size === 2) {
+      const [a, b] = pointers();
+      shareViewerPinch = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        cx: (a.x + b.x) / 2,
+        cy: (a.y + b.y) / 2,
+        scale: shareViewerState.scale,
+        x: shareViewerState.x,
+        y: shareViewerState.y
+      };
+      shareViewerDrag = null;
+    }
+  });
+
+  stage.addEventListener('pointermove', e => {
+    if (!shareViewerPointers.has(e.pointerId)) return;
+    shareViewerPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // 单指 / 鼠标：放大后拖动查看
+    if (shareViewerPointers.size === 1 && shareViewerDrag) {
+      const dx = e.clientX - shareViewerDrag.x;
+      const dy = e.clientY - shareViewerDrag.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) shareViewerMoved = true;
+      if (shareViewerState.scale > 1.001) {
+        shareViewerState.x = shareViewerDrag.ox + dx;
+        shareViewerState.y = shareViewerDrag.oy + dy;
+        clampShareViewerPan();
+        applyShareViewerTransform();
+      }
+      return;
+    }
+
+    // 双指：按两指间距缩放，并跟随中点平移
+    if (shareViewerPointers.size === 2 && shareViewerPinch) {
+      const [a, b] = pointers();
+      const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      const cx = (a.x + b.x) / 2;
+      const cy = (a.y + b.y) / 2;
+      const start = shareViewerPinch;
+      const target = Math.min(SHARE_VIEWER_MAX, Math.max(SHARE_VIEWER_MIN, start.scale * (dist / start.dist)));
+      const center = stageCenter();
+      const ux = (start.cx - center.x - start.x) / start.scale;
+      const uy = (start.cy - center.y - start.y) / start.scale;
+      shareViewerState.scale = target;
+      shareViewerState.x = (cx - center.x) - ux * target;
+      shareViewerState.y = (cy - center.y) - uy * target;
+      shareViewerMoved = true;
+      if (target <= 1.001) {
+        shareViewerState.scale = 1;
+        shareViewerState.x = 0;
+        shareViewerState.y = 0;
+      } else {
+        clampShareViewerPan();
+      }
+      applyShareViewerTransform();
+    }
+  });
+
+  const endPointer = e => {
+    if (!shareViewerPointers.has(e.pointerId)) return;
+    shareViewerPointers.delete(e.pointerId);
+    if (shareViewerPointers.size < 2) shareViewerPinch = null;
+    if (shareViewerPointers.size === 0) {
+      shareViewerDrag = null;
+    } else if (shareViewerPointers.size === 1) {
+      // 双指松掉一根后，剩下那根手指继续拖动
+      const [p] = pointers();
+      shareViewerDrag = { x: p.x, y: p.y, ox: shareViewerState.x, oy: shareViewerState.y };
+    }
+
+    // 双击 / 双触在「适应」与 2.5 倍之间切换
+    const now = Date.now();
+    if (!shareViewerMoved && now - shareViewerLastTap < 300) {
+      zoomShareViewerAt(shareViewerState.scale > 1.001 ? 1 : 2.5, e.clientX, e.clientY);
+      shareViewerLastTap = 0;
+    } else {
+      shareViewerLastTap = shareViewerMoved ? 0 : now;
+    }
+  };
+  stage.addEventListener('pointerup', endPointer);
+  stage.addEventListener('pointercancel', e => {
+    shareViewerPointers.delete(e.pointerId);
+    if (shareViewerPointers.size < 2) shareViewerPinch = null;
+    if (shareViewerPointers.size === 0) {
+      shareViewerDrag = null;
+    } else if (shareViewerPointers.size === 1) {
+      const [p] = pointers();
+      shareViewerDrag = { x: p.x, y: p.y, ox: shareViewerState.x, oy: shareViewerState.y };
+    }
+  });
+
+  // 桌面端滚轮缩放
+  stage.addEventListener('wheel', e => {
+    if (!shareViewerIsOpen()) return;
+    e.preventDefault();
+    zoomShareViewerAt(shareViewerState.scale * Math.pow(1.0015, -e.deltaY), e.clientX, e.clientY);
+  }, { passive: false });
+
+  // 点击图片以外的空白区域关闭
+  stage.addEventListener('click', e => {
+    if (shareViewerMoved) {
+      shareViewerMoved = false;
+      return;
+    }
+    if (e.target !== img) closeShareImageViewer();
+  });
+}
+
 
 async function shareNativeCard() {
   if (!shareCardBlob) return;
@@ -7901,6 +8131,7 @@ renderJobHistory();
 renderAllowance();
 initOvertime();
 initShareOptionDrag();
+initShareImageViewer();
 updateAll();
 refreshHolidays(); // 异步联网更新节假日，不阻塞首屏渲染
 refreshRates();    // 异步联网更新外币汇率，不阻塞首屏渲染
@@ -8012,6 +8243,10 @@ document.addEventListener('touchmove', function(e) {
 // 快捷键：Esc 关闭所有弹窗并回到计时页
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
+    if (shareViewerIsOpen()) {
+      closeShareImageViewer();
+      return;
+    }
     const pickerOverlay = document.getElementById('pickerModal');
     if (pickerOverlay && pickerOverlay.classList.contains('show')) {
       closePicker();

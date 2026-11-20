@@ -890,9 +890,97 @@ body {
   max-width: 100%;
   max-height: 56vh;
   object-fit: contain;
+  cursor: zoom-in; /* 点击进入放大预览 */
+}
+/* 预览图下方的操作提示 */
+.share-preview-hint {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
 }
 .share-actions { display: flex; gap: 10px; margin-top: 16px; }
 .share-actions .btn { flex: 1; }
+
+/* 分享图放大预览 */
+.image-viewer {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, .94);
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+.image-viewer.show { display: block; }
+.image-viewer-stage {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+}
+.image-viewer-stage img {
+  display: block;
+  max-width: 92vw;
+  max-height: 82vh;
+  width: auto;
+  height: auto;
+  transform-origin: center center;
+  will-change: transform;
+  cursor: grab;
+  -webkit-user-drag: none;
+}
+.image-viewer-stage img.zoomed { cursor: grabbing; }
+.image-viewer-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(26, 26, 26, .8);
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.image-viewer-tools {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(26, 26, 26, .85);
+}
+.image-viewer-tools button {
+  min-width: 44px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.image-viewer-tools button:hover { background: rgba(255, 255, 255, .1); }
+.image-viewer-tools .image-viewer-zoom {
+  min-width: 64px;
+  font-size: 14px;
+  color: var(--accent);
+}
 
 /* 分组标题 */
 .section-title {
