@@ -654,9 +654,11 @@
           <div class="field-hint" id="workDaysHint"></div>
         </div>
         <div class="field-group" id="tieredRateGroup" style="grid-column:1/-1; display:none">
-          <label>工时阶梯倍率（每月重置）</label>
+          <label>每月工时阶梯倍率</label>
           <div class="tier-list" id="tieredRateList"></div>
-          <button type="button" class="tier-add" onclick="addRateTier()">＋ 添加一档</button>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" onclick="addRateTier()">＋ 添加一档</button>
+          </div>
           <div class="field-hint" id="tieredRateHint"></div>
         </div>
         <div class="field-group">
@@ -700,16 +702,17 @@
             <button type="button" class="seg-btn" data-on="off" onclick="selectShiftRotationEnabled(false)">关闭</button>
             <button type="button" class="seg-btn" data-on="on" onclick="selectShiftRotationEnabled(true)">开启</button>
           </div>
-          <div class="field-hint" id="shiftRotationModeHint"></div>
         </div>
         <div class="field-group" id="shiftRotationStartGroup" style="grid-column:1/-1; display:none">
           <label>轮换起始日（第一轮第一天）</label>
           <input type="text" id="shiftRotationStart" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD" onchange="persistSettings()">
         </div>
         <div class="field-group" id="shiftRotationListGroup" style="grid-column:1/-1; display:none">
-          <label>轮换班次（按顺序循环）</label>
+          <div class="field-hint" id="shiftRotationModeHint">按自然日连续计算，休息日已包含在「连续天数」内，无需单独添加休息班次；当天是否上班仍按休息制度或自定义日历判定</div>
           <div class="shift-rotation-list" id="shiftRotationList"></div>
-          <button type="button" class="tier-add" onclick="addShiftRotation()">＋ 添加班次</button>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" onclick="addShiftRotation()">＋ 添加班次</button>
+          </div>
         </div>
         <div class="field-group" style="grid-column:1/-1">
           <div class="field-hint" id="shiftTimeHint"></div>

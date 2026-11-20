@@ -2266,22 +2266,6 @@ body {
   color: #ff5252;
   background: rgba(255, 82, 82, .12);
 }
-.tier-add {
-  width: 100%;
-  margin-top: 8px;
-  padding: 10px;
-  background: transparent;
-  border: 1px dashed #3a3a3a;
-  border-radius: 8px;
-  color: var(--text-dim);
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color .15s, color .15s;
-}
-.tier-add:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
 
 /* 班次轮换：每段班次的名称、天数与上下班/休息时间 */
 .shift-rotation-list {

@@ -30,8 +30,8 @@ const DEFAULTS = {
   shiftRotationEnabled: false, // 是否按周期轮换班次（如白班 / 夜班交替）
   shiftRotationStart: '',      // 轮换起始日（第一段班次的第一天）
   shiftRotationSegments: [     // 轮换班次：按顺序循环，days 为连续天数，名称按序号自动生成
-    { name: '班次1', days: 2, startTime: '08:00', endTime: '20:00', lunchStart: '12:00', lunchEnd: '13:00' },
-    { name: '班次2', days: 2, startTime: '20:00', endTime: '08:00', lunchStart: '00:00', lunchEnd: '01:00' }
+    { name: '班次1', days: 7, startTime: '08:00', endTime: '20:00', lunchStart: '12:00', lunchEnd: '13:00' },
+    { name: '班次2', days: 7, startTime: '20:00', endTime: '08:00', lunchStart: '00:00', lunchEnd: '01:00' }
   ],
   commuteMinutes: 0,      // 每日通勤合计（分钟，往返）；纳入时薪时按往返各半拆分
   commuteInputMode: 'total', // 通勤计时方式：total 一天合计自动÷2 / split 往返分开填
@@ -286,7 +286,7 @@ function normalizeShiftRotation(job) {
     .filter(s => s && typeof s === 'object')
     .map((s, i) => ({
       name: `班次${i + 1}`,
-      days: Math.min(31, Math.max(1, parseInt(s.days, 10) || 1)),
+      days: Math.min(31, Math.max(0, parseInt(s.days, 10) || 0)),
       startTime: isClockKey(s.startTime) ? s.startTime : DEFAULTS.startTime,
       endTime: isClockKey(s.endTime) ? s.endTime : DEFAULTS.endTime,
       lunchStart: isClockKey(s.lunchStart) ? s.lunchStart : DEFAULTS.lunchStart,
@@ -1046,12 +1046,6 @@ function selectShiftRotationEnabled(on) {
   if (listGroup) listGroup.style.display = on ? '' : 'none';
   const startInput = document.getElementById('shiftRotationStart');
   if (startInput) startInput.value = settings.shiftRotationStart ? formatDateSlash(settings.shiftRotationStart) : '';
-  const hint = document.getElementById('shiftRotationModeHint');
-  if (hint) {
-    hint.innerHTML = on
-      ? '轮换按自然日连续计算，休息日已包含在「连续天数」内，无需单独添加休息班次当天是否上班仍按休息制度或自定义日历判定'
-      : '关闭时按上方固定的上下班时间计算';
-  }
   renderShiftRotations();
   invalidateJobCaches();
   updateShiftHint(settings);
@@ -1069,7 +1063,7 @@ function renderShiftRotations() {
       <div class="shift-rotation-head">
         <span class="shift-label">班次${i + 1}</span>
         <span class="shift-unit">连续</span>
-        <input type="number" class="shift-days" min="1" max="31" step="1" value="${parseInt(s.days, 10) || 1}" oninput="persistSettings()">
+        <input type="number" class="shift-days" min="1" max="31" step="1" placeholder="天数" value="${parseInt(s.days, 10) || ''}" oninput="persistSettings()">
         <span class="shift-unit">天</span>
         <button type="button" class="tier-del" onclick="removeShiftRotation(${i})" title="删除">×</button>
       </div>
@@ -1083,14 +1077,14 @@ function renderShiftRotations() {
   updateShiftHint(settings);
 }
 
-// 新增一段班次：默认沿用上一段的上下班时间，连续 1 天
+// 新增一段班次：沿用上一段的上下班时间，连续天数留空由用户填写
 function addShiftRotation() {
   const segments = (Array.isArray(settings.shiftRotationSegments) ? settings.shiftRotationSegments : [])
     .map(s => ({ ...s }));
   const base = segments.length ? segments[segments.length - 1] : DEFAULTS.shiftRotationSegments[0];
   segments.push({
     name: `班次${segments.length + 1}`,
-    days: 1,
+    days: 0,
     startTime: base.startTime,
     endTime: base.endTime,
     lunchStart: base.lunchStart,
@@ -1210,7 +1204,7 @@ function persistSettings() {
       job.shiftRotationSegments = rows.map((row, i) => ({
         // 名称按当前顺序自动编号，删除或新增后序号自动补齐
         name: `班次${i + 1}`,
-        days: Math.min(31, Math.max(1, parseInt(row.querySelector('.shift-days').value, 10) || 1)),
+        days: Math.min(31, Math.max(0, parseInt(row.querySelector('.shift-days').value, 10) || 0)),
         startTime: row.querySelector('.shift-start').value || DEFAULTS.startTime,
         endTime: row.querySelector('.shift-end').value || DEFAULTS.endTime,
         lunchStart: row.querySelector('.shift-lunch-start').value || DEFAULTS.lunchStart,
@@ -2689,6 +2683,12 @@ function updateShiftHint(job) {
     const rot = shift.rotation;
     const endText = shift.crossDay ? `次日 ${minutesToClock(shift.end)}` : minutesToClock(shift.end);
     el.textContent = `当前班次：${rot.segment.name}（第 ${rot.dayInSegment + 1}/${rot.segment.days} 天）${minutesToClock(shift.start)} - ${endText} · ${rot.totalDays} 天一轮`;
+    return;
+  }
+
+  // 已开启轮换但连续天数或起始日未填全时，提示暂时按固定时间计算
+  if (cfg.shiftRotationEnabled) {
+    el.textContent = '填写轮换起始日与各班的连续天数后开始按轮换计算，当前暂时按固定时间计算';
     return;
   }
 
