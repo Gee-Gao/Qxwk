@@ -2639,3 +2639,28 @@ body {
 .picker-actions .btn {
   flex: 1;
 }
+
+/*部分浏览器强制深色会压暗荧光绿实底，only light 可豁免这些组件 */
+.period-badge,
+.stat-card.green,
+.cost-result,
+.custom-select-option:hover,
+.custom-select-option:focus-visible,
+.btn-primary,
+.cal-day.work,
+.share-option.active,
+.stats-tab.active,
+.ledger-tab.active,
+.ledger-scope-tab.active,
+.month-picker-item.active,
+.ledger-day.today.selected .l-day-num,
+.ledger-cat.active,
+.seg-btn.active,
+.picker-grid .cal-day.selected,
+.picker-time-col button.active,
+.timer-progress-fill,
+.stats-bar-row .bar-fill,
+.ledger-cat-fill,
+.ledger-trend-bar {
+  color-scheme: only light;
+}
