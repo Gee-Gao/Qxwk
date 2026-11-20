@@ -38,7 +38,7 @@ const DEFAULTS = {
   commuteMorning: 0,      // 早通勤（去程，分钟），仅 split 模式使用
   commuteEvening: 0,      // 晚通勤（返程，分钟），仅 split 模式使用
   commuteInHourly: false, // 通勤时间是否纳入时薪折算
-  overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 调休
+  overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 换调休（已休的调休记录在请假页）
   overtimeSync: false,     // 加班金额是否计入计时页（仅给钱模式有效）
   overtimePanelShow: 'always', // 计时页加班费卡片展示：always 始终展示 / auto 无数据不展示 / off 隐藏
   tieredRateTiers: [        // 累计工时模式下的阶梯门槛（累计工时）与对应倍率，门槛以下按 1 倍
@@ -83,12 +83,8 @@ let calcMode = 'slack'; // 反向计算器模式：slack 摸鱼白拿 / goal 熬
 let paidLeaveActive = false;
 let paidLeaveStart = null;
 let overtimeRecords = [];  // 加班记录
-let leaveUsedRecords = []; // 已调休记录（调休模式下用来抵扣加班时长）
 let overtimeUnit = 'hour'; // 录入时长单位：hour 小时 / day 天
 let overtimeRateMode = '1.5'; // 录入倍率档位：'1.5' | '2' | '3' | 'custom'
-let leaveUnit = 'hour';    // 调休录入时长单位：hour 小时 / day 天
-let recordType = 'overtime'; // 「记一笔」卡片的记录类型：overtime 记加班 / leave 记调休
-let recordFilter = 'all';   // 记录列表筛选：all 全部 / overtime 只看加班 / leave 只看调休
 let ledgerRecords = [];       // 记账记录
 let ledgerCategories = [];    // 自定义记账项目
 let ledgerMonth = '';         // 记账/统计页当前月份（YYYY-MM）
@@ -110,6 +106,42 @@ let recurringDraft = null;          // 周期模板表单草稿
 let cityPickerFor = 'metro';        // 城市选择器用途：metro 地铁规则 / bus 公交折扣
 let ledgerPricingRules = [];        // 预置城市折扣规则（只读）
 const LEDGER_RECURRING_KEY = 'qianxwk_ledger_recurring';
+
+// ============ 请假 ============
+// 请假记录与加班独立存储：「调休」只作为请假类型之一，不抵扣加班换来的调休时长
+let leaveRecords = [];        // { id, date, kind, amount, unit, paid, ts }
+let leaveRecordMonth = '';    // 请假页当前查看的月份（YYYY-MM）
+let leaveKind = 'personal';   // 录入的请假类型
+let leaveRecUnit = 'hour';    // 录入时长单位：hour 小时 / day 天
+let leaveRecPaid = false;     // 是否带薪
+const LEAVE_RECORD_KEY = 'qianxwk_leave_records';
+const LEAVE_KINDS = {
+  personal:     { label: '事假', paid: false },
+  comp:         { label: '调休', paid: true },
+  annual:       { label: '年假', paid: true },
+  sick:         { label: '病假', paid: true },
+  marriage:     { label: '婚假', paid: true },
+  maternity:    { label: '产假', paid: true },
+  paternity:    { label: '陪产假', paid: true },
+  bereavement:  { label: '丧假', paid: true },
+  parental:     { label: '育儿假', paid: true },
+  injury:       { label: '工伤假', paid: true },
+  other:        { label: '其他', paid: true }
+};
+// 各请假类型的默认计薪比例（%）：无薪假不扣，带薪假按类型比例折算
+const DEFAULT_LEAVE_RATIOS = {
+  personal: 100,
+  sick: 80,
+  annual: 100,
+  comp: 100,
+  marriage: 100,
+  maternity: 100,
+  paternity: 100,
+  bereavement: 100,
+  parental: 100,
+  injury: 100,
+  other: 100
+};
 
 // ============ 历史工作 ============
 // 历史工作保存与当前工作完全一致的工作参数快照；
@@ -147,25 +179,26 @@ function load() {
     devices = JSON.parse(localStorage.getItem('qianxwk_devices')) || [];
     paidLeaveSessions = JSON.parse(localStorage.getItem('qianxwk_leave')) || [];
     overtimeRecords = JSON.parse(localStorage.getItem('qianxwk_overtime')) || [];
-    leaveUsedRecords = JSON.parse(localStorage.getItem('qianxwk_leave_used')) || [];
     ledgerRecords = JSON.parse(localStorage.getItem('qianxwk_ledger_records')) || [];
     ledgerCategories = JSON.parse(localStorage.getItem('qianxwk_ledger_categories')) || [];
     ledgerRecurring = JSON.parse(localStorage.getItem(LEDGER_RECURRING_KEY)) || [];
     jobHistory = JSON.parse(localStorage.getItem(JOB_HISTORY_KEY)) || [];
     allowances = JSON.parse(localStorage.getItem(ALLOWANCE_KEY)) || [];
+    leaveRecords = JSON.parse(localStorage.getItem(LEAVE_RECORD_KEY)) || [];
   } catch(e) {
     settings = {...DEFAULTS};
     devices = [];
     paidLeaveSessions = [];
     overtimeRecords = [];
-    leaveUsedRecords = [];
     ledgerRecords = [];
     ledgerCategories = [];
     ledgerRecurring = [];
     jobHistory = [];
     allowances = [];
+    leaveRecords = [];
   }
   if (!Array.isArray(ledgerRecords)) ledgerRecords = [];
+  if (!Array.isArray(leaveRecords)) leaveRecords = [];
   if (!Array.isArray(ledgerCategories)) ledgerCategories = [];
   if (!Array.isArray(ledgerRecurring)) ledgerRecurring = [];
   ledgerPricingRules = clonePricingPresets();
@@ -1957,6 +1990,9 @@ function buildMonthlySchedule(o, job, year) {
     } else {
       basePay = monthPay;
     }
+    // 请假扣薪：按当月请假折算后的工资系数缩放应发工资，五险一金基数仍按名义月薪
+    const leaveFactor = leaveMonthPayFactor(cfg, year, m);
+    basePay *= leaveFactor;
     // 当月补贴计入应发工资；只有计税补贴参与个税，五险一金缴费基数仍按月薪计算
     const monthKey = `${year}-${String(m + 1).padStart(2, '0')}`;
     const allowance = allowanceTotalOfMonth(monthKey);
@@ -2063,19 +2099,16 @@ function monthlyIncomeOf(cfg, date, grossOnly) {
   const year = date.getFullYear();
   const month = date.getMonth();
   const allowance = allowanceTotalOfMonth(monthKeyOf(new Date(year, month, 1)));
-  if (grossOnly) {
-    const base = isHourlyMode(cfg)
-      ? monthlyGrossOfJob(cfg)
-      : Math.max(0, parseFloat(cfg.monthlySalary) || 0);
-    return base * salaryFactorFor(date, cfg) + allowance;
-  }
-  const row = monthlyScheduleRow(cfg, year, month);
-  if (row) return row.net;
-  // 逐月明细里没有该月（如当年前几个月已跨年）时按税前收入兜底
   const base = isHourlyMode(cfg)
     ? monthlyGrossOfJob(cfg)
     : Math.max(0, parseFloat(cfg.monthlySalary) || 0);
-  return base * salaryFactorFor(date, cfg) + allowance;
+  // 税前口径：试用期折算 × 请假扣薪系数（逐月明细里的税后已达同样处理）
+  const grossBase = base * salaryFactorFor(date, cfg) * leaveMonthPayFactor(cfg, year, month);
+  if (grossOnly) return grossBase + allowance;
+  const row = monthlyScheduleRow(cfg, year, month);
+  if (row) return row.net;
+  // 逐月明细里没有该月（如当年前几个月已跨年）时按税前收入兜底
+  return grossBase + allowance;
 }
 
 // 统计口径：税前模式只算税前月薪；税后与对比模式取当月逐月明细的到手（含补贴与个税）
@@ -2537,6 +2570,7 @@ function selectForeignCurrency(code) {
   settings.foreignCurrency = currencyOf(code).code;
   const sel = document.getElementById('foreignCurrencySelect');
   if (sel && sel.value !== settings.foreignCurrency) sel.value = settings.foreignCurrency;
+  if (sel) syncCustomSelect(sel);
   updateForeignHint();
   updateTimer();
 }
@@ -3325,7 +3359,10 @@ function hourlyForJobAtDate(job, date, grossOnly) {
   // 通勤时间也按这个等效时薪计时，整日收入与不计通勤时保持一致
   const workHours = getAvgDailyHours(cfg);
   const paidHours = getAvgPaidDailyHours(cfg);
-  let rate = (workHours > 0 && paidHours > 0) ? baseRate * workHours / paidHours : baseRate;
+  const leaveFactor = leaveMonthPayFactor(cfg, date.getFullYear(), date.getMonth());
+  let rate = (workHours > 0 && paidHours > 0)
+    ? baseRate * workHours / paidHours * leaveFactor
+    : baseRate * leaveFactor;
 
   const workDays = Math.max(1, countWorkdaysInMonthFor(date.getFullYear(), date.getMonth(), cfg));
   const monthlyHours = getAvgPaidDailyHours(cfg) * workDays;
@@ -3639,7 +3676,7 @@ function renderHourlyTrend() {
     + '</svg>';
 }
 
-// 统计页：列出该周期的加班费 / 调休时长，没有就不占位；按当前口径只取对应来源的记录
+// 统计页：列出该周期的加班费 / 换来的调休时长，没有就不占位
 function renderOvertimeLine(id, match) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -3647,7 +3684,7 @@ function renderOvertimeLine(id, match) {
     const hours = sumLeaveEarned(match);
     if (hours <= 0) { el.style.display = 'none'; return; }
     el.style.display = '';
-    el.textContent = `调休 ${hours.toFixed(1)} 小时`;
+    el.textContent = `换得调休 ${hours.toFixed(1)} 小时`;
     return;
   }
   const totals = sumOvertime(match);
@@ -3672,7 +3709,7 @@ function renderHomeOvertimePanel(todayTotals, monthTotals, linked) {
     `<div class="overtime-stat${cls ? ' ' + cls : ''}">`
     + `<div class="val">${valueText}</div><div class="lbl">${label}</div></div>`;
 
-  // 调休口径：展示总调休 / 已调休 / 剩余调休
+  // 调休口径：展示换得调休 / 已休（请假页）/ 剩余调休
   if (isLeave) {
     const earned = totalLeaveEarned();
     const used = totalLeaveUsed();
@@ -3686,8 +3723,8 @@ function renderHomeOvertimePanel(todayTotals, monthTotals, linked) {
     if (noteEl) noteEl.textContent = '';
     grid.classList.add('cols-3');
     grid.innerHTML =
-      cell('总调休', formatHours(earned))
-      + cell('已调休', formatHours(used))
+      cell('换得调休', formatHours(earned))
+      + cell('已休', formatHours(used))
       + cell('剩余调休', formatHours(earned - used));
     return;
   }
@@ -3899,14 +3936,9 @@ function deleteDevice(idx) {
 
 // ============ 加班 ============
 const OVERTIME_KEY = 'qianxwk_overtime';
-const LEAVE_USED_KEY = 'qianxwk_leave_used';
 
 function saveOvertime() {
   localStorage.setItem(OVERTIME_KEY, JSON.stringify(overtimeRecords));
-}
-
-function saveLeaveUsed() {
-  localStorage.setItem(LEAVE_USED_KEY, JSON.stringify(leaveUsedRecords));
 }
 
 // 小时数展示（保留 1 位）
@@ -3914,45 +3946,9 @@ function formatHours(h) {
   return (Math.round(h * 10) / 10).toFixed(1) + ' 小时';
 }
 
-// 加班记录的来源口径：'money' 给钱 / 'leave' 调休；历史无标记的记录归为给钱
+// 旧版「调休口径」的加班记录不再计入金额，仅保留在本地数据中
 function overtimeSettleOf(record) {
   return record.settle === 'leave' ? 'leave' : 'money';
-}
-
-// 累计「调休模式」加班换来的可调休时长
-function totalLeaveEarned() {
-  let h = 0;
-  overtimeRecords.forEach(r => {
-    if (overtimeSettleOf(r) !== 'leave') return;
-    h += overtimeHours(r);
-  });
-  return h;
-}
-
-// 按日期条件汇总「调休模式」加班换来的时长（小时）
-function sumLeaveEarned(match) {
-  let hours = 0;
-  overtimeRecords.forEach(r => {
-    if (overtimeSettleOf(r) !== 'leave') return;
-    const d = parseDateKey(r.date);
-    if (!d || !match(d)) return;
-    hours += overtimeHours(r);
-  });
-  return hours;
-}
-
-// 已调休记录折算成小时数：按「天」录入时，一天按当前制度的每日工时算
-function leaveUsedHours(record) {
-  const amount = Math.max(0, parseFloat(record.amount) || 0);
-  const d = parseDateKey(record.date);
-  return record.unit === 'day' ? amount * getDailyHours(settings, d || undefined) : amount;
-}
-
-// 累计已使用的调休时长
-function totalLeaveUsed() {
-  let h = 0;
-  leaveUsedRecords.forEach(r => { h += leaveUsedHours(r); });
-  return h;
 }
 
 // 按天录入时，时长框固定显示当天的应上班小时数
@@ -3993,17 +3989,6 @@ function selectOvertimeUnit(unit) {
   updateOvertimePreview();
 }
 
-function selectLeaveUnit(unit) {
-  leaveUnit = unit;
-  document.querySelectorAll('#leaveUnit .seg-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.unit === unit);
-  });
-  // 按天录入时一次只记一天：自动带入应上班小时数并锁住，不可手改
-  const amountInput = document.getElementById('leaveUsedAmount');
-  amountInput.disabled = unit === 'day';
-  amountInput.value = unit === 'day' ? dailyHoursValue() : '';
-}
-
 // 记录折算成小时数：按「天」录入时，一天按该记录所属工作的每日工时算
 function overtimeHours(record) {
   const amount = Math.max(0, parseFloat(record.amount) || 0);
@@ -4023,6 +4008,38 @@ function overtimeEarned(record, hourlyRate) {
 // 计时页联动：仅「给钱」且开启联动时，才把加班应得算进首页
 function isOvertimeLinked() {
   return (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'money' && !!settings.overtimeSync;
+}
+
+// 累计「调休口径」加班换来的可调休时长
+function totalLeaveEarned() {
+  let h = 0;
+  overtimeRecords.forEach(r => {
+    if (overtimeSettleOf(r) !== 'leave') return;
+    h += overtimeHours(r);
+  });
+  return h;
+}
+
+// 按日期条件汇总「调休口径」加班换来的时长（小时）
+function sumLeaveEarned(match) {
+  let hours = 0;
+  overtimeRecords.forEach(r => {
+    if (overtimeSettleOf(r) !== 'leave') return;
+    const d = parseDateKey(r.date);
+    if (!d || !match(d)) return;
+    hours += overtimeHours(r);
+  });
+  return hours;
+}
+
+// 已消耗的调休时长：统一取请假页里「调休」类型的记录
+function totalLeaveUsed() {
+  let h = 0;
+  leaveRecords.forEach(r => {
+    if (r.kind !== 'comp') return;
+    h += leaveRecordHours(r);
+  });
+  return h;
 }
 
 // 按日期条件汇总「给钱模式」加班，返回 { money, hours }；不受联动开关影响
@@ -4070,18 +4087,18 @@ function persistOvertimeSettings() {
   localStorage.setItem('qianxwk_settings', JSON.stringify(saved));
 }
 
-// 加班页：加班结算方式（给钱 / 调休）
+// 加班页：加班结算方式（给钱 / 换调休；已休的调休记录统一在请假页）
 function selectOvertimeSettle(mode) {
-  settings.overtimeSettle = mode;
+  settings.overtimeSettle = mode === 'leave' ? 'leave' : 'money';
+  const isLeave = settings.overtimeSettle === 'leave';
   document.querySelectorAll('#overtimeSettle .seg-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.settle === mode);
+    b.classList.toggle('active', b.dataset.settle === settings.overtimeSettle);
   });
-  const isLeave = mode === 'leave';
 
   const settleHint = document.getElementById('overtimeSettleHint');
   if (settleHint) {
     settleHint.textContent = isLeave
-      ? '加班不计金额，累计的时长用来换调休'
+      ? '加班不计金额，累计时长用来换调休；休掉多少去「请假」页记调休'
       : '加班按倍率折算成应得金额';
   }
   // 调休不产生金额，自动切到「不计入」并锁住该项
@@ -4091,10 +4108,28 @@ function selectOvertimeSettle(mode) {
       b.classList.toggle('active', b.dataset.sync === 'off');
     });
   }
+  syncOvertimeModeUI();
   updateOvertimeSyncDisabled();
   renderOvertime();
   updateOvertimePreview();
   persistOvertimeSettings();
+}
+
+// 调休模式下加班只累计时长、不折算金额，同步标题 / 说明与倍率区域
+function syncOvertimeModeUI() {
+  const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
+  const title = document.getElementById('recordCardTitle');
+  const desc = document.getElementById('recordCardDesc');
+  if (title) title.textContent = isLeave ? '🌴 记一笔加班' : '🌙 记一笔加班';
+  if (desc) {
+    desc.textContent = isLeave
+      ? '按加班那天填，累计时长用来换调休；休掉的部分去「请假」页记调休'
+      : '按加班那天填。倍率选工作日 1.5、休息日 2、法定节假日 3，也可自定义';
+  }
+  const rateGroup = document.getElementById('overtimeRateGroup');
+  if (rateGroup) rateGroup.style.display = isLeave ? 'none' : '';
+  const previewBox = document.getElementById('overtimePreviewBox');
+  if (previewBox) previewBox.style.display = isLeave ? 'none' : '';
 }
 
 // 「加班金额计入计时页」的可用状态：调休模式、或计时页已隐藏卡片时都不可改
@@ -4234,16 +4269,16 @@ function renderOvertime() {
   const modeTag = (settings.salaryMode || DEFAULTS.salaryMode) === 'gross' ? '税前' : '税后';
   const summary = document.getElementById('overtimeSummary');
 
-  // 只取当前口径的加班记录（给钱 / 调休），两种来源互不串
+  // 只取当前口径的加班记录（给钱 / 换调休）；已休的调休记录统一在请假页
   const modeRecords = overtimeRecords.filter(r => overtimeSettleOf(r) === (isLeave ? 'leave' : 'money'));
 
-  if (!modeRecords.length && !(isLeave && leaveUsedRecords.length)) {
+  if (!modeRecords.length) {
     summary.textContent = '还没有记录。被留下加班的那天，回来记一笔。';
   } else if (isLeave) {
-    // 调休口径：加班时长与已调休合并成一本账
+    // 调休口径：换来的调休减去请假页已休的调休
     const earned = totalLeaveEarned();
     const used = totalLeaveUsed();
-    summary.textContent = `加班 ${formatHours(earned)} · 已调休 ${formatHours(used)} · 剩余 ${formatHours(earned - used)}`;
+    summary.textContent = `换得调休 ${formatHours(earned)} · 已休 ${formatHours(used)} · 剩余 ${formatHours(earned - used)}`;
   } else if (isCompare) {
     // 对比口径：税前、税后各算一份
     let net = 0;
@@ -4259,22 +4294,17 @@ function renderOvertime() {
     summary.textContent = `共 ${modeRecords.length} 笔 · 应得合计 ${formatMoney(total)}（${modeTag}）`;
   }
 
-  // 把「加班」与「已调休」记录合并成一条列表，按新增顺序倒序（不按类型分组）
+  // 按新增顺序倒序
   const recordTs = r => {
     if (r.ts) return r.ts;
     const d = parseDateKey(r.date);
     return d ? d.getTime() : 0;
   };
-  let rows = [];
+  const rows = [];
   overtimeRecords.forEach((r, i) => {
     if (overtimeSettleOf(r) !== (isLeave ? 'leave' : 'money')) return;
-    rows.push({ kind: 'overtime', r: r, i: i, ts: recordTs(r) });
+    rows.push({ r: r, i: i, ts: recordTs(r) });
   });
-  if (isLeave) {
-    leaveUsedRecords.forEach((r, i) => rows.push({ kind: 'leave', r: r, i: i, ts: recordTs(r) }));
-    if (recordFilter === 'overtime') rows = rows.filter(x => x.kind === 'overtime');
-    else if (recordFilter === 'leave') rows = rows.filter(x => x.kind === 'leave');
-  }
   rows.sort((a, b) => b.ts - a.ts);
 
   list.innerHTML = '';
@@ -4282,31 +4312,22 @@ function renderOvertime() {
     const r = row.r;
     const item = document.createElement('div');
     item.className = 'overtime-item';
-    let meta;
+    const duration = r.unit === 'day' ? `${r.amount} 天` : `${r.amount} 小时`;
+    const meta = isLeave ? duration : `${duration} · ${r.rate} 倍`;
     let amountHtml;
     let extraClass = '';
-    if (row.kind === 'leave') {
-      meta = '已调休';
-      amountHtml = `-${formatHours(leaveUsedHours(r))}`;
-      extraClass = ' used';
+    if (isLeave) {
+      amountHtml = `+${formatHours(overtimeHours(r))}`;
+    } else if (isCompare) {
+      amountHtml =
+        `<div>税前 ${formatMoney(overtimeEarned(r, hourlyRateForDate(r.date, true)))}</div>` +
+        `<div>税后 ${formatMoney(overtimeEarned(r))}</div>`;
+      extraClass = ' compare';
     } else {
-      const duration = r.unit === 'day' ? `${r.amount} 天` : `${r.amount} 小时`;
-      // 调休模式下不折算金额，也不展示倍率
-      meta = isLeave ? duration : `${duration} · ${r.rate} 倍`;
-      if (isLeave) {
-        amountHtml = `+${formatHours(overtimeHours(r))}`;
-      } else if (isCompare) {
-        amountHtml =
-          `<div>税前 ${formatMoney(overtimeEarned(r, hourlyRateForDate(r.date, true)))}</div>` +
-          `<div>税后 ${formatMoney(overtimeEarned(r))}</div>`;
-        extraClass = ' compare';
-      } else {
-        amountHtml = `<span class="overtime-basis">${modeTag}</span>${formatMoney(overtimeEarned(r))}`;
-      }
+      amountHtml = `<span class="overtime-basis">${modeTag}</span>${formatMoney(overtimeEarned(r))}`;
     }
-    const delCall = row.kind === 'leave' ? `deleteLeaveUsed(${row.i})` : `deleteOvertime(${row.i})`;
     item.innerHTML = `
-      <button class="overtime-del" onclick="${delCall}" title="删除">×</button>
+      <button class="overtime-del" onclick="deleteOvertime(${row.i})" title="删除">×</button>
       <div>
         <div class="overtime-date">${formatOvertimeDate(r.date)}</div>
         <div class="overtime-meta">${meta}</div>
@@ -4315,105 +4336,255 @@ function renderOvertime() {
     `;
     list.appendChild(item);
   });
-
-  syncLeaveUI();
-}
-
-function addLeaveUsed() {
-  // 按天录入时固定记一天
-  const amount = leaveUnit === 'day' ? 1 : parseFloat(document.getElementById('leaveUsedAmount').value);
-  if (!amount || amount <= 0) { showToast('先填调休时长'); return; }
-
-  leaveUsedRecords.unshift({
-    date: document.getElementById('leaveUsedDate').value || fmtDateKey(new Date()),
-    amount: amount,
-    unit: leaveUnit,
-    ts: Date.now()
-  });
-  saveLeaveUsed();
-  renderOvertime();
-  document.getElementById('leaveUsedAmount').value = leaveUnit === 'day' ? dailyHoursValue() : '';
-  showToast('已记下这笔调休');
-}
-
-function deleteLeaveUsed(idx) {
-  leaveUsedRecords.splice(idx, 1);
-  saveLeaveUsed();
-  renderOvertime();
-  showToast('已删除');
-}
-
-// 「记一笔」卡片：切换记加班 / 记调休
-function selectRecordType(type) {
-  recordType = type === 'leave' ? 'leave' : 'overtime';
-  document.querySelectorAll('#recordType .seg-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.type === recordType);
-  });
-  applyRecordType();
-}
-
-// 记录列表筛选：全部 / 只看加班 / 只看调休
-function selectRecordFilter(filter) {
-  recordFilter = (filter === 'overtime' || filter === 'leave') ? filter : 'all';
-  document.querySelectorAll('#recordFilter .seg-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.filter === recordFilter);
-  });
-  renderOvertime();
-}
-
-// 按当前记录类型显示对应表单，并同步卡片标题 / 说明
-function applyRecordType() {
-  const isLeaveType = recordType === 'leave';
-  const isLeaveMode = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
-  const overtimeForm = document.getElementById('overtimeForm');
-  const leaveForm = document.getElementById('leaveForm');
-  if (overtimeForm) overtimeForm.style.display = isLeaveType ? 'none' : '';
-  if (leaveForm) leaveForm.style.display = isLeaveType ? '' : 'none';
-  const title = document.getElementById('recordCardTitle');
-  const desc = document.getElementById('recordCardDesc');
-  if (title) title.textContent = isLeaveType ? '🌴 记一笔调休' : '🌙 记一笔加班';
-  if (desc) {
-    if (isLeaveType) desc.textContent = '调休用掉多少就记多少，用来算还剩多少可调休';
-    else if (isLeaveMode) desc.textContent = '按加班那天填，累计的时长用来换调休';
-    else desc.textContent = '按加班那天填。倍率选工作日 1.5、休息日 2、法定节假日 3，也可自定义';
-  }
-
-  // 调休模式下加班只累计时长、不折算金额，隐藏薪资倍率与金额预览
-  const rateGroup = document.getElementById('overtimeRateGroup');
-  if (rateGroup) rateGroup.style.display = isLeaveMode ? 'none' : '';
-  const previewBox = document.getElementById('overtimePreviewBox');
-  if (previewBox) previewBox.style.display = isLeaveMode ? 'none' : '';
-}
-
-// 加班页：调休模式下才显示「记录类型」切换与记录筛选，并同步记录卡片标题
-function syncLeaveUI() {
-  const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
-
-  const typeFields = document.getElementById('recordTypeFields');
-  if (typeFields) typeFields.style.display = isLeave ? '' : 'none';
-
-  // 非调休模式没有「记调休」入口，强制回到记加班；筛选也回到全部
-  if (!isLeave && recordType !== 'overtime') recordType = 'overtime';
-  selectRecordType(recordType);
-
-  const filterFields = document.getElementById('recordFilterFields');
-  if (filterFields) filterFields.style.display = isLeave ? '' : 'none';
-  if (!isLeave && recordFilter !== 'all') recordFilter = 'all';
-  document.querySelectorAll('#recordFilter .seg-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.filter === recordFilter);
-  });
-
-  const title = document.getElementById('recordListTitle');
-  if (title) title.textContent = isLeave ? '加班 / 调休记录' : '加班记录';
 }
 
 function initOvertime() {
   const dateInput = document.getElementById('overtimeDate');
   if (dateInput) dateInput.value = formatDateSlash(fmtDateKey(new Date()));
-  const leaveDateInput = document.getElementById('leaveUsedDate');
-  if (leaveDateInput) leaveDateInput.value = formatDateSlash(fmtDateKey(new Date()));
+  syncOvertimeModeUI();
   renderOvertime();
   updateOvertimePreview();
+}
+
+// ============ 请假 ============
+function saveLeaveRecords() {
+  localStorage.setItem(LEAVE_RECORD_KEY, JSON.stringify(leaveRecords));
+}
+
+// 该日期所属工作的每日工时（小时）
+function leaveDailyHours(dateKey) {
+  const d = parseDateKey(dateKey);
+  const job = d ? jobOnDate(d) : null;
+  return getDailyHours(job || settings, d || undefined);
+}
+
+// 某类型的默认计薪比例（%），用于带薪切换时的预填
+function defaultLeaveRatioOf(kind) {
+  const v = DEFAULT_LEAVE_RATIOS[kind];
+  return v === undefined ? 100 : v;
+}
+
+// 请假计薪比例：无薪 0%；带薪取记录上手动填写的比例（旧记录回落到类型默认值）
+function leavePayRatioOf(record) {
+  if (!record || !record.paid) return 0;
+  const v = parseFloat(record.ratio);
+  const pct = isNaN(v) ? defaultLeaveRatioOf(record.kind) : Math.min(100, Math.max(0, v));
+  return pct / 100;
+}
+
+// 请假计薪文案：始终带比例，如「带薪 100%」「带薪 80%」「无薪 0%」
+function leavePayLabel(record) {
+  const ratio = leavePayRatioOf(record);
+  const pct = Math.round(ratio * 100);
+  return `${record && record.paid ? '带薪' : '无薪'} ${pct}%`;
+}
+
+// 某月因请假折算掉的工资天数（1 天 = 当月一个工作日）
+function leaveDeductDaysForMonth(cfg, monthKey) {
+  let days = 0;
+  leaveRecords.forEach(r => {
+    if (!r || typeof r.date !== 'string' || r.date.slice(0, 7) !== monthKey) return;
+    const d = parseDateKey(r.date);
+    if (!d) return;
+    if ((jobOnDate(d) || cfg) !== cfg) return;
+    const ratio = leavePayRatioOf(r);
+    if (ratio >= 1) return;
+    days += leaveRecordDays(r) * (1 - ratio);
+  });
+  return days;
+}
+
+// 某月工资系数：1 - 扣薪天数 / 当月工作日数；用于月薪、时薪与逐月个税口径
+function leaveMonthPayFactor(cfg, year, month) {
+  const workDays = countWorkdaysInMonthFor(year, month, cfg);
+  if (!(workDays > 0)) return 1;
+  const deduct = leaveDeductDaysForMonth(cfg, monthKeyOf(new Date(year, month, 1)));
+  if (deduct <= 0) return 1;
+  return Math.max(0, 1 - Math.min(workDays, deduct) / workDays);
+}
+
+// 记录折算成小时数：按「天」录入时，一天按该记录所属工作的每日工时算
+function leaveRecordHours(record) {
+  const amount = Math.max(0, parseFloat(record.amount) || 0);
+  if (record.unit !== 'day') return amount;
+  return amount * leaveDailyHours(record.date);
+}
+
+// 记录折算成天数：按「小时」录入时换算成占用的工作日
+function leaveRecordDays(record) {
+  const amount = Math.max(0, parseFloat(record.amount) || 0);
+  if (record.unit === 'day') return amount;
+  const hoursPerDay = leaveDailyHours(record.date);
+  return hoursPerDay > 0 ? amount / hoursPerDay : 0;
+}
+
+// 天数展示：整数不带小数，非整数保留 1 位
+function fmtLeaveDays(days) {
+  const v = Math.round(days * 10) / 10;
+  return (Number.isInteger(v) ? String(v) : v.toFixed(1)) + ' 天';
+}
+
+function selectLeaveKind(kind) {
+  leaveKind = LEAVE_KINDS[kind] ? kind : 'personal';
+  const select = document.getElementById('leaveKind');
+  if (select) {
+    select.value = leaveKind;
+    syncCustomSelect(select);
+  }
+  // 切换类型时按默认带薪规则预选，并带入该类型的默认计薪比例
+  selectLeavePaid(LEAVE_KINDS[leaveKind].paid);
+  const ratioInput = document.getElementById('leavePaidRatio');
+  if (leaveRecPaid && ratioInput) ratioInput.value = defaultLeaveRatioOf(leaveKind);
+}
+
+function selectLeaveRecUnit(unit) {
+  leaveRecUnit = unit === 'day' ? 'day' : 'hour';
+  document.querySelectorAll('#leaveRecUnit .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.unit === leaveRecUnit);
+  });
+  // 按天录入时一次只记一天：自动带入应上班小时数并锁住，不可手改
+  const amountInput = document.getElementById('leaveAmount');
+  if (!amountInput) return;
+  amountInput.disabled = leaveRecUnit === 'day';
+  amountInput.value = leaveRecUnit === 'day' ? dailyHoursValue() : '';
+}
+
+function selectLeavePaid(paid) {
+  const wasPaid = leaveRecPaid;
+  leaveRecPaid = !!paid;
+  document.querySelectorAll('#leaveRecPaid .seg-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.paid === 'paid') === leaveRecPaid);
+  });
+  // 计薪比例始终展示：无薪时禁用并置 0，切回带薪时恢复该类型默认比例
+  const field = document.getElementById('leaveRatioField');
+  if (field) field.style.display = '';
+  const input = document.getElementById('leavePaidRatio');
+  if (input) {
+    input.disabled = !leaveRecPaid;
+    if (!leaveRecPaid) input.value = 0;
+    else if (!wasPaid) input.value = defaultLeaveRatioOf(leaveKind);
+  }
+}
+
+function shiftLeaveMonth(delta) {
+  if (!leaveRecordMonth) leaveRecordMonth = currentMonthKey();
+  const [y, m] = leaveRecordMonth.split('-').map(Number);
+  leaveRecordMonth = monthKeyOf(new Date(y, m - 1 + delta, 1));
+  renderLeave();
+}
+
+function addLeaveRecord() {
+  // 按天录入时固定记一天
+  const amount = leaveRecUnit === 'day' ? 1 : parseFloat(document.getElementById('leaveAmount').value);
+  if (!amount || amount <= 0) { showToast('先填请假时长'); return; }
+
+  const rawDate = document.getElementById('leaveDate').value;
+  const date = fmtDateKey(parseDateKey(rawDate) || new Date());
+  // 带薪时读取手动填写的计薪比例，无薪固定为 0
+  let ratio = 0;
+  if (leaveRecPaid) {
+    ratio = parseFloat(document.getElementById('leavePaidRatio').value);
+    if (isNaN(ratio)) ratio = defaultLeaveRatioOf(leaveKind);
+    ratio = Math.min(100, Math.max(0, ratio));
+  }
+  leaveRecords.unshift({
+    id: 'lv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    date: date,
+    kind: leaveKind,
+    amount: amount,
+    unit: leaveRecUnit,
+    paid: leaveRecPaid,
+    ratio: ratio,
+    ts: Date.now()
+  });
+  saveLeaveRecords();
+
+  // 记录落在其他月份时自动切过去，避免「记了却看不到」
+  if (leaveRecordMonth !== date.slice(0, 7)) leaveRecordMonth = date.slice(0, 7);
+  renderLeave();
+  invalidateJobCaches();
+  updateAll();
+  document.getElementById('leaveAmount').value = leaveRecUnit === 'day' ? dailyHoursValue() : '';
+  showToast('已记下这笔请假');
+}
+
+function deleteLeaveRecord(id) {
+  leaveRecords = leaveRecords.filter(r => r.id !== id);
+  saveLeaveRecords();
+  renderLeave();
+  invalidateJobCaches();
+  updateAll();
+  showToast('已删除');
+}
+
+function renderLeave() {
+  if (!leaveRecordMonth) leaveRecordMonth = currentMonthKey();
+  const [y, m] = leaveRecordMonth.split('-').map(Number);
+  const labelEl = document.getElementById('leaveMonthLabel');
+  if (labelEl) labelEl.textContent = `${y} 年 ${m} 月`;
+
+  const monthRecords = leaveRecords
+    .filter(r => (r.date || '').slice(0, 7) === leaveRecordMonth)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.ts || 0) - (a.ts || 0));
+
+  let totalDays = 0;
+  let paidDays = 0;
+  let unpaidDays = 0;
+  let deductDays = 0;
+  monthRecords.forEach(r => {
+    const days = leaveRecordDays(r);
+    totalDays += days;
+    if (leavePayRatioOf(r) > 0) paidDays += days;
+    else unpaidDays += days;
+    deductDays += days * (1 - leavePayRatioOf(r));
+  });
+
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  setText('leaveMonthDays', fmtLeaveDays(totalDays));
+  setText('leaveMonthPaid', fmtLeaveDays(paidDays));
+  setText('leaveMonthUnpaid', fmtLeaveDays(unpaidDays));
+  // 折算扣减：事假扣满、病假按比例扣、其余带薪假不扣
+  setText('leaveDeductHint', !monthRecords.length ? '' : (deductDays > 0
+    ? `按当前规则折算扣减 ${fmtLeaveDays(deductDays)} 工资`
+    : '本月请假均为带薪假，不扣工资'));
+
+  const summary = document.getElementById('leaveSummary');
+  if (summary) {
+    summary.textContent = monthRecords.length
+      ? `${y} 年 ${m} 月共 ${monthRecords.length} 笔 · 合计 ${fmtLeaveDays(totalDays)}`
+      : '这个月还没有请假记录。';
+  }
+
+  const list = document.getElementById('leaveList');
+  if (!list) return;
+  list.innerHTML = '';
+  monthRecords.forEach(r => {
+    const kindLabel = (LEAVE_KINDS[r.kind] || LEAVE_KINDS.personal).label;
+    const duration = r.unit === 'day' ? `${r.amount} 天` : formatHours(r.amount);
+    const item = document.createElement('div');
+    item.className = 'overtime-item';
+    item.innerHTML = `
+      <button class="overtime-del" onclick="deleteLeaveRecord('${r.id}')" title="删除">×</button>
+      <div>
+        <div class="overtime-date">${formatDateSlash(r.date)}</div>
+        <div class="overtime-meta">${kindLabel} · ${leavePayLabel(r)}</div>
+      </div>
+      <div class="overtime-amount${leavePayRatioOf(r) > 0 ? '' : ' used'}">${duration}</div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+function initLeave() {
+  if (!leaveRecordMonth) leaveRecordMonth = currentMonthKey();
+  const dateInput = document.getElementById('leaveDate');
+  if (dateInput) dateInput.value = formatDateSlash(fmtDateKey(new Date()));
+  selectLeaveKind(leaveKind);
+  selectLeaveRecUnit(leaveRecUnit);
+  renderLeave();
 }
 
 // ============ 生命消耗大盘 ============
@@ -6945,7 +7116,7 @@ function getShareData() {
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const progressEl = document.getElementById('progressFill');
 
-  // 加班：给钱口径看金额与时长，调休口径看剩余调休
+  // 加班：给钱口径看金额与时长，调休口径看换得 / 已休 / 剩余调休
   const otToday = sumOvertime(overtimeOnDay(todayKey));
   const otMonth = sumOvertime(overtimeInMonth(now.getFullYear(), now.getMonth()));
   const allOvertimeHours = overtimeRecords.reduce((sum, r) => sum + overtimeHours(r), 0);
@@ -7375,9 +7546,9 @@ function drawShareCard() {
     },
     overtime: {
       title: '加班', note: isLeave ? '调休口径' : '给钱口径', cols: isLeave ? [
-        { label: '今日加班', value: hoursText(data.otTodayHours), sub: '换成调休' },
-        { label: '本月加班', value: hoursText(data.otMonthHours), sub: '累计时长' },
-        { label: '剩余调休', value: hoursText(data.leaveEarned - data.leaveUsed), sub: '已用 ' + hoursText(data.leaveUsed) }
+        { label: '换得调休', value: hoursText(data.leaveEarned), sub: '加班累计时长' },
+        { label: '已休', value: hoursText(data.leaveUsed), sub: '请假页调休记录' },
+        { label: '剩余调休', value: hoursText(data.leaveEarned - data.leaveUsed), sub: '换得 - 已休', color: '#fff' }
       ] : [
         { label: '今日加班费', value: data.otTodayMoney, sub: hoursText(data.otTodayHours) },
         { label: '本月加班费', value: data.otMonthMoney, sub: hoursText(data.otMonthHours) },
@@ -7977,6 +8148,7 @@ function switchScreen(name) {
     renderOvertime();
     updateOvertimePreview();
   }
+  if (name === 'leave') renderLeave();
   if (name === 'settings') {
     fillSettingsForm();
   }
@@ -8118,6 +8290,102 @@ function initAppInstallTip() {
 }
 initAppInstallTip();
 
+// ============ 自绘下拉框 ============
+// 原生 select 展开后的蓝色悬停高亮是系统绘制、CSS 无法覆盖，统一换成自绘菜单
+function initCustomSelects() {
+  document.querySelectorAll('.field-group select').forEach(enhanceCustomSelect);
+}
+
+function enhanceCustomSelect(sel) {
+  if (sel.dataset.customSelect === '1') return;
+  sel.dataset.customSelect = '1';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'custom-select';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'custom-select-trigger';
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.innerHTML = '<span class="custom-select-label"></span>'
+    + '<svg class="custom-select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+    + ' stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+    + '<polyline points="6 9 12 15 18 9"/></svg>';
+
+  const menu = document.createElement('div');
+  menu.className = 'custom-select-menu';
+  menu.setAttribute('role', 'listbox');
+
+  // 隐藏原生 select，但保留在 DOM 里作为取值与 onchange 的数据源
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.appendChild(trigger);
+  wrap.appendChild(menu);
+  wrap.appendChild(sel);
+  sel.classList.add('custom-select-native');
+
+  const close = () => {
+    wrap.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    renderCustomSelectMenu(sel);
+    wrap.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
+    const active = menu.querySelector('.custom-select-option.active');
+    if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest' });
+  };
+
+  trigger.addEventListener('click', e => {
+    e.stopPropagation();
+    if (wrap.classList.contains('open')) close();
+    else open();
+  });
+
+  menu.addEventListener('click', e => {
+    const btn = e.target.closest('.custom-select-option');
+    if (!btn) return;
+    sel.value = btn.dataset.value;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    syncCustomSelect(sel);
+    close();
+  });
+
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+  renderCustomSelectMenu(sel);
+}
+
+function renderCustomSelectMenu(sel) {
+  const wrap = sel.closest('.custom-select');
+  if (!wrap) return;
+  const menu = wrap.querySelector('.custom-select-menu');
+  menu.innerHTML = '';
+  Array.from(sel.options).forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'custom-select-option' + (opt.value === sel.value ? ' active' : '');
+    btn.dataset.value = opt.value;
+    btn.textContent = opt.textContent;
+    btn.setAttribute('role', 'option');
+    menu.appendChild(btn);
+  });
+  syncCustomSelect(sel);
+}
+
+// 程序改动 select.value 后，同步触发器文案与选中态
+function syncCustomSelect(sel) {
+  const wrap = sel && sel.closest ? sel.closest('.custom-select') : null;
+  if (!wrap) return;
+  const label = wrap.querySelector('.custom-select-label');
+  const opt = sel.options[sel.selectedIndex] || sel.options[0];
+  if (label) label.textContent = opt ? opt.textContent : '';
+  wrap.querySelectorAll('.custom-select-option').forEach(b => {
+    b.classList.toggle('active', b.dataset.value === sel.value);
+  });
+}
+
 // ============ 初始化 ============
 // 首次进入（本地还没保存过参数）时直接停在设置页，先把工作参数填了
 let isFirstRun = false;
@@ -8125,11 +8393,13 @@ try { isFirstRun = !localStorage.getItem('qianxwk_settings'); } catch (e) { isFi
 
 load();
 populateCurrencySelect();
+initCustomSelects();
 fillSettingsForm();
 renderDevices();
 renderJobHistory();
 renderAllowance();
 initOvertime();
+initLeave();
 initShareOptionDrag();
 initShareImageViewer();
 updateAll();

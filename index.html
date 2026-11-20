@@ -288,7 +288,7 @@
           <label>加班结算方式</label>
           <div class="seg-control" id="overtimeSettle">
             <button type="button" class="seg-btn" data-settle="money" onclick="selectOvertimeSettle('money')">给钱</button>
-            <button type="button" class="seg-btn" data-settle="leave" onclick="selectOvertimeSettle('leave')">调休</button>
+            <button type="button" class="seg-btn" data-settle="leave" onclick="selectOvertimeSettle('leave')">换调休</button>
           </div>
           <div class="field-hint" id="overtimeSettleHint"></div>
         </div>
@@ -315,16 +315,6 @@
     <div class="cost-card">
       <h3 id="recordCardTitle">🌙 记一笔加班</h3>
       <div class="desc" id="recordCardDesc">按加班那天填。倍率选工作日 1.5、休息日 2、法定节假日 3，也可自定义</div>
-
-      <div class="cost-fields" id="recordTypeFields" style="grid-template-columns:1fr; display:none">
-        <div class="field-group">
-          <label>记录类型</label>
-          <div class="seg-control" id="recordType">
-            <button type="button" class="seg-btn active" data-type="overtime" onclick="selectRecordType('overtime')">记加班</button>
-            <button type="button" class="seg-btn" data-type="leave" onclick="selectRecordType('leave')">记调休</button>
-          </div>
-        </div>
-      </div>
 
       <div id="overtimeForm">
         <div class="cost-fields" style="grid-template-columns:1fr">
@@ -365,46 +355,116 @@
           <button class="btn btn-primary" onclick="addOvertime()">添加记录</button>
         </div>
       </div>
-
-      <div id="leaveForm" style="display:none">
-        <div class="cost-fields" style="grid-template-columns:1fr">
-          <div class="field-group">
-            <label>时长单位</label>
-            <div class="seg-control" id="leaveUnit">
-              <button type="button" class="seg-btn active" data-unit="hour" onclick="selectLeaveUnit('hour')">小时</button>
-              <button type="button" class="seg-btn" data-unit="day" onclick="selectLeaveUnit('day')">天</button>
-            </div>
-          </div>
-        </div>
-        <div class="cost-fields">
-          <div class="field-group">
-            <label>调休日期</label>
-            <input type="text" id="leaveUsedDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
-          </div>
-          <div class="field-group">
-            <label>调休时长</label>
-            <input type="number" id="leaveUsedAmount" min="0" step="0.5">
-          </div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="addLeaveUsed()">添加记录</button>
-        </div>
-      </div>
     </div>
 
     <div class="cost-card">
       <h3 id="recordListTitle">加班记录</h3>
       <div class="desc" id="overtimeSummary">还没有记录。被留下加班的那天，回来记一笔。</div>
-      <div class="cost-fields" id="recordFilterFields" style="grid-template-columns:1fr; display:none">
+      <div id="overtimeList"></div>
+    </div>
+  </div>
+
+  <!-- 请假界面 -->
+  <div class="screen" id="screen-leave">
+    <div class="header">
+      <div class="logo">千<span>薪</span>万苦</div>
+      <div class="header-actions">
+        <button class="icon-btn" onclick="switchScreen('settings')">⚙</button>
+      </div>
+    </div>
+    <div class="section-title">请假记录</div>
+
+    <div class="ledger-card" style="padding:14px 16px">
+      <div class="ledger-month-nav" style="margin-bottom:0">
+        <button type="button" class="ledger-month-btn" onclick="shiftLeaveMonth(-1)" aria-label="上个月">‹</button>
+        <div class="ledger-month-label" id="leaveMonthLabel"></div>
+        <button type="button" class="ledger-month-btn" onclick="shiftLeaveMonth(1)" aria-label="下个月">›</button>
+      </div>
+    </div>
+
+    <div class="ledger-summary">
+      <div class="ledger-sum-item accent">
+        <span>本月请假</span>
+        <strong id="leaveMonthDays">0 天</strong>
+      </div>
+      <div class="ledger-sum-item">
+        <span>带薪</span>
+        <strong id="leaveMonthPaid">0 天</strong>
+      </div>
+      <div class="ledger-sum-item">
+        <span>无薪</span>
+        <strong id="leaveMonthUnpaid">0 天</strong>
+      </div>
+    </div>
+    <div class="field-hint" id="leaveDeductHint" style="margin:-4px 0 12px"></div>
+
+    <div class="cost-card">
+      <h3>🏖️ 记一笔请假</h3>
+      <div class="desc">按实际请假那天填。带薪假可手动填写计薪比例，100% 表示不扣工资</div>
+
+      <div class="cost-fields" style="grid-template-columns:1fr">
         <div class="field-group">
-          <div class="seg-control" id="recordFilter">
-            <button type="button" class="seg-btn active" data-filter="all" onclick="selectRecordFilter('all')">全部</button>
-            <button type="button" class="seg-btn" data-filter="overtime" onclick="selectRecordFilter('overtime')">只看加班</button>
-            <button type="button" class="seg-btn" data-filter="leave" onclick="selectRecordFilter('leave')">只看调休</button>
+          <label>请假类型</label>
+          <select id="leaveKind" onchange="selectLeaveKind(this.value)">
+            <option value="personal">事假</option>
+            <option value="comp">调休</option>
+            <option value="annual">年假</option>
+            <option value="sick">病假</option>
+            <option value="marriage">婚假</option>
+            <option value="maternity">产假</option>
+            <option value="paternity">陪产假</option>
+            <option value="bereavement">丧假</option>
+            <option value="parental">育儿假</option>
+            <option value="injury">工伤假</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="cost-fields" style="grid-template-columns:1fr">
+        <div class="field-group">
+          <label>时长单位</label>
+          <div class="seg-control" id="leaveRecUnit">
+            <button type="button" class="seg-btn active" data-unit="hour" onclick="selectLeaveRecUnit('hour')">小时</button>
+            <button type="button" class="seg-btn" data-unit="day" onclick="selectLeaveRecUnit('day')">天</button>
           </div>
         </div>
       </div>
-      <div id="overtimeList"></div>
+
+      <div class="cost-fields">
+        <div class="field-group">
+          <label>请假日期</label>
+          <input type="text" id="leaveDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
+        </div>
+        <div class="field-group">
+          <label>请假时长</label>
+          <input type="number" id="leaveAmount" min="0" step="0.5">
+        </div>
+      </div>
+
+      <div class="cost-fields">
+        <div class="field-group">
+          <label>是否带薪</label>
+          <div class="seg-control" id="leaveRecPaid">
+            <button type="button" class="seg-btn active" data-paid="unpaid" onclick="selectLeavePaid(false)">无薪</button>
+            <button type="button" class="seg-btn" data-paid="paid" onclick="selectLeavePaid(true)">带薪</button>
+          </div>
+        </div>
+        <div class="field-group" id="leaveRatioField">
+          <label>计薪比例（%）</label>
+          <input type="number" id="leavePaidRatio" min="0" max="100" step="0.1">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="addLeaveRecord()">添加记录</button>
+      </div>
+    </div>
+
+    <div class="cost-card">
+      <h3>请假明细</h3>
+      <div class="desc" id="leaveSummary"></div>
+      <div id="leaveList"></div>
     </div>
   </div>
 
@@ -856,6 +916,10 @@
     <div class="nav-item" data-screen="overtime" onclick="switchScreen('overtime')">
       <div class="nav-icon">🌙</div>
       <div class="nav-label">加班</div>
+    </div>
+    <div class="nav-item" data-screen="leave" onclick="switchScreen('leave')">
+      <div class="nav-icon">🏖️</div>
+      <div class="nav-label">请假</div>
     </div>
     <div class="nav-item" data-screen="ledger" onclick="switchScreen('ledger')">
       <div class="nav-icon">🛍️</div>
