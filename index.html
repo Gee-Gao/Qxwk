@@ -284,21 +284,21 @@
 
     <div class="cost-card">
       <h3>🌙 加班设置</h3>
-      <div class="desc">加班是给钱还是换调休，金额是否计入计时页，以及卡片是否在计时页展示</div>
+      <div class="desc">加班是给钱还是调休，金额是否计入计时页，以及卡片是否在计时页展示</div>
       <div class="cost-fields" style="grid-template-columns:1fr">
         <div class="field-group">
           <label>加班结算方式</label>
           <div class="seg-control" id="overtimeSettle">
             <button type="button" class="seg-btn" data-settle="money" onclick="selectOvertimeSettle('money')">给钱</button>
-            <button type="button" class="seg-btn" data-settle="leave" onclick="selectOvertimeSettle('leave')">换调休</button>
+            <button type="button" class="seg-btn" data-settle="leave" onclick="selectOvertimeSettle('leave')">调休</button>
           </div>
           <div class="field-hint" id="overtimeSettleHint"></div>
         </div>
         <div class="field-group">
           <label>计时页展示加班费卡片</label>
           <div class="seg-control" id="overtimePanelShow">
-            <button type="button" class="seg-btn" data-show="always" onclick="selectOvertimePanelShow('always')">始终展示</button>
             <button type="button" class="seg-btn" data-show="auto" onclick="selectOvertimePanelShow('auto')">有则展示</button>
+            <button type="button" class="seg-btn" data-show="always" onclick="selectOvertimePanelShow('always')">始终展示</button>
             <button type="button" class="seg-btn" data-show="off" onclick="selectOvertimePanelShow('off')">始终隐藏</button>
           </div>
           <div class="field-hint" id="overtimePanelShowHint"></div>

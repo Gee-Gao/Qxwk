@@ -38,9 +38,9 @@ const DEFAULTS = {
   commuteMorning: 0,      // 早通勤（去程，分钟），仅 split 模式使用
   commuteEvening: 0,      // 晚通勤（返程，分钟），仅 split 模式使用
   commuteInHourly: false, // 通勤时间是否纳入时薪折算
-  overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 换调休（已休的调休记录在请假页）
+  overtimeSettle: 'money', // 加班结算方式：money 给钱 / leave 调休（已休的调休记录在请假页）
   overtimeSync: false,     // 加班金额是否计入计时页（仅给钱模式有效）
-  overtimePanelShow: 'always', // 计时页加班费卡片展示：always 始终展示 / auto 无数据不展示 / off 隐藏
+  overtimePanelShow: 'auto', // 计时页加班费卡片展示：auto 无数据不展示 / always 始终展示 / off 隐藏
   tieredRateTiers: [        // 累计工时模式下的阶梯门槛（累计工时）与对应倍率，门槛以下按 1 倍
     { hours: 168, rate: 1.5 },
     { hours: 252, rate: 2 }
@@ -4067,7 +4067,7 @@ function persistOvertimeSettings() {
   localStorage.setItem('qianxwk_settings', JSON.stringify(saved));
 }
 
-// 加班页：加班结算方式（给钱 / 换调休；已休的调休记录统一在请假页）
+// 加班页：加班结算方式（给钱/调休；已休的调休记录统一在请假页）
 function selectOvertimeSettle(mode) {
   settings.overtimeSettle = mode === 'leave' ? 'leave' : 'money';
   const isLeave = settings.overtimeSettle === 'leave';
@@ -4078,7 +4078,7 @@ function selectOvertimeSettle(mode) {
   const settleHint = document.getElementById('overtimeSettleHint');
   if (settleHint) {
     settleHint.textContent = isLeave
-      ? '加班不计金额，累计时长用来换调休；休掉多少去「请假」页记调休'
+      ? '加班不计金额，累计时长用来调休；休掉多少去「请假」页记调休'
       : '加班按倍率折算成应得金额';
   }
   // 调休不产生金额，自动切到「不计入」并锁住该项
@@ -4103,7 +4103,7 @@ function syncOvertimeModeUI() {
   if (title) title.textContent = isLeave ? '🌴 记一笔加班' : '🌙 记一笔加班';
   if (desc) {
     desc.textContent = isLeave
-      ? '按加班那天填，累计时长用来换调休；休掉的部分去「请假」页记调休'
+      ? '按加班那天填，累计时长用来调休；休掉的部分去「请假」页记调休'
       : '按加班那天填。倍率选工作日 1.5、休息日 2、法定节假日 3，也可自定义';
   }
   const rateGroup = document.getElementById('overtimeRateGroup');
@@ -4135,16 +4135,15 @@ function selectOvertimeSync(on) {
   persistOvertimeSettings();
 }
 
-// 加班页：计时页加班费卡片展示模式；兼容旧布尔值：true → always / false → off
+// 加班页：计时页加班费卡片展示模式：auto 有则展示 / always 始终展示 / off 始终隐藏
 function overtimePanelMode() {
   const v = settings.overtimePanelShow;
-  if (v === 'always' || v === 'auto' || v === 'off') return v;
-  return v === false ? 'off' : 'always';
+  return v === 'always' || v === 'off' ? v : 'auto';
 }
 
 // 加班页：设置计时页加班费卡片的展示方式
 function selectOvertimePanelShow(mode) {
-  if (mode !== 'always' && mode !== 'auto' && mode !== 'off') mode = 'always';
+  if (mode !== 'always' && mode !== 'auto' && mode !== 'off') mode = 'auto';
   settings.overtimePanelShow = mode;
   document.querySelectorAll('#overtimePanelShow .seg-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.show === mode);
@@ -4249,7 +4248,7 @@ function renderOvertime() {
   const modeTag = (settings.salaryMode || DEFAULTS.salaryMode) === 'gross' ? '税前' : '税后';
   const summary = document.getElementById('overtimeSummary');
 
-  // 只取当前口径的加班记录（给钱 / 换调休）；已休的调休记录统一在请假页
+  // 只取当前口径的加班记录（给钱 / 调休）；已休的调休记录统一在请假页
   const modeRecords = overtimeRecords.filter(r => overtimeSettleOf(r) === (isLeave ? 'leave' : 'money'));
 
   if (!modeRecords.length) {
