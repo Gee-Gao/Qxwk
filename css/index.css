@@ -2611,6 +2611,7 @@ body {
 }
 
 /*部分浏览器强制深色会压暗荧光绿实底，only light 可豁免这些组件 */
+.timer-status .dot,
 .period-badge,
 .stat-card.green,
 .cost-result,
