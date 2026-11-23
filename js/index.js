@@ -171,7 +171,7 @@ let allowances = [];             // { id, month: 'YYYY-MM', name, amount, taxabl
 let allowanceMonth = currentMonthKey(); // 补贴录入当前查看的月份
 let allowanceTaxableDraft = true;       // 新增补贴是否计税，默认计税
 let allowanceRepeatDraft = true;        // 新增补贴是否从下月起每月同步，默认同步
-let monthPickerTarget = 'ledger';       // 月份快速选择回填目标：ledger / allowance
+let monthPickerTarget = 'ledger';       // 月份快速选择回填目标：ledger / allowance / leave
 
 // ============ 持久化 ============
 function load() {
@@ -5825,6 +5825,13 @@ function shiftLedgerMonth(delta) {
   renderLedger();
 }
 
+// 请假页直接跳到指定月份（YYYY-MM）
+function jumpLeaveMonth(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(monthKey || '')) return;
+  leaveRecordMonth = monthKey;
+  renderLeave();
+}
+
 // 直接跳到指定月份（YYYY-MM）
 function jumpLedgerMonth(monthKey) {
   if (!/^\d{4}-\d{2}$/.test(monthKey || '')) return;
@@ -5848,6 +5855,11 @@ function openLedgerMonthPicker() {
   openMonthPickerFor(ledgerMonth);
 }
 
+function openLeaveMonthPicker() {
+  monthPickerTarget = 'leave';
+  openMonthPickerFor(leaveRecordMonth || currentMonthKey());
+}
+
 function closeLedgerMonthModal() {
   const overlay = document.getElementById('ledgerMonthModal');
   if (overlay) overlay.classList.remove('show');
@@ -5865,7 +5877,9 @@ function renderLedgerMonthPicker() {
   yearEl.textContent = ledgerPickerYear + ' 年';
   const current = currentMonthKey();
   const isAllowance = monthPickerTarget === 'allowance';
-  const active = isAllowance ? allowanceMonth : ledgerMonth;
+  const active = isAllowance
+    ? allowanceMonth
+    : (monthPickerTarget === 'leave' ? leaveRecordMonth : ledgerMonth);
   let html = '';
   for (let m = 1; m <= 12; m++) {
     const key = `${ledgerPickerYear}-${String(m).padStart(2, '0')}`;
@@ -5886,6 +5900,7 @@ function pickLedgerMonth(monthKey) {
   }
   closeLedgerMonthModal();
   if (monthPickerTarget === 'allowance') jumpAllowanceMonth(monthKey);
+  else if (monthPickerTarget === 'leave') jumpLeaveMonth(monthKey);
   else jumpLedgerMonth(monthKey);
 }
 
