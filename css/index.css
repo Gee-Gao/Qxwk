@@ -3,18 +3,14 @@
 :root {
   color-scheme: dark; /* 让日期/时间选择器等原生控件跟随暗色主题 */
   --bg: #0f0f0f;
-  --card: #1a1a1a;
-  --card-light: #f5f5f5;
   --accent: #c8ff00;
   --accent-dim: #9bc200;
-  --accent-dark: #1a1a1a;
   --compare: #a78bfa;      /* 对照色：紫罗兰，与主色（荧光绿）色相 + 明暗双重区分 */
   --compare-bg: #1e1830;   /* 对照色浅底（左侧卡片） */
   --compare-border: #463469;
   --compare-line: rgba(167, 139, 250, .35);  /* 对照色描边（右侧黑底卡片） */
   --text: #ffffff;
   --text-dim: #999;
-  --text-dark: #333;
   --radius: 16px;
   --radius-sm: 10px;
   --screen-pad: 16px; /* .screen 内边距，sticky 分类栏需要用它抵消 */
@@ -514,11 +510,6 @@ body {
   color: var(--text);
 }
 .btn-secondary:hover { background: #333; }
-.btn-dark {
-  background: #000;
-  color: #fff;
-}
-.btn-dark:hover { background: #222; }
 
 /* 带薪离岗计时 */
 .paid-leave-card {
@@ -2016,11 +2007,6 @@ body {
 }
 .ledger-recurring-form .settings-grid { gap: 10px; }
 .ledger-recurring-form .btn-row { margin-top: 12px; }
-.ledger-recurring-note {
-  font-size: 11px;
-  color: #777;
-  line-height: 1.5;
-}
 .ledger-rule-row {
   display: flex;
   gap: 8px;

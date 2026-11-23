@@ -454,11 +454,6 @@ function hasCustomWorkDatesFor(cfg, monthKey) {
   return customWorkDatesFor(cfg, monthKey).length > 0;
 }
 
-// 当前工作的自定义日历判断
-function hasCustomWorkDates(monthKey) {
-  return hasCustomWorkDatesFor(settings, monthKey);
-}
-
 // 按双休预填某月上班日（法定节假日除外，调休补班计入）
 function defaultWorkDatesOfMonth(year, month) {
   const days = new Date(year, month + 1, 0).getDate();
@@ -921,13 +916,6 @@ function addMonths(dateStr, months) {
   const mo = String(result.getMonth() + 1).padStart(2, '0');
   const da = String(result.getDate()).padStart(2, '0');
   return `${y}-${mo}-${da}`;
-}
-
-// 转正日期：优先由「入职日期 + 试用期月数」自动计算；
-// 若已填入职日期但试用期月数<=0，则无试用期（直接正式）；
-// 仅当未填入职日期时，兼容旧数据返回旧 regularDate
-function getRegularDate() {
-  return getRegularDateOf(settings);
 }
 
 // 入职日期 / 试用期月数变化时：重算转正日期、同步试用期比例可用状态、刷新提示
@@ -2016,10 +2004,6 @@ function isInProbationAt(date, job) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()) < regular;
 }
 
-function isInProbationNow() {
-  return isInProbationAt(new Date(), settings);
-}
-
 // 收集测算参数，read(id) 决定数据来自设置页表单还是已保存的 settings
 function readTaxParams(read) {
   return {
@@ -2728,11 +2712,6 @@ function updateCommuteHint() {
   hint.textContent = total > 0
     ? `合计：填一天往返总分钟，自动往返各半；当前每天 ${fmtDurationMinutes(workMinutes)} 工作 + ${fmtDurationMinutes(total)} 通勤，共 ${fmtDurationMinutes(workMinutes + total)} 折算时薪`
     : '合计：填一天往返总分钟，自动往返各半；当前通勤为 0，暂不影响时薪与计时';
-}
-
-function getTodayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
 }
 
 // 法定节假日数据：优先联网获取，失败时回退到下面的内置数据

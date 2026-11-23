@@ -153,7 +153,7 @@
         <div class="deduct-row total"><span class="lbl">实发工资</span><span class="val" id="monthTaxNet">¥0.00</span></div>
       </div>
 
-      <div class="stats-card" id="hourlyTrendCard">
+      <div class="stats-card">
         <span class="mode-badge" id="hourlyModeBadge">税前</span>
         <h3>时薪波动曲线</h3>
         <div class="desc">每个点代表当月平均时薪：当月薪资（按当前工资口径）÷（每日计时工时 × 当月工作日数）；同月跨两段工作时按工作日加权，空档月显示为 0。</div>
@@ -226,14 +226,14 @@
 
     <!-- 算一算 -->
     <div class="stats-panel" data-cat="calc">
-      <div class="paid-leave-card" id="paidLeaveCard">
+      <div class="paid-leave-card">
         <h3>带薪离席</h3>
         <div class="desc">离开工位的时间，也是带薪的时间</div>
         <div class="paid-leave-timer" id="paidLeaveTimer">00:00:00</div>
         <div class="paid-leave-earned" id="paidLeaveEarned">¥0.00</div>
         <div class="paid-leave-count" id="paidLeaveCount">已记录 0 次</div>
         <div class="btn-row">
-          <button class="btn btn-secondary" id="paidLeaveResetBtn" onclick="resetPaidLeave()">重置</button>
+          <button class="btn btn-secondary" onclick="resetPaidLeave()">重置</button>
           <button class="btn btn-primary" id="paidLeaveBtn" onclick="togglePaidLeave()">开始计时</button>
         </div>
       </div>
@@ -318,7 +318,7 @@
       <h3 id="recordCardTitle">🌙 记一笔加班</h3>
       <div class="desc" id="recordCardDesc">按加班那天填。倍率选工作日 1.5、休息日 2、法定节假日 3，也可自定义</div>
 
-      <div id="overtimeForm">
+      <div>
         <div class="cost-fields" style="grid-template-columns:1fr">
           <div class="field-group">
             <label>时长单位</label>
@@ -360,7 +360,7 @@
     </div>
 
     <div class="cost-card">
-      <h3 id="recordListTitle">加班记录</h3>
+      <h3>加班记录</h3>
       <div class="desc" id="overtimeSummary">还没有记录。被留下加班的那天，回来记一笔。</div>
       <div id="overtimeList"></div>
     </div>
@@ -547,7 +547,7 @@
         <div class="ledger-sub" id="ledgerStatsTime">按当前时薪折算：—</div>
         <div class="ledger-salary-row">
           <div class="ledger-mini"><span id="ledgerStatsSalaryLabel">本月工资</span><strong id="ledgerStatsSalary">¥0.00</strong></div>
-          <div class="ledger-mini"><span id="ledgerStatsRemainingLabel">剩余工资</span><strong id="ledgerStatsRemaining">¥0.00</strong></div>
+          <div class="ledger-mini"><span>剩余工资</span><strong id="ledgerStatsRemaining">¥0.00</strong></div>
         </div>
         <div class="ledger-mini-grid">
           <div class="ledger-mini"><span>日均支出</span><strong id="ledgerStatsAvg">¥0.00</strong></div>
@@ -702,6 +702,7 @@
             <button type="button" class="seg-btn" data-on="off" onclick="selectShiftRotationEnabled(false)">关闭</button>
             <button type="button" class="seg-btn" data-on="on" onclick="selectShiftRotationEnabled(true)">开启</button>
           </div>
+          <div class="field-hint" id="shiftRotationToggleHint">开启后按添加的班次顺序循环计时，关闭则沿用上方的固定上下班时间</div>
         </div>
         <div class="field-group" id="shiftRotationStartGroup" style="grid-column:1/-1; display:none">
           <label>轮换起始日（第一轮第一天）</label>
@@ -783,7 +784,7 @@
         </div>
       </div>
     </div>
-    <div class="settings-card" id="allowanceCard">
+    <div class="settings-card">
       <h3>🎁 收入补贴</h3>
       <div class="desc">按月录入餐补、交通补、房补等，作为税前收入计入应发工资并参与个税测算</div>
       <div class="ledger-month-nav">
@@ -824,7 +825,7 @@
       <div class="allowance-total" id="allowanceTotal" style="display:none"></div>
       <div class="allowance-list" id="allowanceList"></div>
     </div>
-    <div class="settings-card" id="commuteCard">
+    <div class="settings-card">
       <h3>🚌 通勤时间</h3>
       <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
       <div class="settings-grid">
@@ -859,7 +860,7 @@
         </div>
       </div>
     </div>
-    <div class="settings-card" id="jobHistoryCard">
+    <div class="settings-card">
       <h3>🗂️ 历史工作</h3>
       <div class="desc">记录跳槽前的工作，生命消耗大盘、时薪波动曲线与收入统计会自动按工作经历分段计算</div>
       <div class="job-actions">
@@ -868,7 +869,7 @@
       </div>
       <div class="job-list" id="jobHistoryList"></div>
     </div>
-    <div class="settings-card" id="foreignCard">
+    <div class="settings-card">
       <h3>💱 外币显示</h3>
       <div class="desc">开启后，计时页会在人民币金额下附加所选外币的换算金额</div>
       <div class="settings-grid">
