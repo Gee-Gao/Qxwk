@@ -106,6 +106,7 @@ let recurringDraft = null;          // 周期模板表单草稿
 let cityPickerFor = 'metro';        // 城市选择器用途：metro 地铁规则 / bus 公交折扣
 let ledgerPricingRules = [];        // 预置城市折扣规则（只读）
 const LEDGER_RECURRING_KEY = 'qianxwk_ledger_recurring';
+const LEDGER_TRANSIT_KEY = 'qianxwk_ledger_transit'; // 手动记账上次使用的交通计费方式与城市
 
 // ============ 请假 ============
 // 请假记录与加班独立存储：「调休」只作为请假类型之一，不抵扣加班换来的调休时长
@@ -5070,6 +5071,25 @@ function saveLedgerRecurring() {
   localStorage.setItem(LEDGER_RECURRING_KEY, JSON.stringify(ledgerRecurring));
 }
 
+// 手动记账的交通计费偏好：记住上次的计费方式与地铁规则 / 公交城市
+function loadLedgerTransitDefaults() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LEDGER_TRANSIT_KEY)) || {};
+    return {
+      mode: saved.mode === 'metro' || saved.mode === 'bus' ? saved.mode : 'normal',
+      metroId: typeof saved.metroId === 'string' ? saved.metroId : '',
+      busId: typeof saved.busId === 'string' ? saved.busId : ''
+    };
+  } catch (e) {
+    return { mode: 'normal', metroId: '', busId: '' };
+  }
+}
+
+function saveLedgerTransitDefaults(patch) {
+  const next = Object.assign(loadLedgerTransitDefaults(), patch || {});
+  try { localStorage.setItem(LEDGER_TRANSIT_KEY, JSON.stringify(next)); } catch (e) { /* 写入失败不影响使用 */ }
+}
+
 function clonePricingPresets() {
   return LEDGER_PRICING_PRESETS.map(rule => ({
     ...rule,
@@ -5590,6 +5610,28 @@ function ledgerStatsRecords(year, month, isYear) {
   });
 }
 
+// 手动记的交通：用了地铁 / 公交计费就视为通勤，统计时并入对应的周期通勤行
+function ledgerRecurringCommuteTarget(record) {
+  const templates = ledgerRecurring.filter(t => t && (t.mode === 'metro' || t.mode === 'bus'));
+  if (!templates.length) return null;
+  const mode = record.transitMode || (record.pricingId ? 'metro' : 'bus');
+  const candidates = templates.filter(t => t.mode === mode);
+  const matched = candidates.find(t => mode === 'metro'
+    ? (record.pricingId && t.pricingId === record.pricingId)
+    : (record.busCityId && t.busCityId === record.busCityId));
+  const target = matched || (candidates.length === 1 ? candidates[0] : null);
+  return target ? { name: recurringDisplayName(target), icon: recurringDisplayIcon(target) } : null;
+}
+
+// 图表统计归类：仅手动记录参与合并，周期生成的记录沿用自身名称
+function ledgerStatsCategory(record) {
+  const isManualTransit = record && record.categoryId === 'transport' && !record.sourceId
+    && (record.pricingId || Number(record.baseAmount) > 0);
+  const target = isManualTransit ? ledgerRecurringCommuteTarget(record) : null;
+  if (target) return target;
+  return { name: record && record.name ? record.name : '其他', icon: (record && record.icon) || '📦' };
+}
+
 // 趋势图纵坐标：最大值、中值、0 三档
 function renderTrendYAxis(maxVal) {
   const yEl = document.getElementById('ledgerTrendYAxis');
@@ -5644,9 +5686,9 @@ function renderLedgerStats() {
   const catBox = document.getElementById('ledgerCategoryList');
   const catMap = {};
   records.forEach(r => {
-    const name = r.name || '其他';
-    if (!catMap[name]) catMap[name] = { name, icon: r.icon || '📦', total: 0 };
-    catMap[name].total += Number(r.amount) || 0;
+    const cat = ledgerStatsCategory(r);
+    if (!catMap[cat.name]) catMap[cat.name] = { name: cat.name, icon: cat.icon, total: 0 };
+    catMap[cat.name].total += Number(r.amount) || 0;
   });
   const cats = Object.values(catMap).sort((a, b) => b.total - a.total);
   catBox.innerHTML = cats.length ? cats.map(c => {
@@ -5709,9 +5751,12 @@ function renderLedgerStats() {
   }
   const maxRecord = records.reduce((a, b) => (Number(b.amount) || 0) > (Number(a.amount) || 0) ? b : a);
   const catCounts = {};
-  records.forEach(r => { const name = r.name || '其他'; catCounts[name] = (catCounts[name] || 0) + 1; });
+  records.forEach(r => {
+    const name = ledgerStatsCategory(r).name;
+    catCounts[name] = (catCounts[name] || 0) + 1;
+  });
   const topCatName = Object.keys(catCounts).sort((a, b) => catCounts[b] - catCounts[a])[0];
-  const topCatIcon = (records.find(r => (r.name || '其他') === topCatName) || {}).icon || '📦';
+  const topCatIcon = (records.map(ledgerStatsCategory).find(c => c.name === topCatName) || {}).icon || '📦';
   const freeDays = daysInScope - daysWithRecords;
   topBox.innerHTML = `
     <div class="ledger-top-row">
@@ -5859,9 +5904,11 @@ function openLedgerModal(dateKey) {
   ledgerEditingId = null;
   ledgerDate = dateKey;
   ledgerViewDate = dateKey;
-  ledgerPricingMode = 'normal';
-  ledgerManualRuleId = '';
-  ledgerManualCityId = '';
+  // 新建记录时带出上次使用的交通计费方式与城市
+  const transitDefaults = loadLedgerTransitDefaults();
+  ledgerPricingMode = transitDefaults.mode;
+  ledgerManualRuleId = transitDefaults.metroId;
+  ledgerManualCityId = transitDefaults.busId;
   const cats = getLedgerCategories();
   if (!cats.some(c => c.id === ledgerSelectedCategory)) {
     ledgerSelectedCategory = cats[0] ? cats[0].id : '';
@@ -5897,10 +5944,20 @@ function openLedgerEditModal(recordId) {
     const byName = cats.find(c => c.name === record.name);
     ledgerSelectedCategory = byName ? byName.id : (cats[0] ? cats[0].id : '');
   }
+  // 回填原有的地铁 / 公交计费方式，编辑时仍可查看与修改
+  ledgerPricingMode = record.transitMode
+    || (record.pricingId ? 'metro' : (Number(record.baseAmount) > 0 ? 'bus' : 'normal'));
+  ledgerManualRuleId = record.pricingId || '';
+  ledgerManualCityId = record.busCityId || '';
+  if (!ledgerManualCityId && record.sourceId) {
+    const template = ledgerRecurring.find(t => t.id === record.sourceId);
+    if (template && template.busCityId) ledgerManualCityId = template.busCityId;
+  }
   const title = document.getElementById('ledgerModalTitle');
   if (title) title.textContent = '修改记录 · ' + ledgerDateLabel(record.date);
   document.getElementById('ledgerSubmitBtn').textContent = '保存修改';
-  document.getElementById('ledgerAmount').value = record.amount;
+  // 地铁 / 公交记录金额栏展示原价，便于继续按规则重算
+  document.getElementById('ledgerAmount').value = Number(record.baseAmount) > 0 ? record.baseAmount : record.amount;
   document.getElementById('ledgerNote').value = record.note || '';
   closeLedgerCustomForm();
   renderLedgerCategories();
@@ -5956,10 +6013,9 @@ function renderLedgerCategories() {
 function renderLedgerPricingBlock() {
   const block = document.getElementById('ledgerPricingBlock');
   if (!block) return;
-  const active = ledgerSelectedCategory === 'transport' && !ledgerEditingId;
+  const active = ledgerSelectedCategory === 'transport';
   block.style.display = active ? '' : 'none';
   if (!active) {
-    ledgerPricingMode = 'normal';
     const amountInput = document.getElementById('ledgerAmount');
     if (amountInput) amountInput.placeholder = '0.00';
     return;
@@ -6000,6 +6056,7 @@ function renderLedgerPricingBlock() {
 
 function selectLedgerPricingMode(mode) {
   ledgerPricingMode = mode === 'metro' || mode === 'bus' ? mode : 'normal';
+  saveLedgerTransitDefaults({ mode: ledgerPricingMode });
   renderLedgerPricingBlock();
   updateLedgerWorkPreview();
 }
@@ -6099,20 +6156,43 @@ function submitLedgerRecord() {
         categoryId: cat.id,
         name: catChanged || !prev.name ? cat.name : prev.name,
         icon: catChanged || !prev.icon ? cat.icon : prev.icon,
-        amount: rounded,
         note
       };
-      if (cat.id !== 'transport') {
+      const manualMode = cat.id === 'transport' ? ledgerPricingMode : 'normal';
+      if (manualMode === 'metro') {
+        // 地铁金额按原价保存，折后金额由定价规则按整月累计重算
+        next.baseAmount = rounded;
+        next.discountRate = 1;
+        next.transitMode = 'metro';
+        delete next.manualAmount;
+        delete next.busCityId;
+        const rule = pricingRuleById(ledgerManualRuleId);
+        if (rule) next.pricingId = rule.id;
+        else delete next.pricingId;
+        next.amount = rounded;
+      } else if (manualMode === 'bus') {
+        const city = pricingRuleById(ledgerManualCityId);
+        const rate = city ? busRateOf(city) : 1;
+        next.baseAmount = rounded;
+        next.discountRate = rate;
+        next.transitMode = 'bus';
+        next.amount = roundLedgerMoney(rounded * rate);
+        delete next.pricingId;
+        delete next.manualAmount;
+        if (city) next.busCityId = city.id;
+        else delete next.busCityId;
+      } else {
+        next.amount = rounded;
         delete next.pricingId;
         delete next.baseAmount;
         delete next.discountRate;
         delete next.manualAmount;
-      } else if ((prev.pricingId || Number(prev.baseAmount) > 0) && rounded !== Number(prev.amount)) {
-        // 地铁 / 公交记录手动改金额后不再参与自动重算
-        next.manualAmount = true;
+        delete next.busCityId;
+        delete next.transitMode;
       }
       ledgerRecords[idx] = next;
-      if (prev.pricingId) recalcAllPricing();
+      // 记录进入 / 离开定价分组都会影响同组后续记录的累计折扣
+      if (cat.id === 'transport' || prev.pricingId || Number(prev.baseAmount) > 0) recalcAllPricing();
     }
     saveLedgerRecords();
     closeLedgerModal();
@@ -6136,6 +6216,7 @@ function submitLedgerRecord() {
   if (manualMode === 'metro') {
     record.baseAmount = rounded;
     record.discountRate = 1;
+    record.transitMode = 'metro';
     const rule = pricingRuleById(ledgerManualRuleId);
     if (rule) record.pricingId = rule.id;
   } else if (manualMode === 'bus') {
@@ -6143,7 +6224,9 @@ function submitLedgerRecord() {
     const rate = city ? busRateOf(city) : 1;
     record.baseAmount = rounded;
     record.discountRate = rate;
+    record.transitMode = 'bus';
     record.amount = roundLedgerMoney(rounded * rate);
+    if (city) record.busCityId = city.id;
   }
   ledgerRecords.push(record);
   if (record.pricingId) recalcAllPricing();
@@ -6181,7 +6264,8 @@ function updateLedgerWorkPreview() {
   if (!box || !input) return;
   const amount = parseFloat(input.value);
   // 地铁 / 公交手动计费展示折后金额由提交后计算，这里不按原价折算工作日
-  if (ledgerPricingMode !== 'normal' || !(amount > 0)) {
+  const isTransit = ledgerSelectedCategory === 'transport' && ledgerPricingMode !== 'normal';
+  if (isTransit || !(amount > 0)) {
     box.classList.remove('show');
     box.innerHTML = '';
     return;
@@ -6690,8 +6774,13 @@ function renderCityPickerList(query) {
 
 function selectCityRule(id) {
   if (cityPickerTarget === 'ledger') {
-    if (cityPickerFor === 'bus') ledgerManualCityId = id || '';
-    else ledgerManualRuleId = id || '';
+    if (cityPickerFor === 'bus') {
+      ledgerManualCityId = id || '';
+      saveLedgerTransitDefaults({ mode: 'bus', busId: ledgerManualCityId });
+    } else {
+      ledgerManualRuleId = id || '';
+      saveLedgerTransitDefaults({ mode: 'metro', metroId: ledgerManualRuleId });
+    }
     closeCityPicker();
     renderLedgerPricingBlock();
     updateLedgerWorkPreview();
