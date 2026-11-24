@@ -5847,7 +5847,12 @@ function renderLedgerSummary() {
   const timeEl = document.getElementById('ledgerMonthTime');
   const countEl = document.getElementById('ledgerMonthCount');
   if (totalEl) totalEl.textContent = formatMoney(total);
-  if (timeEl) timeEl.textContent = formatLedgerWork(ledgerWorkSeconds(total));
+  if (timeEl) {
+    const seconds = ledgerWorkSeconds(total);
+    // 取不到时薪时直接给出提示，避免只显示一个「—」
+    timeEl.textContent = seconds === null ? '未设置时薪' : formatLedgerWork(seconds);
+    timeEl.title = seconds === null ? '请先在「设置」里填好薪资，才能折算工作日' : '';
+  }
   if (countEl) countEl.textContent = records.length + ' 笔';
 }
 
@@ -5865,22 +5870,26 @@ function renderLedgerRecordList() {
   box.innerHTML = records.map(r => {
     const note = r.note ? ' · ' + escapeLedgerText(r.note) : '';
     const badge = r.sourceId ? '<span class="ledger-record-badge">周期</span>' : '';
-    const metaParts = [];
+    let baseMeta = '';
     if (Number(r.baseAmount) > 0) {
       if (r.manualAmount) {
-        metaParts.push(`原价 ${formatMoney(r.baseAmount)} · 手动调整`);
+        baseMeta = `原价 ${formatMoney(r.baseAmount)} · 手动调整`;
       } else if (Number(r.discountRate) > 0 && Number(r.discountRate) < 1) {
-        metaParts.push(`原价 ${formatMoney(r.baseAmount)} · ${Math.round(Number(r.discountRate) * 10)}折`);
+        baseMeta = `原价 ${formatMoney(r.baseAmount)} · ${Math.round(Number(r.discountRate) * 10)}折`;
       } else {
-        metaParts.push(`原价 ${formatMoney(r.baseAmount)}`);
+        baseMeta = `原价 ${formatMoney(r.baseAmount)}`;
       }
     }
-    metaParts.push(`折算工作日 ${formatLedgerWork(ledgerWorkSeconds(r.amount))}`);
+    const workSeconds = ledgerWorkSeconds(r.amount);
+    const workMeta = workSeconds === null
+      ? '折算工作日 —（未设置时薪）'
+      : `折算工作日 ${formatLedgerWork(workSeconds)}`;
     return `<div class="ledger-record" role="button" tabindex="0" onclick="openLedgerEditModal('${r.id}')">
       <span class="ledger-record-icon">${escapeLedgerText(r.icon || '📦')}</span>
       <span class="ledger-record-info">
         <span class="ledger-record-name">${escapeLedgerText(r.name)}${badge}${note}</span>
-        <span class="ledger-record-meta">${metaParts.join(' · ')}</span>
+        ${baseMeta ? `<span class="ledger-record-meta">${baseMeta}</span>` : ''}
+        <span class="ledger-record-meta">${workMeta}</span>
       </span>
       <span class="ledger-record-amount">${formatMoney(Number(r.amount) || 0)}</span>
       <button type="button" class="ledger-del" title="删除" onclick="event.stopPropagation(); deleteLedgerRecord('${r.id}')">×</button>
@@ -6025,7 +6034,7 @@ function renderLedgerStats() {
   document.getElementById('ledgerStatsTitle').textContent = isYear ? '年度支出' : '本月支出';
   totalEl.textContent = formatMoney(total);
   document.getElementById('ledgerStatsTime').textContent = seconds === null
-    ? '按当前时薪折算：先在「设置」里填好月薪'
+    ? '按当前时薪折算：先在「设置」里填好薪资'
     : `折算工作日 ${formatLedgerWork(seconds)} · 按当前时薪折算`;
   document.getElementById('ledgerStatsSalaryLabel').textContent = isYear ? '累计已赚' : '本月已赚';
   document.getElementById('ledgerStatsSalary').textContent = formatMoney(salary);
@@ -6644,7 +6653,7 @@ function updateLedgerWorkPreview() {
   const seconds = ledgerWorkSeconds(amount);
   box.classList.add('show');
   if (seconds === null) {
-    box.innerHTML = '<span>先在「设置」里填好月薪，就能看到这笔钱折算成多少个工作日</span>';
+    box.innerHTML = '<span>先在「设置」里填好薪资，就能看到这笔钱折算成多少个工作日</span>';
     return;
   }
   box.innerHTML = `<span>这笔钱折算工作日 <strong>${formatLedgerWork(seconds)}</strong></span>
@@ -8018,7 +8027,7 @@ function drawShareCard() {
     ledger: {
       title: '记账', note: `覆盖 ${data.ledgerDays} 天`, cols: [
         { label: '本月支出', value: data.spendMonth, sub: `日均 ${data.spendAvg}` },
-        { label: '折算工作日', value: data.spendWork, sub: '按时薪折算', color: '#fff' },
+        { label: '折算工作日', value: data.spendWork, sub: data.spendWork === '—' ? '未设置时薪' : '按时薪折算', color: '#fff' },
         { label: '今日支出', value: data.spendToday, sub: `本月 ${data.ledgerCount} 笔` }
       ]
     },

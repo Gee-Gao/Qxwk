@@ -1559,14 +1559,15 @@ body {
 }
 .ledger-record:hover { border-color: #3a3a3a; }
 .ledger-record-icon { width: 24px; font-size: 18px; text-align: center; }
-.ledger-record-info { flex: 1; min-width: 0; }
+.ledger-record-info { display: block; flex: 1; min-width: 0; }
 .ledger-record-name {
+  display: block;
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ledger-record-meta { font-size: 11px; color: #777; margin-top: 2px; }
+.ledger-record-meta { display: block; font-size: 11px; color: #777; margin-top: 2px; }
 .ledger-record-amount {
   font-size: 14px;
   font-weight: 700;
