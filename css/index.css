@@ -710,9 +710,15 @@ body {
   font-size: 12px;
   color: var(--text-dim);
 }
-/* 补贴列表：金额与删除按钮随两行文案轻微下移，视觉上更居中 */
-.allowance-item .overtime-amount { transform: translateY(2px); }
-.allowance-item .overtime-del { top: calc(50% + 2px); }
+/* 补贴列表：金额与删除按钮作为普通 flex 子项居中，并整体轻微下移更贴合两行文案 */
+.allowance-item { padding-right: 0; }
+.allowance-item .overtime-amount { order: 3; transform: translateY(8px); }
+.allowance-item .overtime-del {
+  position: static;
+  order: 4;
+  flex: none;
+  transform: translateY(8px);
+}
 .allowance-stop {
   margin-left: 6px;
   padding: 0;
@@ -2147,6 +2153,205 @@ body {
   text-align: center;
   line-height: 1.6;
   padding: 14px 0 4px;
+}
+
+/* 成就墙：已解锁用荧光绿高亮，未解锁降透明度并把图标置灰 */
+.achieve-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.achieve-item {
+  position: relative;
+  background: #222;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 12px 10px;
+  min-width: 0;
+}
+.achieve-item.done {
+  border-color: #46520f;
+  background: rgba(200, 255, 0, .06);
+}
+.achieve-item.done::after {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+/* 可升级成就：右上角显示等级，替代普通成就的勾选标记 */
+.achieve-item.has-level::after {
+  content: none;
+}
+.achieve-level {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--accent);
+  background: rgba(200, 255, 0, .12);
+  border: 1px solid #46520f;
+  border-radius: 999px;
+  padding: 0 6px;
+}
+/* 升级瞬间的发光脉冲 */
+.achieve-item.level-up {
+  animation: achieveLevelUp .9s ease;
+}
+@keyframes achieveLevelUp {
+  0% { box-shadow: 0 0 0 rgba(200, 255, 0, 0); transform: scale(1); }
+  35% {
+    box-shadow: 0 0 0 2px rgba(200, 255, 0, .55), 0 0 24px rgba(200, 255, 0, .35);
+    transform: scale(1.03);
+  }
+  100% { box-shadow: 0 0 0 rgba(200, 255, 0, 0); transform: scale(1); }
+}
+.achieve-item.locked {
+  opacity: .55;
+}
+.achieve-item.locked .achieve-icon {
+  filter: grayscale(1);
+}
+.achieve-icon {
+  font-size: 22px;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.achieve-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.achieve-item.done .achieve-title {
+  color: var(--accent);
+}
+.achieve-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  word-break: break-all;
+}
+.achieve-note {
+  font-size: 11px;
+  color: var(--accent-dim);
+  margin-top: 5px;
+  line-height: 1.5;
+  white-space: normal;
+  font-variant-numeric: tabular-nums;
+}
+.achieve-item.locked .achieve-note {
+  color: #777;
+}
+.achieve-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: #333;
+  overflow: hidden;
+  margin-top: 7px;
+}
+.achieve-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width .3s ease;
+}
+/* 成就可点击查看详情 */
+.achieve-item {
+  cursor: pointer;
+  transition: border-color .2s, transform .15s;
+}
+.achieve-item:active {
+  transform: scale(.98);
+}
+/* 成就详情弹窗 */
+.modal.achieve-modal {
+  max-width: 380px;
+}
+.achieve-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.achieve-detail-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+.achieve-detail-level {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.achieve-detail-level.locked {
+  color: #777;
+}
+.achieve-detail-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.achieve-detail-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.achieve-level-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.achieve-level-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #777;
+  background: #222;
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+.achieve-level-row.done {
+  color: var(--text);
+  background: rgba(200, 255, 0, .06);
+}
+.achieve-level-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #444;
+  flex: 0 0 auto;
+}
+.achieve-level-row.done .achieve-level-dot {
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(200, 255, 0, .5);
+}
+.achieve-level-name {
+  flex: 1;
+  font-weight: 600;
+}
+.achieve-level-goal {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.achieve-level-row.done .achieve-level-goal {
+  color: var(--accent-dim);
+}
+.achieve-detail-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 8px;
 }
 
 /* 反向计算器 */

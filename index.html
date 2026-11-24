@@ -222,6 +222,12 @@
           </div>
         </div>
       </div>
+
+      <div class="stats-card" id="achieveCard">
+        <h3>🏅 成就墙</h3>
+        <div class="desc" id="achieveDesc">打工路上的小里程碑，解锁后会一直留在这里</div>
+        <div class="achieve-grid" id="achieveGrid"></div>
+      </div>
     </div>
 
     <!-- 算一算 -->
@@ -975,6 +981,14 @@
         <button type="button" class="ledger-month-btn" onclick="shiftCustomPickerYear(1)" aria-label="下一年">›</button>
       </div>
       <div class="month-picker-grid" id="customPickerMonths"></div>
+    </div>
+  </div>
+
+  <!-- 成就详情弹窗 -->
+  <div class="modal-overlay" id="achieveDetailModal" onclick="if(event.target===this) closeAchieveDetail()">
+    <div class="modal achieve-modal">
+      <h3><span id="achieveDetailTitle">成就详情</span> <button class="close" onclick="closeAchieveDetail()">×</button></h3>
+      <div id="achieveDetailBody"></div>
     </div>
   </div>
 

@@ -384,6 +384,7 @@ function invalidateJobCaches() {
   jobPayCache = new Map();
   tierCumCache = new Map();
   hourlyTrendSig = '';
+  achieveSig = '';
 }
 
 function selectWorkDayMode(mode, openPicker) {
@@ -3198,6 +3199,7 @@ function updateStats() {
 
   // 生命消耗大盘 & 反向计算器
   updateLifePanel();
+  renderAchievements();
   updateCalculator();
   renderHourlyTrend();
 
@@ -4683,6 +4685,382 @@ function updateLifePanel() {
     </div>
     ${note}
   `;
+}
+
+// ============ 成就墙 ============
+// 成就全部由已有数据实时推导，无需单独存储；统计页每秒刷新，
+// 先用签名比对数据是否变化，未变化时跳过重算与重绘
+let achieveSig = '';
+
+// 已解锁的成就等级：只用于判断是否发生「升级」，从而播放升级动画与提示
+const ACHIEVE_LEVEL_KEY = 'qianxwk_achieve_levels';
+
+function loadAchieveLevels() {
+  try {
+    return JSON.parse(localStorage.getItem(ACHIEVE_LEVEL_KEY)) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveAchieveLevels(map) {
+  try {
+    localStorage.setItem(ACHIEVE_LEVEL_KEY, JSON.stringify(map));
+  } catch (e) { /* 写入失败不影响使用 */ }
+}
+
+// 最早一次入职日期（含当前工作与历史工作）
+function getEarliestHireDate() {
+  let earliest = null;
+  getAllJobs().forEach(job => {
+    const hire = parseDateKey(job.hireDate || '');
+    if (hire && (!earliest || hire < earliest)) earliest = hire;
+  });
+  return earliest;
+}
+
+// 某段工作的在职天数：历史工作算到离职日，当前工作算到今天
+function jobTenureDays(job) {
+  const hire = parseDateKey(job.hireDate || '');
+  if (!hire) return 0;
+  const now = new Date();
+  let end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (job !== settings) {
+    const jobEnd = parseDateKey(job.endDate || '');
+    if (jobEnd && jobEnd < end) end = jobEnd;
+  }
+  return Math.max(0, Math.floor((end - hire) / 86400000) + 1);
+}
+
+// 干得最久的那份工作
+function getLongestJob() {
+  let best = null;
+  getAllJobs().forEach(job => {
+    const days = jobTenureDays(job);
+    if (!best || days > best.days) best = { job, days };
+  });
+  return best && best.days > 0 ? best : null;
+}
+
+function achievementJobName(job) {
+  if (!job) return '';
+  if (job === settings) return settings.companyName || '当前工作';
+  return job.name || '一段工作';
+}
+
+// 成就签名：只有会改变成就结果的数据变化时才重算
+function achievementSignature() {
+  return JSON.stringify([
+    fmtDateKey(new Date()),
+    getAllJobs().map(job => [job.id || 'current', job.hireDate || '', job.endDate || '', job.companyName || '', job.name || '']),
+    overtimeRecords.map(r => [r.date || '', r.amount, r.unit]),
+    paidLeaveSessions.map(s => [s.start, s.end]),
+    ledgerRecords.map(r => r && r.date ? String(r.date).slice(0, 10) : '')
+  ]);
+}
+
+// 成就进度数字：天数取整，小时保留 1 位
+function fmtAchieveNum(n) {
+  const v = Math.round(n * 10) / 10;
+  return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(1);
+}
+
+function getAchievements() {
+  const stats = getLifeStats('all');
+  const workDays = stats.workDays;
+  const earliest = getEarliestHireDate();
+  const longest = getLongestJob();
+  const jobsWithHire = getAllJobs().filter(job => parseDateKey(job.hireDate || '')).length;
+
+  let overtimeTotal = 0;
+  overtimeRecords.forEach(r => { overtimeTotal += overtimeHours(r); });
+  let paidLeaveHours = 0;
+  paidLeaveSessions.forEach(s => {
+    paidLeaveHours += Math.max(0, ((s.end || 0) - (s.start || 0)) / 3600000);
+  });
+  // 有记账记录的天数：按自然日去重
+  const ledgerDays = new Set(
+    ledgerRecords.map(r => (r && r.date ? String(r.date).slice(0, 10) : '')).filter(Boolean)
+  ).size;
+
+  let firstDays = 0;
+  if (earliest) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    firstDays = Math.max(1, Math.floor((today - earliest) / 86400000) + 1);
+  }
+
+  return [
+    {
+      id: 'firstjob',
+      icon: '🌱',
+      title: '第一次上班',
+      desc: '从最早一份工作的入职日期算起，记录你正式下海打工的那一天，历史工作也会一起比较。',
+      done: !!earliest,
+      meta: earliest ? `入职于 ${formatDateSlash(fmtDateKey(earliest))}` : '填上入职日期即可解锁',
+      note: earliest ? `距今 ${firstDays.toLocaleString()} 天` : ''
+    },
+    {
+      id: 'longest',
+      icon: '👑',
+      title: '干得最久的工作',
+      desc: '自动找出在职时间最长的一段工作：历史工作算到离职日，当前工作算到今天。',
+      done: !!longest,
+      meta: longest ? achievementJobName(longest.job) : '还没有可统计的工作经历',
+      note: longest ? `${longest.days.toLocaleString()} 天` : ''
+    },
+    {
+      id: 'workdays',
+      icon: '🎯',
+      title: '打工天数',
+      desc: '按工作日历逐日累计打工天数，历史工作也算在内，从 100 天起共分五级。',
+      cur: workDays,
+      unit: '天',
+      levels: [
+        { goal: 100, title: '打工新手', icon: '🎯' },
+        { goal: 365, title: '打工达人', icon: '🗓️' },
+        { goal: 1000, title: '打工宗师', icon: '🏅' },
+        { goal: 1825, title: '打工传说', icon: '🎖️' },
+        { goal: 3650, title: '打工之神', icon: '👑' }
+      ]
+    },
+    {
+      id: 'income',
+      icon: '💰',
+      title: '收入成长',
+      desc: '累计已赚工资（含历史工作，按当前工资口径估算），从 1 万元起共分五级。',
+      cur: stats.totalEarned / 10000,
+      unit: '万元',
+      levels: [
+        { goal: 1, title: '收入新手', icon: '💰' },
+        { goal: 10, title: '收入达人', icon: '💵' },
+        { goal: 50, title: '收入宗师', icon: '💎' },
+        { goal: 100, title: '收入传说', icon: '🏆' },
+        { goal: 500, title: '收入之神', icon: '👑' }
+      ]
+    },
+    {
+      id: 'overtime',
+      icon: '🌙',
+      title: '加班狂人',
+      desc: '所有加班记录折算成小时累计，给钱和调休都算，从 10 小时起共分五级。',
+      cur: overtimeTotal,
+      unit: '小时',
+      levels: [
+        { goal: 10, title: '加班新手', icon: '🌙' },
+        { goal: 100, title: '加班达人', icon: '🌙' },
+        { goal: 500, title: '加班宗师', icon: '🔥' },
+        { goal: 1000, title: '加班传说', icon: '⚡' },
+        { goal: 2000, title: '加班之神', icon: '👑' }
+      ]
+    },
+    {
+      id: 'paidleave',
+      icon: '🐟',
+      title: '摸鱼大师',
+      desc: '带薪离席计时结束后累计时长，离开工位的时间也在赚钱，从 1 小时起共分五级。',
+      cur: paidLeaveHours,
+      unit: '小时',
+      levels: [
+        { goal: 1, title: '摸鱼新手', icon: '🐟' },
+        { goal: 8, title: '摸鱼达人', icon: '🐟' },
+        { goal: 40, title: '摸鱼宗师', icon: '🐳' },
+        { goal: 80, title: '摸鱼传说', icon: '🐋' },
+        { goal: 160, title: '摸鱼之神', icon: '👑' }
+      ]
+    },
+    {
+      id: 'ledger',
+      icon: '🧾',
+      title: '记账达人',
+      desc: '有记账记录的天数，按自然日去重统计，从 7 天起共分五级。',
+      cur: ledgerDays,
+      unit: '天',
+      levels: [
+        { goal: 7, title: '记账新手', icon: '🧾' },
+        { goal: 30, title: '记账达人', icon: '📒' },
+        { goal: 100, title: '记账宗师', icon: '📚' },
+        { goal: 365, title: '记账传说', icon: '🏆' },
+        { goal: 1000, title: '记账之神', icon: '👑' }
+      ]
+    },
+    {
+      id: 'jumps',
+      icon: '🏢',
+      title: '跳槽达人',
+      desc: '按填了入职日期的工作经历段数计算，当前工作与历史工作都算一段，从 2 段起共分五级。',
+      cur: jobsWithHire,
+      unit: '段工作经历',
+      levels: [
+        { goal: 2, title: '跳槽新手', icon: '🚪' },
+        { goal: 3, title: '跳槽达人', icon: '🏢' },
+        { goal: 5, title: '跳槽宗师', icon: '🏙️' },
+        { goal: 8, title: '跳槽传说', icon: '🌆' },
+        { goal: 12, title: '跳槽之神', icon: '👑' }
+      ]
+    }
+  ];
+}
+
+function renderAchievements() {
+  const grid = document.getElementById('achieveGrid');
+  if (!grid) return;
+  const sig = achievementSignature();
+  if (sig === achieveSig) return;
+  achieveSig = sig;
+
+  const list = getAchievements();
+  // 已点亮的成就排在前面，未解锁的保持原有顺序排在后面
+  const isUnlocked = a => (Array.isArray(a.levels) && a.levels.length)
+    ? a.levels.some(lv => a.cur >= lv.goal)
+    : !!a.done;
+  list.sort((x, y) => (isUnlocked(y) ? 1 : 0) - (isUnlocked(x) ? 1 : 0));
+  const stored = loadAchieveLevels();
+  const levelUps = [];
+  let storedChanged = false;
+  let unlocked = 0;
+
+  const tiles = list.map(a => {
+    let done = !!a.done;
+    let icon = a.icon;
+    let title = a.title;
+    let meta = a.meta || '';
+    let footer = '';
+    let level = 0;
+    let isLevelUp = false;
+    const hasLevel = Array.isArray(a.levels) && a.levels.length > 0;
+
+    if (hasLevel) {
+      // 按累计值依次升级：100 天 → 365 天 → 1000 天
+      a.levels.forEach((lv, i) => { if (a.cur >= lv.goal) level = i + 1; });
+      done = level > 0;
+      const maxed = level >= a.levels.length;
+      const next = maxed ? null : a.levels[level];
+      const prevGoal = level > 0 ? a.levels[level - 1].goal : 0;
+      // 列表名称与详情保持一致：显示当前等级名，未解锁时显示第一级名称
+      title = done ? a.levels[level - 1].title : a.levels[0].title;
+      icon = done ? a.levels[level - 1].icon : a.levels[0].icon;
+      meta = `累计 ${fmtAchieveNum(a.cur)} ${a.unit}`;
+
+      if (next) {
+        const span = Math.max(1, next.goal - prevGoal);
+        const pct = Math.min(100, Math.max(0, (a.cur - prevGoal) / span * 100));
+        footer = `<div class="achieve-progress"><div class="achieve-progress-fill" style="width:${pct.toFixed(1)}%"></div></div>`
+          + `<div class="achieve-note">${fmtAchieveNum(a.cur)} / ${fmtAchieveNum(next.goal)} ${a.unit}<br>距升级还差 ${fmtAchieveNum(Math.max(0, next.goal - a.cur))} ${a.unit}</div>`;
+      } else {
+        footer = `<div class="achieve-progress"><div class="achieve-progress-fill" style="width:100%"></div></div>`
+          + `<div class="achieve-note">${fmtAchieveNum(a.cur)} ${a.unit} · 已满级</div>`;
+      }
+
+      // 首次记录等级不播放动画，之后真正升级时才播放并提示
+      const known = Object.prototype.hasOwnProperty.call(stored, a.id);
+      if (known && level > stored[a.id]) {
+        levelUps.push(a.levels[level - 1].title);
+        isLevelUp = true;
+      }
+      if (!known || stored[a.id] !== level) {
+        stored[a.id] = level;
+        storedChanged = true;
+      }
+    } else if (typeof a.goal === 'number') {
+      const pct = a.goal > 0 ? Math.min(100, a.cur / a.goal * 100) : 0;
+      footer = `<div class="achieve-progress"><div class="achieve-progress-fill" style="width:${pct.toFixed(1)}%"></div></div>`
+        + `<div class="achieve-note">${fmtAchieveNum(a.cur)} / ${fmtAchieveNum(a.goal)} ${a.unit}</div>`;
+    } else if (a.note) {
+      footer = `<div class="achieve-note">${a.note}</div>`;
+    }
+
+    if (done) unlocked++;
+
+    return `<div class="achieve-item ${done ? 'done' : 'locked'}${hasLevel ? ' has-level' : ''}${isLevelUp ? ' level-up' : ''}"
+      role="button" tabindex="0" onclick="openAchieveDetail('${a.id}')">
+      ${hasLevel ? `<span class="achieve-level">Lv.${level}</span>` : ''}
+      <div class="achieve-icon">${icon}</div>
+      <div class="achieve-title">${title}</div>
+      <div class="achieve-meta">${escapeLedgerText(meta)}</div>
+      ${footer}
+    </div>`;
+  });
+
+  if (storedChanged) saveAchieveLevels(stored);
+
+  const desc = document.getElementById('achieveDesc');
+  if (desc) {
+    desc.textContent = `已解锁 ${unlocked} / ${list.length} · 打工路上的里程碑`;
+  }
+
+  grid.innerHTML = tiles.join('');
+
+  if (levelUps.length) showToast('成就升级：' + levelUps.join('、'));
+}
+
+// 点击成就查看详情：等级链、当前进度与达成条件
+function openAchieveDetail(id) {
+  const a = getAchievements().find(item => item.id === id);
+  const modal = document.getElementById('achieveDetailModal');
+  const titleEl = document.getElementById('achieveDetailTitle');
+  const body = document.getElementById('achieveDetailBody');
+  if (!a || !modal || !body) return;
+
+  let done = !!a.done;
+  let displayName = a.title;
+  let headIcon = a.icon;
+  let statusText = done ? '已解锁' : '未解锁';
+  let sub = a.meta || '';
+  let levelsHtml = '';
+  let progressHtml = '';
+
+  if (Array.isArray(a.levels) && a.levels.length) {
+    let level = 0;
+    a.levels.forEach((lv, i) => { if (a.cur >= lv.goal) level = i + 1; });
+    done = level > 0;
+    // 与列表保持一致：显示当前等级名，未解锁时显示第一级名称
+    displayName = done ? a.levels[level - 1].title : a.levels[0].title;
+    headIcon = done ? a.levels[level - 1].icon : a.levels[0].icon;
+    statusText = `Lv.${level}${done ? '' : ' · 未解锁'}`;
+    sub = `累计 ${fmtAchieveNum(a.cur)} ${a.unit}`;
+    levelsHtml = `<div class="achieve-level-list">${a.levels.map((lv, i) => `
+      <div class="achieve-level-row${i < level ? ' done' : ''}">
+        <span class="achieve-level-dot"></span>
+        <span class="achieve-level-name">Lv.${i + 1} ${lv.title}</span>
+        <span class="achieve-level-goal">${fmtAchieveNum(lv.goal)} ${a.unit}</span>
+      </div>`).join('')}</div>`;
+
+    if (level < a.levels.length) {
+      const next = a.levels[level];
+      const prevGoal = level > 0 ? a.levels[level - 1].goal : 0;
+      const span = Math.max(1, next.goal - prevGoal);
+      const pct = Math.min(100, Math.max(0, (a.cur - prevGoal) / span * 100));
+      progressHtml = `<div class="achieve-progress"><div class="achieve-progress-fill" style="width:${pct.toFixed(1)}%"></div></div>
+        <div class="achieve-detail-note">距离「${next.title}」还差 ${fmtAchieveNum(Math.max(0, next.goal - a.cur))} ${a.unit}</div>`;
+    } else {
+      progressHtml = `<div class="achieve-progress"><div class="achieve-progress-fill" style="width:100%"></div></div>
+        <div class="achieve-detail-note">已满级，无人能挡</div>`;
+    }
+  } else if (a.note) {
+    progressHtml = `<div class="achieve-detail-note">${escapeLedgerText(a.note)}</div>`;
+  }
+
+  if (titleEl) titleEl.textContent = displayName;
+
+  body.innerHTML = `
+    <div class="achieve-detail-head">
+      <div class="achieve-detail-icon">${headIcon}</div>
+      <div>
+        <div class="achieve-detail-level${done ? '' : ' locked'}">${statusText}</div>
+        <div class="achieve-detail-sub">${escapeLedgerText(sub)}</div>
+      </div>
+    </div>
+    <div class="achieve-detail-desc">${escapeLedgerText(a.desc || '')}</div>
+    ${levelsHtml}
+    ${progressHtml}
+  `;
+  modal.classList.add('show');
+}
+
+function closeAchieveDetail() {
+  const modal = document.getElementById('achieveDetailModal');
+  if (modal) modal.classList.remove('show');
 }
 
 // ============ 反向计算器 ============
