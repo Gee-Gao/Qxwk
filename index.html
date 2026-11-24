@@ -652,7 +652,7 @@
         </div>
         <div class="field-group">
           <label id="salaryInputLabel">税前月薪 (¥)</label>
-          <input type="number" id="monthlySalary" placeholder="3000" value="3000" oninput="updateProbationHint()">
+          <input type="number" id="monthlySalary" min="0.01" step="0.01" placeholder="3000" value="3000" oninput="updateProbationHint()">
         </div>
         <div class="field-group">
           <label>每月工作天数</label>
@@ -1100,7 +1100,7 @@
           </div>
           <div class="field-group">
             <label id="hjSalaryLabel">税前月薪 (¥)</label>
-            <input type="number" id="hjSalary" min="0" placeholder="例如：8000">
+            <input type="number" id="hjSalary" min="0.01" step="0.01" placeholder="例如：8000">
           </div>
           <div class="field-group">
             <label>每月工作天数</label>

@@ -1161,9 +1161,10 @@ function persistSettings() {
   job.calcMode = job.calcMode === 'hourly' ? 'hourly' : 'monthly';
   const salaryInputVal = num('monthlySalary', 0);
   if (job.calcMode === 'hourly') {
-    job.hourlyRate = Math.max(0, salaryInputVal);
+    // 时薪下限 0.01；留空视为未设置，保留「未设置时薪」提示
+    job.hourlyRate = salaryInputVal > 0 ? Math.max(0.01, salaryInputVal) : 0;
   } else {
-    job.monthlySalary = salaryInputVal > 0 ? salaryInputVal : DEFAULTS.monthlySalary;
+    job.monthlySalary = salaryInputVal > 0 ? Math.max(0.01, salaryInputVal) : DEFAULTS.monthlySalary;
   }
   settings.salaryMode = settings.salaryMode || DEFAULTS.salaryMode;
   job.socialBase = num('socialBase', 0);
@@ -1669,9 +1670,11 @@ function readJobHistoryModal() {
   job.hireDate = document.getElementById('hjHireDate').value || '';
   job.endDate = document.getElementById('hjEndDate').value || '';
   job.calcMode = jobModalCalcMode();
+  // 薪资下限 0.01（月薪 / 时薪同一输入框）
   const salaryVal = Math.max(0, num('hjSalary', 0));
-  if (job.calcMode === 'hourly') job.hourlyRate = salaryVal;
-  else job.monthlySalary = salaryVal;
+  const salaryFloor = salaryVal > 0 ? Math.max(0.01, salaryVal) : 0;
+  if (job.calcMode === 'hourly') job.hourlyRate = salaryFloor;
+  else job.monthlySalary = salaryFloor;
   job.workDayMode = jobModalWorkDayMode();
   job.workDaysPerMonth = Math.max(1, num('hjWorkDays', DEFAULTS.workDaysPerMonth));
   job.probationMonths = Math.max(0, num('hjProbationMonths', 0));
