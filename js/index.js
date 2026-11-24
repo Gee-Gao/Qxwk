@@ -7195,10 +7195,10 @@ const SHARE_MONO = '"SF Mono", "Consolas", monospace';
 let shareCardBlob = null;
 let shareCardUrl = '';
 // 分享内容勾选：默认全部展示，取消勾选后对应模块不进入分享图
-let shareSections = { countdown: true, salary: true, commute: true, overtime: true, ledger: true, life: true, year: true };
+let shareSections = { countdown: true, salary: true, commute: true, overtime: true, ledger: true, life: true, year: true, achieve: true };
 // 分享模块顺序：与勾选项一致，可长按拖动调整并保存在本地
 const SHARE_ORDER_KEY = 'qianxwk_share_order';
-const SHARE_SECTION_KEYS = ['countdown', 'salary', 'commute', 'overtime', 'ledger', 'life', 'year'];
+const SHARE_SECTION_KEYS = ['countdown', 'salary', 'commute', 'overtime', 'ledger', 'life', 'year', 'achieve'];
 let shareOrder = (() => {
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(SHARE_ORDER_KEY)) || []; } catch (e) { saved = []; }
@@ -7704,6 +7704,23 @@ function drawShareStatCard(ctx, x, y, w, h, title, note, cols) {
   });
 }
 
+// 分享图里的成就墙数据：沿用统计页成就口径，已解锁的排在前面
+function buildShareAchievements() {
+  const list = getAchievements().map(a => {
+    const hasLevel = Array.isArray(a.levels) && a.levels.length > 0;
+    let level = 0;
+    if (hasLevel) a.levels.forEach((lv, i) => { if (a.cur >= lv.goal) level = i + 1; });
+    return {
+      icon: hasLevel ? (level > 0 ? a.levels[level - 1].icon : a.levels[0].icon) : a.icon,
+      title: hasLevel ? (level > 0 ? a.levels[level - 1].title : a.levels[0].title) : a.title,
+      done: hasLevel ? level > 0 : !!a.done,
+      level
+    };
+  });
+  // 与统计页一致：已解锁在前，其余保持原有顺序
+  return list.sort((x, y) => (y.done ? 1 : 0) - (x.done ? 1 : 0));
+}
+
 // 分享图里的口径胶囊：green=true 荧光绿、false 对照紫
 function drawShareTaxTag(ctx, x, y, text, green) {
   const h = 38;
@@ -7822,6 +7839,12 @@ function drawShareCard() {
     : 182 + salaryCardH;
   const countdownLead = 40;
   const countdownBlockH = countdownLead + 124 + 50 + 66 + 76;
+  // 成就墙：已解锁在前，4 列宫格排布，与统计页成就墙的口径一致
+  const achieveList = sec.achieve ? buildShareAchievements() : [];
+  const achieveTileH = 146;
+  const achieveTileGap = 16;
+  const achieveRows = Math.max(1, Math.ceil(achieveList.length / 4));
+  const achieveBlockH = 78 + achieveRows * achieveTileH + (achieveRows - 1) * achieveTileGap + 28;
   const statCount = [sec.commute, sec.overtime, sec.ledger, sec.life, sec.year].filter(Boolean).length;
   const statGap = 22;
   const statH = statCount >= 5 ? 190 : (statCount === 4 ? 210 : 232);
@@ -7829,7 +7852,11 @@ function drawShareCard() {
   const visibleOrder = shareOrder.filter(key => sec[key]);
   const sectionHeight = key => key === 'countdown'
     ? countdownBlockH
-    : (key === 'salary' ? salaryBlockH + 76 : statH + statGap);
+    : key === 'salary'
+      ? salaryBlockH + 76
+      : key === 'achieve'
+        ? achieveBlockH + statGap
+        : statH + statGap;
   const contentBottom = 300 + visibleOrder.reduce((sum, key) => sum + sectionHeight(key), 0);
   const footerY = Math.max(1736, contentBottom + 30);
   // 页脚右侧放二维码，画布高度按二维码卡片预留
@@ -8056,11 +8083,82 @@ function drawShareCard() {
     }
   };
 
+  // 成就墙：标题 + 已解锁进度 + 4 列宫格（已解锁在前）
+  const achieveUnlocked = achieveList.filter(a => a.done).length;
+  const drawAchievementsBlock = y => {
+    shareRoundRect(ctx, pad, y, statW, achieveBlockH, 24);
+    ctx.fillStyle = '#171717';
+    ctx.fill();
+    ctx.strokeStyle = '#262626';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.font = `600 28px ${SHARE_FONT}`;
+    ctx.fillStyle = '#ddd';
+    ctx.fillText('成就墙', pad + 32, y + 52);
+    ctx.textAlign = 'right';
+    ctx.font = `400 22px ${SHARE_FONT}`;
+    ctx.fillStyle = '#777';
+    ctx.fillText(`已解锁 ${achieveUnlocked} / ${achieveList.length}`, pad + statW - 32, y + 52);
+
+    const inner = 32;
+    const tileW = (statW - inner * 2 - achieveTileGap * 3) / 4;
+    const top = y + 72;
+    achieveList.forEach((a, i) => {
+      const tx = pad + inner + (i % 4) * (tileW + achieveTileGap);
+      const ty = top + Math.floor(i / 4) * (achieveTileH + achieveTileGap);
+      const cx = tx + tileW / 2;
+      shareRoundRect(ctx, tx, ty, tileW, achieveTileH, 18);
+      // 点亮：荧光绿描边 + 更亮的底；未点亮：深底暗描边，整体压暗
+      ctx.fillStyle = a.done ? 'rgba(200, 255, 0, .13)' : '#101010';
+      ctx.fill();
+      ctx.strokeStyle = a.done ? 'rgba(200, 255, 0, .55)' : '#242424';
+      ctx.lineWidth = a.done ? 2.5 : 2;
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.globalAlpha = a.done ? 1 : .25;
+      ctx.font = `34px ${SHARE_FONT}`;
+      ctx.fillStyle = '#fff';
+      ctx.fillText(a.icon, cx, ty + 52);
+      ctx.globalAlpha = 1;
+
+      // 名称过长时逐字收窄，避免溢出格子
+      ctx.font = `600 22px ${SHARE_FONT}`;
+      ctx.fillStyle = a.done ? '#fff' : '#6f6f6f';
+      let name = a.title;
+      while (name.length > 1 && ctx.measureText(name).width > tileW - 18) name = name.slice(0, -1);
+      ctx.fillText(name, cx, ty + 96);
+
+      if (a.done) {
+        // 点亮状态用荧光绿实心胶囊，和未解锁的灰色小字形成明显对比
+        const label = a.level > 0 ? `Lv.${a.level}` : '已解锁';
+        ctx.font = `600 18px ${SHARE_FONT}`;
+        const pillW = ctx.measureText(label).width + 26;
+        const pillH = 28;
+        const pillY = ty + 108;
+        shareRoundRect(ctx, cx - pillW / 2, pillY, pillW, pillH, pillH / 2);
+        ctx.fillStyle = accent;
+        ctx.fill();
+        ctx.fillStyle = '#0f0f0f';
+        ctx.fillText(label, cx, pillY + 20);
+      } else {
+        ctx.font = `400 18px ${SHARE_FONT}`;
+        ctx.fillStyle = '#4a4a4a';
+        ctx.fillText('未解锁', cx, ty + 126);
+      }
+    });
+    ctx.textAlign = 'left';
+  };
+
   visibleOrder.forEach(key => {
     if (key === 'countdown') {
       drawCountdownBlock(cursor);
     } else if (key === 'salary') {
       drawSalaryBlock(cursor);
+    } else if (key === 'achieve') {
+      drawAchievementsBlock(cursor);
     } else if (statCards[key]) {
       drawShareStatCard(ctx, pad, cursor, statW, statH, statCards[key].title, statCards[key].note, statCards[key].cols);
     }
