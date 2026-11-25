@@ -4761,7 +4761,7 @@ function achievementSignature() {
     fmtDateKey(new Date()),
     getAllJobs().map(job => [job.id || 'current', job.hireDate || '', job.endDate || '', job.companyName || '', job.name || '']),
     overtimeRecords.map(r => [r.date || '', r.amount, r.unit]),
-    paidLeaveSessions.map(s => [s.start, s.end]),
+    leaveRecords.map(r => [r.id || '', r.date || '', r.amount, r.unit]),
     ledgerRecords.map(r => r && r.date ? String(r.date).slice(0, 10) : '')
   ]);
 }
@@ -4781,10 +4781,8 @@ function getAchievements() {
 
   // 加班次数：按加班记录条数累计
   const overtimeCount = overtimeRecords.length;
-  let paidLeaveHours = 0;
-  paidLeaveSessions.forEach(s => {
-    paidLeaveHours += Math.max(0, ((s.end || 0) - (s.start || 0)) / 3600000);
-  });
+  // 请假次数：按请假记录条数累计
+  const leaveCount = leaveRecords.length;
   // 有记账记录的天数：按自然日去重
   const ledgerDays = new Set(
     ledgerRecords.map(r => (r && r.date ? String(r.date).slice(0, 10) : '')).filter(Boolean)
@@ -4819,7 +4817,7 @@ function getAchievements() {
     {
       id: 'workdays',
       icon: '🎯',
-      title: '打工天数',
+      title: '打工新手',
       desc: '按工作日历逐日累计打工天数，历史工作也算在内，从 100 天起共分五级。',
       cur: workDays,
       unit: '天',
@@ -4834,7 +4832,7 @@ function getAchievements() {
     {
       id: 'income',
       icon: '💰',
-      title: '收入成长',
+      title: '收入新手',
       desc: '累计已赚工资（含历史工作，按当前工资口径估算），从 1 万元起共分五级。',
       cur: stats.totalEarned / 10000,
       unit: '万元',
@@ -4849,7 +4847,7 @@ function getAchievements() {
     {
       id: 'overtime',
       icon: '🌙',
-      title: '加班狂人',
+      title: '加班新手',
       desc: '按加班记录条数累计，给钱和调休都算，从 1 次起共分五级。',
       cur: overtimeCount,
       unit: '次',
@@ -4862,24 +4860,24 @@ function getAchievements() {
       ]
     },
     {
-      id: 'paidleave',
-      icon: '🐟',
-      title: '摸鱼大师',
-      desc: '带薪离席计时结束后累计时长，离开工位的时间也在赚钱，从 1 小时起共分五级。',
-      cur: paidLeaveHours,
-      unit: '小时',
+      id: 'leave',
+      icon: '🏖️',
+      title: '请假大师',
+      desc: '按请假记录条数累计，请假页记录的每次请假都算，从 1 次起共分五级。',
+      cur: leaveCount,
+      unit: '次',
       levels: [
-        { goal: 1, title: '摸鱼新手', icon: '🐟' },
-        { goal: 8, title: '摸鱼达人', icon: '🐟' },
-        { goal: 40, title: '摸鱼宗师', icon: '🐳' },
-        { goal: 80, title: '摸鱼传说', icon: '🐋' },
-        { goal: 160, title: '摸鱼之神', icon: '👑' }
+        { goal: 1, title: '请假新手', icon: '🏖️' },
+        { goal: 5, title: '请假达人', icon: '🏝️' },
+        { goal: 10, title: '请假宗师', icon: '🌴' },
+        { goal: 25, title: '请假传说', icon: '🛫' },
+        { goal: 50, title: '请假之神', icon: '👑' }
       ]
     },
     {
       id: 'ledger',
       icon: '🧾',
-      title: '记账达人',
+      title: '记账新手',
       desc: '有记账记录的天数，按自然日去重统计，从 7 天起共分五级。',
       cur: ledgerDays,
       unit: '天',
@@ -4894,7 +4892,7 @@ function getAchievements() {
     {
       id: 'jumps',
       icon: '🏢',
-      title: '跳槽达人',
+      title: '跳槽新手',
       desc: '按填了入职日期的工作经历段数计算，当前工作与历史工作都算一段，从 2 段起共分五级。',
       cur: jobsWithHire,
       unit: '段工作经历',
