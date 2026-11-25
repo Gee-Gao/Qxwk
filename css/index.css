@@ -1577,6 +1577,8 @@ body {
   transition: border-color .15s;
 }
 .ledger-record:hover { border-color: #3a3a3a; }
+/* 悬停记录时高亮所属类型名称，便于确认要点开的是哪一笔 */
+.ledger-record:hover .ledger-record-name { color: var(--accent); }
 .ledger-record-icon { width: 24px; font-size: 18px; text-align: center; }
 .ledger-record-info { display: block; flex: 1; min-width: 0; }
 .ledger-record-name {
@@ -1585,6 +1587,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color .15s;
 }
 .ledger-record-meta { display: block; font-size: 11px; color: #777; margin-top: 2px; }
 .ledger-record-amount {
