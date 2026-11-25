@@ -3588,28 +3588,16 @@ function renderHourlyTrend() {
   const plotH = H - padT - padB;
 
   const values = data.map(p => p.hourly);
-  const dataMin = Math.min(...values);
   const dataMax = Math.max(...values);
-  let min = dataMin;
-  let max = dataMax;
-  if (dataMin <= 0) {
-    // 存在空档月时把 0 作为纵轴底边，空档期会直接落到最底部
-    min = 0;
-    max = Math.max(dataMax, 1) * 1.12;
-  } else if (max - min < 0.5) {
-    min -= 1;
-    max += 1;
-  } else {
-    const pad = (max - min) * 0.18;
-    min -= pad;
-    max += pad;
-  }
+  // 纵坐标固定从 0 起算，顶部预留 15% 空间避免折线贴边
+  const min = 0;
+  const max = Math.max(dataMax * 1.15, 1);
   const span = max - min;
   const xOf = i => data.length > 1 ? padL + (plotW * i) / (data.length - 1) : padL + plotW / 2;
   const yOf = v => padT + plotH * (1 - (v - min) / span);
 
   const axisMoney = v => '¥' + (v >= 100 ? Math.round(v) : v.toFixed(1));
-  const gridVals = [dataMax, (dataMax + dataMin) / 2, dataMin];
+  const gridVals = [max, max / 2, min];
   const grid = gridVals.map((v, i) => {
     const y = yOf(v);
     return `<line x1="${padL}" y1="${y.toFixed(2)}" x2="${W - padR}" y2="${y.toFixed(2)}"`
