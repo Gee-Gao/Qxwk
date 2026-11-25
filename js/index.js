@@ -3704,7 +3704,7 @@ function renderHomeOvertimePanel(todayTotals, monthTotals, linked) {
       return;
     }
     panel.style.display = '';
-    if (titleEl) titleEl.textContent = '🌴 调休';
+    if (titleEl) titleEl.textContent = '🌙 调休';
     if (noteEl) noteEl.textContent = '';
     grid.classList.add('cols-3');
     grid.innerHTML =
@@ -4080,12 +4080,6 @@ function selectOvertimeSettle(mode) {
     b.classList.toggle('active', b.dataset.settle === settings.overtimeSettle);
   });
 
-  const settleHint = document.getElementById('overtimeSettleHint');
-  if (settleHint) {
-    settleHint.textContent = isLeave
-      ? '加班不计金额，累计时长用来调休；休掉多少去「请假」页记调休'
-      : '加班按倍率折算成应得金额';
-  }
   // 调休不产生金额，自动切到「不计入」并锁住该项
   if (isLeave) {
     settings.overtimeSync = false;
@@ -4095,6 +4089,7 @@ function selectOvertimeSettle(mode) {
   }
   syncOvertimeModeUI();
   updateOvertimeSyncDisabled();
+  updateOvertimeHint();
   renderOvertime();
   updateOvertimePreview();
   persistOvertimeSettings();
@@ -4105,7 +4100,7 @@ function syncOvertimeModeUI() {
   const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
   const title = document.getElementById('recordCardTitle');
   const desc = document.getElementById('recordCardDesc');
-  if (title) title.textContent = isLeave ? '🌴 记一笔加班' : '🌙 记一笔加班';
+  if (title) title.textContent = '🪫 记一笔加班';
   if (desc) {
     desc.textContent = isLeave
       ? '按加班那天填，累计时长用来调休；休掉的部分去「请假」页记调休'
@@ -4123,11 +4118,19 @@ function updateOvertimeSyncDisabled() {
   const panelHidden = overtimePanelMode() === 'off';
   const syncSeg = document.getElementById('overtimeSync');
   if (syncSeg) syncSeg.classList.toggle('disabled', isLeave || panelHidden);
-  const syncHint = document.getElementById('overtimeSyncHint');
-  if (syncHint) {
-    if (isLeave) syncHint.textContent = '调休模式不产生金额，无需计入';
-    else if (panelHidden) syncHint.textContent = '计时页已隐藏加班费卡片，无需计入';
-    else syncHint.textContent = '计入后，加班金额会加进计时页的今日 / 本月已赚';
+}
+
+// 「加班设置」底部合并说明：同时说明结算方式与是否计入计时页
+function updateOvertimeHint() {
+  const hint = document.getElementById('overtimeSettleHint');
+  if (!hint) return;
+  const isLeave = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
+  if (isLeave) {
+    hint.textContent = '加班不计金额，累计时长用来调休；休掉多少去「请假」页记调休';
+  } else if (overtimePanelMode() === 'off') {
+    hint.textContent = '加班按倍率折算成应得金额；计时页已隐藏加班费卡片，无需计入';
+  } else {
+    hint.textContent = '加班按倍率折算成应得金额；计入后，加班金额会加进计时页的今日 / 本月已赚';
   }
 }
 
@@ -4169,6 +4172,7 @@ function selectOvertimePanelShow(mode) {
     });
   }
   updateOvertimeSyncDisabled();
+  updateOvertimeHint();
   persistOvertimeSettings();
 }
 
@@ -4191,15 +4195,15 @@ function updateOvertimePreview() {
   if ((settings.salaryMode || DEFAULTS.salaryMode) === 'compare') {
     const gross = hours * getGrossHourlyRate() * rate;
     preview.innerHTML =
-      `<div class="rate-col"><div class="rate-val">${formatMoney(gross)}</div><div class="rate-cap">税前</div></div>` +
-      `<div class="rate-col"><div class="rate-val">${formatMoney(net)}</div><div class="rate-cap">税后</div></div>`;
+      `<div class="rate-col"><span class="rate-val">${formatMoney(gross)}</span><span class="rate-badge">税前</span></div>` +
+      `<div class="rate-col"><span class="rate-val">${formatMoney(net)}</span><span class="rate-badge">税后</span></div>`;
     preview.classList.add('rate-cols');
     return;
   }
   preview.classList.remove('rate-cols');
-  // 单一口径：金额下方标注当期是税前还是税后
+  // 单一口径：金额条只放金额，口径文字贴在条内右上角
   const tag = (settings.salaryMode || DEFAULTS.salaryMode) === 'gross' ? '税前' : '税后';
-  preview.innerHTML = `${formatMoney(net)}<div class="rate-cap">${tag}</div>`;
+  preview.innerHTML = `${formatMoney(net)}<span class="rate-badge">${tag}</span>`;
 }
 
 function addOvertime() {
@@ -7976,7 +7980,7 @@ function drawShareCard() {
     if (!isCompare) {
       const labelW = ctx.measureText('今日已赚').width;
       // 单一口径下不区分对照色，徽章统一用荧光绿
-      drawShareTaxTag(ctx, pad + labelW + 16, salaryY + 18, data.taxTag, true);
+      drawShareTaxTag(ctx, pad + labelW + 16, salaryY + 10, data.taxTag, true);
     }
 
     const cardGap = 24;

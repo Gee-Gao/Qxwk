@@ -577,18 +577,34 @@ body {
 .cost-result .rate {
   font-size: 24px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 /* 对比口径：税前 / 税后并排算 */
-.cost-result .rate.rate-cols { display: flex; }
-.cost-result .rate-cols .rate-col { flex: 1; }
+.cost-result .rate.rate-cols { gap: 0; }
+.cost-result .rate-cols .rate-col {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
 .cost-result .rate-cols .rate-col + .rate-col { border-left: 1px solid rgba(0, 0, 0, .18); }
 .cost-result .rate-cols .rate-val { font-size: 20px; font-weight: 700; }
-.cost-result .rate-cap {
-  font-size: 11px;
-  font-weight: 500;
-  opacity: .65;
-  margin-top: 2px;
+/* 税前 / 税后标注：金额条右上角内侧，黑色文字，不做胶囊 */
+.cost-result { position: relative; }
+.cost-result .rate-badge {
+  position: absolute;
+  top: 9px;
+  right: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #000;
+  opacity: .7;
 }
+.cost-result .rate-cols .rate-col:first-child .rate-badge { right: calc(50% + 10px); }
 .cost-result .rate-label {
   font-size: 12px;
   opacity: .7;
@@ -1102,7 +1118,7 @@ body {
   top: 18px;
   right: 20px;
 }
-/* 统计卡片右上角工资口径徽章：税前 / 税后统一荧光绿 */
+/* 统计卡片右上角工资口径徽章：税前 / 税后统一荧光绿实底 */
 .mode-badge {
   position: absolute;
   top: 18px;
@@ -1111,9 +1127,9 @@ body {
   font-weight: 700;
   padding: 2px 9px;
   border-radius: 999px;
-  border: 1px solid #46520f;
-  background: rgba(200, 255, 0, .08);
-  color: var(--accent);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #000;
   white-space: nowrap;
 }
 .stats-card .big-val {
@@ -2819,6 +2835,7 @@ body {
 /*部分浏览器强制深色会压暗荧光绿实底，only light 可豁免这些组件 */
 .timer-status .dot,
 .period-badge,
+.mode-badge,
 .stat-card.green,
 .cost-result,
 .custom-select-option:hover,

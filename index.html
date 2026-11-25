@@ -289,18 +289,10 @@
     <div class="section-title">你的加班，换回来了多少</div>
 
     <div class="cost-card">
-      <h3>🌙 加班设置</h3>
+      <h3>🪫 加班设置</h3>
       <div class="desc">加班是给钱还是调休，金额是否计入计时页，以及卡片是否在计时页展示</div>
-      <div class="cost-fields" style="grid-template-columns:1fr">
-        <div class="field-group">
-          <label>加班结算方式</label>
-          <div class="seg-control" id="overtimeSettle">
-            <button type="button" class="seg-btn" data-settle="money" onclick="selectOvertimeSettle('money')">给钱</button>
-            <button type="button" class="seg-btn" data-settle="leave" onclick="selectOvertimeSettle('leave')">调休</button>
-          </div>
-          <div class="field-hint" id="overtimeSettleHint"></div>
-        </div>
-        <div class="field-group">
+      <div class="cost-fields">
+        <div class="field-group" style="grid-column:1 / -1">
           <label>计时页展示加班费卡片</label>
           <div class="seg-control" id="overtimePanelShow">
             <button type="button" class="seg-btn" data-show="auto" onclick="selectOvertimePanelShow('auto')">有则展示</button>
@@ -310,13 +302,20 @@
           <div class="field-hint" id="overtimePanelShowHint"></div>
         </div>
         <div class="field-group">
+          <label>加班结算方式</label>
+          <div class="seg-control" id="overtimeSettle">
+            <button type="button" class="seg-btn" data-settle="money" onclick="selectOvertimeSettle('money')">给钱</button>
+            <button type="button" class="seg-btn" data-settle="leave" onclick="selectOvertimeSettle('leave')">调休</button>
+          </div>
+        </div>
+        <div class="field-group">
           <label>加班金额计入计时页</label>
           <div class="seg-control" id="overtimeSync">
             <button type="button" class="seg-btn" data-sync="on" onclick="selectOvertimeSync(true)">计入</button>
             <button type="button" class="seg-btn" data-sync="off" onclick="selectOvertimeSync(false)">不计入</button>
           </div>
-          <div class="field-hint" id="overtimeSyncHint"></div>
         </div>
+        <div class="field-hint" id="overtimeSettleHint" style="grid-column:1 / -1"></div>
       </div>
     </div>
 
@@ -360,7 +359,7 @@
           <div class="rate" id="overtimePreview">¥0.00</div>
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" onclick="addOvertime()">添加记录</button>
+          <button class="btn btn-primary" onclick="addOvertime()">＋ 添加记录</button>
         </div>
       </div>
     </div>
@@ -465,7 +464,7 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="addLeaveRecord()">添加记录</button>
+        <button class="btn btn-primary" onclick="addLeaveRecord()">＋ 添加记录</button>
       </div>
     </div>
 
