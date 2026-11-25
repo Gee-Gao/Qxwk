@@ -4779,8 +4779,8 @@ function getAchievements() {
   const longest = getLongestJob();
   const jobsWithHire = getAllJobs().filter(job => parseDateKey(job.hireDate || '')).length;
 
-  let overtimeTotal = 0;
-  overtimeRecords.forEach(r => { overtimeTotal += overtimeHours(r); });
+  // 加班次数：按加班记录条数累计
+  const overtimeCount = overtimeRecords.length;
   let paidLeaveHours = 0;
   paidLeaveSessions.forEach(s => {
     paidLeaveHours += Math.max(0, ((s.end || 0) - (s.start || 0)) / 3600000);
@@ -4850,15 +4850,15 @@ function getAchievements() {
       id: 'overtime',
       icon: '🌙',
       title: '加班狂人',
-      desc: '所有加班记录折算成小时累计，给钱和调休都算，从 10 小时起共分五级。',
-      cur: overtimeTotal,
-      unit: '小时',
+      desc: '按加班记录条数累计，给钱和调休都算，从 1 次起共分五级。',
+      cur: overtimeCount,
+      unit: '次',
       levels: [
-        { goal: 10, title: '加班新手', icon: '🌙' },
-        { goal: 100, title: '加班达人', icon: '🌙' },
-        { goal: 500, title: '加班宗师', icon: '🔥' },
-        { goal: 1000, title: '加班传说', icon: '⚡' },
-        { goal: 2000, title: '加班之神', icon: '👑' }
+        { goal: 1, title: '加班新手', icon: '🌙' },
+        { goal: 10, title: '加班达人', icon: '🌙' },
+        { goal: 20, title: '加班宗师', icon: '🔥' },
+        { goal: 50, title: '加班传说', icon: '⚡' },
+        { goal: 100, title: '加班之神', icon: '👑' }
       ]
     },
     {
