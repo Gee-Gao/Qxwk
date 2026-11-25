@@ -665,7 +665,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 30px 12px 0; /* 右侧留出删除按钮的位置 */
+  padding: 12px 0;
   border-top: 1px solid #262626;
 }
 .overtime-item:first-child { border-top: none; padding-top: 0; }
@@ -676,6 +676,7 @@ body {
   margin-top: 2px;
 }
 .overtime-item .overtime-amount {
+  order: 2;
   margin-left: auto;
   font-size: 15px;
   font-weight: 700;
@@ -696,12 +697,11 @@ body {
   color: var(--text-dim);
   margin-right: 4px;
 }
-/* 调休记录：使用（扣减）的时长用中性色，与加班的绿色区分 */
-.overtime-item .overtime-amount.used { color: var(--text-dim); }
 .overtime-item .overtime-del {
-  position: absolute;
-  top: 50%; right: 0;
-  transform: translateY(-50%);
+  position: static;
+  order: 3;
+  flex: none;
+  align-self: center;
   width: 22px; height: 22px;
   border-radius: 50%;
   background: #2a2a2a;
@@ -712,6 +712,9 @@ body {
   cursor: pointer;
 }
 .overtime-item .overtime-del:hover { background: #3a3a3a; color: #fff; }
+/* 加班 / 请假记录：点击整行查看明细并编辑 */
+.overtime-item.record-clickable { cursor: pointer; }
+.overtime-item.record-clickable:hover .overtime-date { color: var(--accent); }
 
 /* 每月补贴 */
 .allowance-list { margin-top: 8px; }

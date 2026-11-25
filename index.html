@@ -983,6 +983,108 @@
     </div>
   </div>
 
+  <!-- 加班记录编辑 -->
+  <div class="modal-overlay" id="overtimeEditModal" onclick="if(event.target===this) closeOvertimeEdit()">
+    <div class="modal">
+      <h3><span>修改加班记录</span> <button class="close" onclick="closeOvertimeEdit()">×</button></h3>
+
+      <div class="cost-fields" style="grid-template-columns:1fr">
+        <div class="field-group">
+          <label>时长单位</label>
+          <div class="seg-control" id="oeUnit">
+            <button type="button" class="seg-btn active" data-unit="hour" onclick="selectOvertimeEditUnit('hour')">小时</button>
+            <button type="button" class="seg-btn" data-unit="day" onclick="selectOvertimeEditUnit('day')">天</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cost-fields">
+        <div class="field-group">
+          <label>加班日期</label>
+          <input type="text" id="oeDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
+        </div>
+        <div class="field-group">
+          <label>加班时长</label>
+          <input type="number" id="oeAmount" min="0" step="0.5">
+        </div>
+      </div>
+
+      <div class="field-group" id="oeRateField">
+        <label>薪资倍率</label>
+        <input type="number" id="oeRate" min="0" step="0.1">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="closeOvertimeEdit()">取消</button>
+        <button class="btn btn-primary" onclick="saveOvertimeEdit()">保存修改</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 请假记录编辑 -->
+  <div class="modal-overlay" id="leaveEditModal" onclick="if(event.target===this) closeLeaveEdit()">
+    <div class="modal">
+      <h3><span>修改请假记录</span> <button class="close" onclick="closeLeaveEdit()">×</button></h3>
+
+      <div class="field-group" style="margin-bottom:14px">
+        <label>请假类型</label>
+        <select id="leKind" onchange="onLeaveEditKindChange()">
+          <option value="personal">事假</option>
+          <option value="comp">调休</option>
+          <option value="annual">年假</option>
+          <option value="sick">病假</option>
+          <option value="marriage">婚假</option>
+          <option value="maternity">产假</option>
+          <option value="paternity">陪产假</option>
+          <option value="bereavement">丧假</option>
+          <option value="parental">育儿假</option>
+          <option value="injury">工伤假</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+
+      <div class="cost-fields" style="grid-template-columns:1fr">
+        <div class="field-group">
+          <label>时长单位</label>
+          <div class="seg-control" id="leUnit">
+            <button type="button" class="seg-btn active" data-unit="hour" onclick="selectLeaveEditUnit('hour')">小时</button>
+            <button type="button" class="seg-btn" data-unit="day" onclick="selectLeaveEditUnit('day')">天</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cost-fields">
+        <div class="field-group">
+          <label>请假日期</label>
+          <input type="text" id="leDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
+        </div>
+        <div class="field-group">
+          <label>请假时长</label>
+          <input type="number" id="leAmount" min="0" step="0.5">
+        </div>
+      </div>
+
+      <div class="cost-fields">
+        <div class="field-group">
+          <label>是否带薪</label>
+          <div class="seg-control" id="lePaid">
+            <button type="button" class="seg-btn" data-paid="unpaid" onclick="selectLeaveEditPaid(false)">无薪</button>
+            <button type="button" class="seg-btn" data-paid="paid" onclick="selectLeaveEditPaid(true)">带薪</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>计薪比例（%）</label>
+          <input type="number" id="lePaidRatio" min="0" max="100" step="0.1">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="closeLeaveEdit()">取消</button>
+        <button class="btn btn-primary" onclick="saveLeaveEdit()">保存修改</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 成就详情弹窗 -->
   <div class="modal-overlay" id="achieveDetailModal" onclick="if(event.target===this) closeAchieveDetail()">
     <div class="modal achieve-modal">

@@ -4231,6 +4231,98 @@ function deleteOvertime(idx) {
   showToast('已删除');
 }
 
+// ===== 加班记录编辑 =====
+let overtimeEditIdx = null;
+
+// 该日期所属工作的每日工时（小时）
+function overtimeDailyHours(dateKey) {
+  const d = parseDateKey(dateKey);
+  const job = d ? jobOnDate(d) : null;
+  return getDailyHours(job || settings, d || undefined);
+}
+
+function openOvertimeEdit(idx) {
+  const record = overtimeRecords[idx];
+  if (!record) return;
+  overtimeEditIdx = idx;
+  const overlay = document.getElementById('overtimeEditModal');
+  if (!overlay) return;
+
+  document.getElementById('oeDate').value = formatDateSlash(record.date);
+  document.getElementById('oeAmount').value = record.amount;
+  // 调休口径只累计时长，不涉及倍率
+  const rateField = document.getElementById('oeRateField');
+  if (rateField) rateField.style.display = overtimeSettleOf(record) === 'leave' ? 'none' : '';
+  const rateInput = document.getElementById('oeRate');
+  if (rateInput) rateInput.value = record.rate || 1;
+  setOvertimeEditUnit(record.unit === 'day' ? 'day' : 'hour', true);
+
+  overlay.classList.add('show');
+  overlay.scrollTop = 0;
+}
+
+function closeOvertimeEdit() {
+  const overlay = document.getElementById('overtimeEditModal');
+  if (overlay) overlay.classList.remove('show');
+  overtimeEditIdx = null;
+}
+
+// keepAmount 为 true 时不按单位换算，直接沿用刚回填的数值
+function setOvertimeEditUnit(unit, keepAmount) {
+  const next = unit === 'day' ? 'day' : 'hour';
+  document.querySelectorAll('#oeUnit .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.unit === next);
+  });
+  const input = document.getElementById('oeAmount');
+  if (!input) return;
+  const prev = input.dataset.unit || next;
+  input.dataset.unit = next;
+  input.step = next === 'day' ? '1' : '0.5';
+  if (keepAmount) return;
+  // 切换单位时按每日工时等额换算
+  const dateKey = fmtDateKey(parseDateKey(document.getElementById('oeDate').value) || new Date());
+  const perDay = overtimeDailyHours(dateKey);
+  const value = parseFloat(input.value) || 0;
+  if (perDay > 0) {
+    const converted = prev === 'day' ? value * perDay : value / perDay;
+    input.value = String(Math.round(converted * 10) / 10);
+  }
+}
+
+function selectOvertimeEditUnit(unit) {
+  setOvertimeEditUnit(unit, false);
+}
+
+function saveOvertimeEdit() {
+  if (overtimeEditIdx === null) return;
+  const record = overtimeRecords[overtimeEditIdx];
+  if (!record) { closeOvertimeEdit(); return; }
+
+  const date = fmtDateKey(parseDateKey(document.getElementById('oeDate').value) || new Date());
+  const unit = document.getElementById('oeAmount').dataset.unit === 'day' ? 'day' : 'hour';
+  const amount = parseFloat(document.getElementById('oeAmount').value);
+  if (!amount || amount <= 0) {
+    showToast(unit === 'day' ? '先填加班天数' : '先填加班时长');
+    return;
+  }
+
+  let rate = record.rate || 1;
+  if (overtimeSettleOf(record) === 'money') {
+    rate = parseFloat(document.getElementById('oeRate').value);
+    if (!rate || rate <= 0) { showToast('先填薪资倍率'); return; }
+  }
+
+  record.date = date;
+  record.unit = unit;
+  record.amount = amount;
+  record.rate = rate;
+  saveOvertime();
+  renderOvertime();
+  updateAll();
+  closeOvertimeEdit();
+  showToast('已保存修改');
+}
+
 function formatOvertimeDate(key) {
   return formatDateSlash(key);
 }
@@ -4287,7 +4379,10 @@ function renderOvertime() {
   rows.forEach(row => {
     const r = row.r;
     const item = document.createElement('div');
-    item.className = 'overtime-item';
+    item.className = 'overtime-item record-clickable';
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    item.onclick = () => openOvertimeEdit(row.i);
     const duration = r.unit === 'day' ? `${r.amount} 天` : `${r.amount} 小时`;
     const meta = isLeave ? duration : `${duration} · ${r.rate} 倍`;
     let amountHtml;
@@ -4303,7 +4398,7 @@ function renderOvertime() {
       amountHtml = `<span class="overtime-basis">${modeTag}</span>${formatMoney(overtimeEarned(r))}`;
     }
     item.innerHTML = `
-      <button class="overtime-del" onclick="deleteOvertime(${row.i})" title="删除">×</button>
+      <button class="overtime-del" onclick="event.stopPropagation(); deleteOvertime(${row.i})" title="删除">×</button>
       <div>
         <div class="overtime-date">${formatOvertimeDate(r.date)}</div>
         <div class="overtime-meta">${meta}</div>
@@ -4493,6 +4588,121 @@ function deleteLeaveRecord(id) {
   showToast('已删除');
 }
 
+// ===== 请假记录编辑 =====
+let leaveEditId = null;
+let leaveEditPaid = false;
+
+function openLeaveEdit(id) {
+  const record = leaveRecords.find(r => r.id === id);
+  if (!record) return;
+  const overlay = document.getElementById('leaveEditModal');
+  if (!overlay) return;
+  leaveEditId = id;
+
+  const kindSel = document.getElementById('leKind');
+  const kind = LEAVE_KINDS[record.kind] ? record.kind : 'personal';
+  kindSel.value = kind;
+  syncCustomSelect(kindSel);
+  document.getElementById('leDate').value = formatDateSlash(record.date);
+  document.getElementById('leAmount').value = record.amount;
+  setLeaveEditUnit(record.unit === 'day' ? 'day' : 'hour', true);
+
+  // 计薪比例优先取记录上保存的值，旧记录回落到类型默认值
+  selectLeaveEditPaid(!!record.paid, true);
+  const ratioInput = document.getElementById('lePaidRatio');
+  const saved = parseFloat(record.ratio);
+  ratioInput.value = leaveEditPaid
+    ? (isNaN(saved) ? defaultLeaveRatioOf(kind) : Math.min(100, Math.max(0, saved)))
+    : 0;
+
+  overlay.classList.add('show');
+  overlay.scrollTop = 0;
+}
+
+function closeLeaveEdit() {
+  const overlay = document.getElementById('leaveEditModal');
+  if (overlay) overlay.classList.remove('show');
+  leaveEditId = null;
+}
+
+function selectLeaveEditPaid(paid, keepRatio) {
+  leaveEditPaid = !!paid;
+  document.querySelectorAll('#lePaid .seg-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.paid === 'paid') === leaveEditPaid);
+  });
+  const input = document.getElementById('lePaidRatio');
+  if (!input) return;
+  input.disabled = !leaveEditPaid;
+  if (!leaveEditPaid) input.value = 0;
+  else if (!keepRatio) input.value = defaultLeaveRatioOf(document.getElementById('leKind').value);
+}
+
+// 切换请假类型时按该类型的默认带薪规则与比例重新预填
+function onLeaveEditKindChange() {
+  const kind = document.getElementById('leKind').value;
+  selectLeaveEditPaid(LEAVE_KINDS[kind] ? LEAVE_KINDS[kind].paid : false, false);
+}
+
+function setLeaveEditUnit(unit, keepAmount) {
+  const next = unit === 'day' ? 'day' : 'hour';
+  document.querySelectorAll('#leUnit .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.unit === next);
+  });
+  const input = document.getElementById('leAmount');
+  if (!input) return;
+  const prev = input.dataset.unit || next;
+  input.dataset.unit = next;
+  input.step = next === 'day' ? '1' : '0.5';
+  if (keepAmount) return;
+  // 切换单位时按该记录所属工作的每日工时等额换算
+  const dateKey = fmtDateKey(parseDateKey(document.getElementById('leDate').value) || new Date());
+  const perDay = leaveDailyHours(dateKey);
+  const value = parseFloat(input.value) || 0;
+  if (perDay > 0) {
+    const converted = prev === 'day' ? value * perDay : value / perDay;
+    input.value = String(Math.round(converted * 10) / 10);
+  }
+}
+
+function selectLeaveEditUnit(unit) {
+  setLeaveEditUnit(unit, false);
+}
+
+function saveLeaveEdit() {
+  const record = leaveRecords.find(r => r.id === leaveEditId);
+  if (!record) { closeLeaveEdit(); return; }
+
+  const date = fmtDateKey(parseDateKey(document.getElementById('leDate').value) || new Date());
+  const unit = document.getElementById('leAmount').dataset.unit === 'day' ? 'day' : 'hour';
+  const amount = parseFloat(document.getElementById('leAmount').value);
+  if (!amount || amount <= 0) { showToast('先填请假时长'); return; }
+
+  const rawKind = document.getElementById('leKind').value;
+  const kind = LEAVE_KINDS[rawKind] ? rawKind : 'personal';
+  let ratio = 0;
+  if (leaveEditPaid) {
+    ratio = parseFloat(document.getElementById('lePaidRatio').value);
+    if (isNaN(ratio)) ratio = defaultLeaveRatioOf(kind);
+    ratio = Math.min(100, Math.max(0, ratio));
+  }
+
+  record.date = date;
+  record.kind = kind;
+  record.unit = unit;
+  record.amount = amount;
+  record.paid = leaveEditPaid;
+  record.ratio = ratio;
+  saveLeaveRecords();
+
+  // 改到其他月份时自动切过去，避免「改了却看不到」
+  if (leaveRecordMonth !== date.slice(0, 7)) leaveRecordMonth = date.slice(0, 7);
+  renderLeave();
+  invalidateJobCaches();
+  updateAll();
+  closeLeaveEdit();
+  showToast('已保存修改');
+}
+
 function renderLeave() {
   if (!leaveRecordMonth) leaveRecordMonth = currentMonthKey();
   const [y, m] = leaveRecordMonth.split('-').map(Number);
@@ -4541,14 +4751,17 @@ function renderLeave() {
     const kindLabel = (LEAVE_KINDS[r.kind] || LEAVE_KINDS.personal).label;
     const duration = r.unit === 'day' ? `${r.amount} 天` : formatHours(r.amount);
     const item = document.createElement('div');
-    item.className = 'overtime-item';
+    item.className = 'overtime-item record-clickable';
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    item.onclick = () => openLeaveEdit(r.id);
     item.innerHTML = `
-      <button class="overtime-del" onclick="deleteLeaveRecord('${r.id}')" title="删除">×</button>
+      <button class="overtime-del" onclick="event.stopPropagation(); deleteLeaveRecord('${r.id}')" title="删除">×</button>
       <div>
         <div class="overtime-date">${formatDateSlash(r.date)}</div>
         <div class="overtime-meta">${kindLabel} · ${leavePayLabel(r)}</div>
       </div>
-      <div class="overtime-amount${leavePayRatioOf(r) > 0 ? '' : ' used'}">${duration}</div>
+      <div class="overtime-amount">${duration}</div>
     `;
     list.appendChild(item);
   });
