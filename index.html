@@ -912,8 +912,8 @@
         邮箱：1176243316@qq.com<br>
         欢迎提出改进想法与建议，期待一起交流完善。
       </p>
-      <div class="install-tip" id="appInstallTip" style="display:none">
-        <a href="https://www.xiaohongshu.com/explore/6adcafd80000000024034551?xsec_token=CBVX3SxxUyr2nNOhEHh6D1TutU1VaNBGnn0pAMqYw8fB0=&xsec_source=app_share" target="_blank" rel="noopener">查看APP安装方式</a>
+      <div class="install-tip">
+        <a href="javascript:void(0)" onclick="openAppInstallModal()">查看APP安装方式</a>
       </div>
     </div>
   </div>
@@ -1081,6 +1081,32 @@
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="closeLeaveEdit()">取消</button>
         <button class="btn btn-primary" onclick="saveLeaveEdit()">保存修改</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP 安装方式弹窗 -->
+  <div class="modal-overlay" id="appInstallModal" onclick="if(event.target===this) closeAppInstallModal()">
+    <div class="modal install-modal">
+      <h3><span>APP 安装方式</span> <button class="close" onclick="closeAppInstallModal()">×</button></h3>
+      <div class="install-group">
+        <div class="install-title">苹果</div>
+        <div class="install-sub">通过 PWA 方式进行安装</div>
+        <ol class="install-steps">
+          <li>Safari 浏览器打开 <a href="https://gaoyunqiang.netlify.app/" target="_blank" rel="noopener">https://gaoyunqiang.netlify.app</a></li>
+          <li>点底部中间的分享按钮，往下滑</li>
+          <li>找到「添加到主屏幕」</li>
+        </ol>
+      </div>
+      <div class="install-group">
+        <div class="install-title">安卓/鸿蒙</div>
+        <div class="install-sub">通过 APK 方式进行安装</div>
+        <ol class="install-steps">
+          <li>安装包下载地址：<a href="https://wwbdq.lanzouq.com/i5F0Q4fro34d" target="_blank" rel="noopener">https://wwbdq.lanzouq.com/i5F0Q4fro34d</a></li>
+          <li>密码：1234</li>
+          <li>下载后直接安装即可（需允许「安装未知来源应用」）</li>
+          <li>与网页版功能一致，数据同样仅保存在本机</li>
+        </ol>
       </div>
     </div>
   </div>

@@ -74,11 +74,6 @@ body {
   color: #000;
   white-space: nowrap;
 }
-.period-badge.probation {
-  color: var(--accent);
-  border-color: #46520f;
-  background: rgba(200, 255, 0, .08);
-}
 /* 计时卡片顶部：当前轮换班次标识 */
 .shift-badge {
   font-size: 11px;
@@ -311,6 +306,8 @@ body {
 
 .settings-card.about {
   margin-top: 16px;
+  user-select: text;
+  -webkit-user-select: text;
 }
 .settings-card.about p {
   font-size: 13px;
@@ -326,6 +323,36 @@ body {
   text-decoration: none;
   border-bottom: 1px solid currentColor;
   padding-bottom: 1px;
+}
+/* 关于页：APP 安装方式弹窗 */
+.modal.install-modal {
+  width: calc(100% - 32px);
+  max-width: 448px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.install-group + .install-group { margin-top: 18px; }
+.install-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.install-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+.install-steps {
+  margin: 8px 0 0 18px;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.install-steps a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+  word-break: break-all;
 }
 .settings-subhead {
   grid-column: 1 / -1;

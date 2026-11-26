@@ -3001,14 +3001,22 @@ function getYearOverview(year, shiftAnchor) {
 }
 
 // ============ 界面更新 ============
-// 当前所处阶段：无转正日期返回 null（不展示），试用期内带比例
+// 指定日期是否落在当前月份（非法日期返回 false）
+function isDateInCurrentMonth(dateStr) {
+  const d = parseDateKey(dateStr);
+  return !!d && monthKeyOf(d) === monthKeyOf(new Date());
+}
+
+// 当前所处阶段的徽章：入职月 / 转正月优先展示，其余按试用期、正式期判断
+// 无转正日期且不在入职月时返回 null（不展示），试用期内带比例
 function periodBadgeState(job) {
   const cfg = job || settings;
-  if (!getRegularDateOf(cfg)) return null;
+  const regular = getRegularDateOf(cfg);
+  if (isDateInCurrentMonth(cfg.hireDate)) return { text: '入职月' };
+  if (regular && isDateInCurrentMonth(regular)) return { text: '转正月' };
+  if (!regular) return null;
   const factor = salaryFactorFor(new Date(), cfg);
-  return factor < 1
-    ? { probation: true, text: `试用期 · ${Math.round(factor * 100)}%` }
-    : { probation: false, text: '正式期' };
+  return { text: factor < 1 ? `试用期 · ${Math.round(factor * 100)}%` : '正式期' };
 }
 
 // 计时卡片内的标识：配置了转正日期才显示，试用期内显示比例
@@ -3018,7 +3026,7 @@ function updatePeriodBadge() {
   const state = periodBadgeState(settings);
   if (!state) { el.style.display = 'none'; return; }
   el.style.display = '';
-  el.className = state.probation ? 'period-badge probation' : 'period-badge';
+  el.className = 'period-badge';
   el.textContent = state.text;
 }
 
@@ -3280,7 +3288,7 @@ function updateStats() {
       if (state) {
         badge.style.display = '';
         badge.textContent = state.text;
-        badge.className = state.probation ? 'period-badge probation' : 'period-badge';
+        badge.className = 'period-badge';
       } else {
         badge.style.display = 'none';
       }
@@ -9047,21 +9055,16 @@ function updateAll() {
   renderLedger();
 }
 
-// 判断是否以 PWA / 安卓 App 等「无地址栏」方式打开
-function isStandaloneApp() {
-  if (window.navigator.standalone === true) return true; // iOS 添加到主屏幕
-  const modes = ['standalone', 'fullscreen', 'minimal-ui', 'window-controls-overlay'];
-  if (modes.some(mode => window.matchMedia('(display-mode: ' + mode + ')').matches)) return true;
-  if (/; wv\)/i.test(navigator.userAgent)) return true; // 安卓 WebView / App 内置页面
-  return false;
+// 关于页：APP 安装方式弹窗
+function openAppInstallModal() {
+  const modal = document.getElementById('appInstallModal');
+  if (modal) modal.classList.add('show');
 }
 
-// 浏览器打开时才展示 App 安装引导，已装为 App 时无需重复提示
-function initAppInstallTip() {
-  const tip = document.getElementById('appInstallTip');
-  if (tip && !isStandaloneApp()) tip.style.display = 'block';
+function closeAppInstallModal() {
+  const modal = document.getElementById('appInstallModal');
+  if (modal) modal.classList.remove('show');
 }
-initAppInstallTip();
 
 // ============ 自绘下拉框 ============
 // 原生 select 展开后的蓝色悬停高亮是系统绘制、CSS 无法覆盖，统一换成自绘菜单
