@@ -7406,10 +7406,10 @@ const SHARE_MONO = '"SF Mono", "Consolas", monospace';
 let shareCardBlob = null;
 let shareCardUrl = '';
 // 分享内容勾选：默认全部展示，取消勾选后对应模块不进入分享图
-let shareSections = { countdown: true, salary: true, commute: true, overtime: true, ledger: true, life: true, year: true, achieve: true };
+let shareSections = { countdown: true, salary: true, tax: true, commute: true, overtime: true, ledger: true, life: true, year: true, achieve: true };
 // 分享模块顺序：与勾选项一致，可长按拖动调整并保存在本地
 const SHARE_ORDER_KEY = 'qianxwk_share_order';
-const SHARE_SECTION_KEYS = ['countdown', 'salary', 'commute', 'overtime', 'ledger', 'life', 'year', 'achieve'];
+const SHARE_SECTION_KEYS = ['countdown', 'salary', 'tax', 'commute', 'overtime', 'ledger', 'life', 'year', 'achieve'];
 let shareOrder = (() => {
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(SHARE_ORDER_KEY)) || []; } catch (e) { saved = []; }
@@ -7820,6 +7820,23 @@ function getShareData() {
   // 生命消耗大盘
   const life = getLifeStats();
 
+  // 扣缴明细：税前口径不做扣除，与统计页保持一致，不参与分享
+  let tax = null;
+  if (mode !== 'gross') {
+    const row = currentMonthTax(taxParamsFromSettings());
+    const badge = periodBadgeState(settings);
+    tax = {
+      gross: formatMoney(row.gross),
+      allowance: formatMoney(row.allowance || 0),
+      social: formatMoney(row.social),
+      fund: formatMoney(row.fund),
+      tax: formatMoney(row.tax),
+      cumTax: formatMoney(row.cumTax),
+      net: formatMoney(row.net),
+      badge: badge ? badge.text : ''
+    };
+  }
+
   return {
     taxTag: mode === 'gross' ? '税前' : '税后',
     // 对比口径：额外读取税前一行，分享图里与税后并列展示
@@ -7865,6 +7882,7 @@ function getShareData() {
     spendToday: formatMoney(ledgerTotal(todayRecords)),
     ledgerCount: monthRecords.length,
     ledgerDays,
+    tax,
     commuteBefore: commute.before,
     commuteAfter: commute.after,
     commuteTotal: commute.total,
@@ -8036,6 +8054,83 @@ function drawShareCompareCard(ctx, x, y, w, h, label, preTax, afterTax) {
   });
 }
 
+// 分享图里的扣缴明细卡：两列键值行 + 底部实发工资强调行
+function drawShareTaxCard(ctx, x, y, w, h, tax) {
+  shareRoundRect(ctx, x, y, w, h, 24);
+  ctx.fillStyle = '#171717';
+  ctx.fill();
+  ctx.strokeStyle = '#262626';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.font = `600 28px ${SHARE_FONT}`;
+  ctx.fillStyle = '#ddd';
+  ctx.fillText('本月扣缴明细', x + 32, y + 52);
+
+  ctx.textAlign = 'right';
+  ctx.font = `400 22px ${SHARE_FONT}`;
+  ctx.fillStyle = '#777';
+  ctx.fillText(tax.badge || '累计预扣法', x + w - 32, y + 52);
+  ctx.textAlign = 'left';
+
+  const inner = 32;
+  const colGap = 48;
+  const colW = (w - inner * 2 - colGap) / 2;
+  const rowH = 54;
+  const top = y + 96;
+  const leftCol = [
+    { label: '应发工资', value: tax.gross },
+    { label: '社保个人', value: tax.social },
+    { label: '个税（当月）', value: tax.tax }
+  ];
+  const rightCol = [
+    { label: '其中补贴', value: tax.allowance },
+    { label: '公积金个人', value: tax.fund },
+    { label: '个税（累计已缴）', value: tax.cumTax }
+  ];
+  const drawRow = (label, value, rx, ry) => {
+    ctx.textAlign = 'left';
+    ctx.font = `400 24px ${SHARE_FONT}`;
+    ctx.fillStyle = '#999';
+    const labelW = ctx.measureText(label).width;
+    ctx.fillText(label, rx, ry);
+    // 金额过长时收窄字号，避免与左侧标签挤在一起
+    const maxW = colW - labelW - 16;
+    let size = 26;
+    for (; size > 18; size -= 2) {
+      ctx.font = `600 ${size}px ${SHARE_MONO}`;
+      if (ctx.measureText(value).width <= maxW) break;
+    }
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ddd';
+    ctx.fillText(value, rx + colW, ry);
+    ctx.textAlign = 'left';
+  };
+  leftCol.forEach((r, i) => drawRow(r.label, r.value, x + inner, top + i * rowH));
+  rightCol.forEach((r, i) => drawRow(r.label, r.value, x + inner + colW + colGap, top + i * rowH));
+
+  // 底部分隔线 + 实发工资
+  const lineY = top + 3 * rowH - 4;
+  ctx.strokeStyle = '#262626';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + inner, lineY);
+  ctx.lineTo(x + w - inner, lineY);
+  ctx.stroke();
+
+  const totalY = lineY + 56;
+  ctx.textAlign = 'left';
+  ctx.font = `500 26px ${SHARE_FONT}`;
+  ctx.fillStyle = '#ddd';
+  ctx.fillText('实发工资', x + inner, totalY);
+  ctx.textAlign = 'right';
+  ctx.font = `700 34px ${SHARE_MONO}`;
+  ctx.fillStyle = '#c8ff00';
+  ctx.fillText(tax.net, x + w - inner, totalY);
+  ctx.textAlign = 'left';
+}
+
 function drawShareCard() {
   const data = getShareData();
   const W = 1080, pad = 72;
@@ -8059,15 +8154,20 @@ function drawShareCard() {
   const statCount = [sec.commute, sec.overtime, sec.ledger, sec.life, sec.year].filter(Boolean).length;
   const statGap = 22;
   const statH = statCount >= 5 ? 190 : (statCount === 4 ? 210 : 232);
+  // 扣缴明细：税前口径没有扣除项，与统计页一致，不占分享图空间
+  const taxOn = sec.tax && !!data.tax;
+  const taxBlockH = 344;
   // 模块顺序由分享选项的拖动顺序决定，取消勾选后对应模块不占空间
-  const visibleOrder = shareOrder.filter(key => sec[key]);
+  const visibleOrder = shareOrder.filter(key => sec[key] && (key !== 'tax' || taxOn));
   const sectionHeight = key => key === 'countdown'
     ? countdownBlockH
     : key === 'salary'
       ? salaryBlockH + 76
-      : key === 'achieve'
-        ? achieveBlockH + statGap
-        : statH + statGap;
+      : key === 'tax'
+        ? taxBlockH + statGap
+        : key === 'achieve'
+          ? achieveBlockH + statGap
+          : statH + statGap;
   const contentBottom = 300 + visibleOrder.reduce((sum, key) => sum + sectionHeight(key), 0);
   const footerY = Math.max(1736, contentBottom + 30);
   // 页脚右侧放二维码，画布高度按二维码卡片预留
@@ -8370,6 +8470,8 @@ function drawShareCard() {
       drawSalaryBlock(cursor);
     } else if (key === 'achieve') {
       drawAchievementsBlock(cursor);
+    } else if (key === 'tax') {
+      drawShareTaxCard(ctx, pad, cursor, statW, taxBlockH, data.tax);
     } else if (statCards[key]) {
       drawShareStatCard(ctx, pad, cursor, statW, statH, statCards[key].title, statCards[key].note, statCards[key].cols);
     }
