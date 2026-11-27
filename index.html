@@ -661,6 +661,7 @@
         <div class="field-group">
           <label id="salaryInputLabel">税前月薪 (¥)</label>
           <input type="number" id="monthlySalary" min="0.01" step="0.01" placeholder="3000" value="3000" oninput="updateProbationHint()">
+          <div class="field-hint">修改后从今天起生效，补录历史调薪请用下方「调薪记录」</div>
         </div>
         <div class="field-group">
           <label>每月工作天数</label>
@@ -732,6 +733,14 @@
         <div class="field-group" style="grid-column:1/-1">
           <div class="field-hint" id="shiftTimeHint"></div>
         </div>
+      </div>
+    </div>
+    <div class="settings-card">
+      <h3>📈 调薪记录</h3>
+      <div class="desc">涨薪 / 降薪按生效日期记录，历史月份按当时薪资与缴费基数计算，不会被最新工资抬高</div>
+      <div class="salary-record-list" id="salaryRecordList"></div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" onclick="openSalaryRecordModal('settings')">＋ 记录一次调薪</button>
       </div>
     </div>
     <div class="settings-card" id="taxCard">
@@ -1296,6 +1305,15 @@
       </div>
 
       <div class="settings-card job-modal-card">
+        <h3>📈 调薪记录</h3>
+        <div class="desc">按生效日期记录这段工作的薪资变化，主薪资视为最新一条，历史月份按当时记录计算</div>
+        <div class="salary-record-list" id="hjSalaryRecordList"></div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-primary" onclick="openSalaryRecordModal('job')">＋ 记录一次调薪</button>
+        </div>
+      </div>
+
+      <div class="settings-card job-modal-card">
         <h3>🚌 通勤时间</h3>
         <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
         <div class="settings-grid">
@@ -1396,6 +1414,35 @@
       <div class="job-modal-actions">
         <button type="button" class="btn btn-secondary" onclick="closeJobHistoryModal()">取消</button>
         <button type="button" class="btn btn-primary" onclick="saveJobHistoryModal()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 调薪记录弹窗 -->
+  <div class="modal-overlay" id="salaryRecordModal">
+    <div class="modal salary-modal">
+      <h3><span id="salaryRecordTitle">记录一次调薪</span> <button class="close" onclick="closeSalaryRecordModal()">×</button></h3>
+      <div class="settings-grid">
+        <div class="field-group" style="grid-column:1/-1">
+          <label>生效日期</label>
+          <input type="text" id="srEffectiveDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <label id="srSalaryLabel">调整后税前月薪 (¥)</label>
+          <input type="number" id="srSalary" min="0.01" step="0.01" placeholder="例如：12000">
+        </div>
+        <div class="field-group">
+          <label>社保基数（元）</label>
+          <input type="number" id="srSocialBase" placeholder="留空=当月工资">
+        </div>
+        <div class="field-group">
+          <label>公积金基数（元）</label>
+          <input type="number" id="srFundBase" placeholder="留空=当月工资">
+        </div>
+      </div>
+      <div class="job-modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeSalaryRecordModal()">取消</button>
+        <button type="button" class="btn btn-primary" onclick="saveSalaryRecordModal()">保存</button>
       </div>
     </div>
   </div>

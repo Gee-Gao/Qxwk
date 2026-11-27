@@ -1,7 +1,7 @@
 // 千薪万苦 · Service Worker
 // 让应用可以离线打开，并满足 PWA 安装条件（HTTPS / localhost 下生效）
 
-const CACHE = 'qxwk-v3.8';
+const CACHE = 'qxwk-v3.9';
 const APP_SHELL = [
   './index.html',
   './css/index.css',
@@ -33,7 +33,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 请求：页面走「网络优先」，静态资源走「缓存优先」，失败时回退缓存
+// 请求「网络优先」失败时回退缓存
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;

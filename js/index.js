@@ -1,7 +1,8 @@
 // ============ 数据与状态 ============
 const DEFAULTS = {
   companyName: '',           // 当前公司名称，归档时作为历史工作名称
-  monthlySalary: 3000,       // 税前月薪
+  monthlySalary: 3000,       // 税前月薪（当前生效值，与调薪记录的最后一条保持同步）
+  salaryHistory: [],         // 调薪记录：按生效日期保存薪资与缴费基数快照
   salaryMode: 'gross',       // 工资口径：gross 只统计税前 / net 统计税后到手 / compare 统计税后并并列展示税前对照
   socialBase: 0,             // 社保缴费基数，0 表示按税前月薪
   fundBase: 0,               // 公积金缴费基数，0 表示按税前月薪
@@ -150,7 +151,7 @@ const DEFAULT_LEAVE_RATIOS = {
 // 工资口径、外币、已工作天数小数位等属于全局展示偏好，不随某一段工作单独保存
 const JOB_HISTORY_KEY = 'qianxwk_job_history';
 const JOB_FIELDS = [
-  'monthlySalary',
+  'monthlySalary', 'salaryHistory',
   'socialBase', 'fundBase', 'pensionRate', 'medicalRate', 'unemploymentRate', 'fundRate', 'medicalExtra',
   'specialChild', 'specialBaby', 'specialEducation', 'specialLoan', 'specialRent', 'specialElder',
   'hireDate', 'probationMonths', 'regularDate', 'probationRatio',
@@ -176,7 +177,9 @@ let monthPickerTarget = 'ledger';       // 月份快速选择回填目标：ledg
 
 // ============ 持久化 ============
 function load() {
+  let hadStoredSettings = false;
   try {
+    hadStoredSettings = !!localStorage.getItem('qianxwk_settings');
     settings = JSON.parse(localStorage.getItem('qianxwk_settings')) || {...DEFAULTS};
     devices = JSON.parse(localStorage.getItem('qianxwk_devices')) || [];
     paidLeaveSessions = JSON.parse(localStorage.getItem('qianxwk_leave')) || [];
@@ -235,6 +238,16 @@ function load() {
   // 自定义日历按月留存：旧版单月数据迁移进按月表，便于回看上月的实际工作日
   migrateCustomCalendar(settings);
   normalizeShiftRotation(settings);
+  // 调薪记录：已保存过参数的老数据按入职日期补一条初始记录，
+  // 首次使用保持为空，等填写薪资时再生成，避免把默认月薪当成历史
+  normalizeSalaryHistory(settings);
+  if (hadStoredSettings && settings.salaryConfigured !== false) {
+    seedSalaryHistory(settings);
+    settings.salaryConfigured = true;
+  } else if (!hadStoredSettings) {
+    // 首次使用还没填过薪资，先不生成记录，避免刷新后把默认值固化成历史
+    settings.salaryConfigured = false;
+  }
 }
 
 // ---------- 工作经历：快照与时间轴 ----------
@@ -313,6 +326,8 @@ function normalizeJobHistory() {
       job.name = typeof o.name === 'string' ? o.name : '';
       job.endDate = typeof o.endDate === 'string' ? o.endDate : '';
       if (!Array.isArray(job.customWorkDates)) job.customWorkDates = [];
+      // 历史工作都已是既定经历，没有调薪记录时按入职日期补一条初始记录
+      seedSalaryHistory(job);
       return job;
     });
 }
@@ -335,6 +350,204 @@ function getRegularDateOf(job) {
 
 function jobKeyOf(job) {
   return job === settings ? 'current' : (job && job.id) || 'job';
+}
+
+// ============ 调薪记录 ============
+// 每段工作按生效日期保存薪资与缴费基数快照，按日期计算时取当时适用的记录，
+// 避免涨薪后把过去的月份一起抬高；五险一金比例仍沿用当前工作的统一参数
+let salaryRecordCtx = null; // 调薪弹窗上下文：{ target: 'settings' | 'job', id }
+let salaryInputTouched = false; // 首次配置时，只有真正改过薪资输入框才生成初始记录
+
+function newSalaryRecordId() {
+  return 'sal_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+// 规范化调薪记录：过滤非法项、按生效日期升序、同一天只保留最后一条
+function normalizeSalaryHistory(job) {
+  const list = Array.isArray(job.salaryHistory) ? job.salaryHistory : [];
+  const map = new Map();
+  list.forEach(r => {
+    if (!r || typeof r !== 'object') return;
+    const date = parseDateKey(r.effectiveDate);
+    if (!date) return;
+    const key = fmtDateKey(date);
+    map.set(key, {
+      id: typeof r.id === 'string' && r.id ? r.id : newSalaryRecordId(),
+      effectiveDate: key,
+      calcMode: r.calcMode === 'hourly' ? 'hourly' : 'monthly',
+      monthlySalary: Math.max(0, parseFloat(r.monthlySalary) || 0),
+      hourlyRate: Math.max(0, parseFloat(r.hourlyRate) || 0),
+      socialBase: Math.max(0, parseFloat(r.socialBase) || 0),
+      fundBase: Math.max(0, parseFloat(r.fundBase) || 0)
+    });
+  });
+  job.salaryHistory = [...map.values()].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
+  return job.salaryHistory;
+}
+
+function salaryRecordsOf(job) {
+  return Array.isArray(job.salaryHistory) ? job.salaryHistory : [];
+}
+
+// 用当前字段生成一条临时记录：没有调薪记录时用于兜底，不写入存储
+function transientSalaryRecord(job) {
+  const cfg = job || settings;
+  return {
+    id: '',
+    effectiveDate: cfg.hireDate || fmtDateKey(new Date()),
+    calcMode: cfg.calcMode === 'hourly' ? 'hourly' : 'monthly',
+    monthlySalary: Math.max(0, parseFloat(cfg.monthlySalary) || 0),
+    hourlyRate: Math.max(0, parseFloat(cfg.hourlyRate) || 0),
+    socialBase: Math.max(0, parseFloat(cfg.socialBase) || 0),
+    fundBase: Math.max(0, parseFloat(cfg.fundBase) || 0)
+  };
+}
+
+// 老数据迁移：没有调薪记录时，按入职日期（未填则今天）补一条初始记录
+function seedSalaryHistory(job) {
+  normalizeSalaryHistory(job);
+  if (!job.salaryHistory.length) {
+    const rec = transientSalaryRecord(job);
+    rec.id = newSalaryRecordId();
+    job.salaryHistory = [rec];
+  }
+  return job.salaryHistory;
+}
+
+// 指定日期适用的调薪记录：取生效日期不晚于该天的最后一条；
+// 早于全部记录时回落到当前字段，避免未来生效的调薪提前影响今天
+function salaryRecordAt(job, date) {
+  const cfg = job || settings;
+  const list = salaryRecordsOf(cfg);
+  const d = date instanceof Date ? date : parseDateKey(date);
+  const key = fmtDateKey(d || new Date());
+  let picked = null;
+  list.forEach(r => { if (r.effectiveDate <= key) picked = r; });
+  return picked || transientSalaryRecord(cfg);
+}
+
+// 指定日期适用的薪资与缴费基数
+function payConfigAt(job, date) {
+  const rec = salaryRecordAt(job, date);
+  return {
+    calcMode: rec.calcMode,
+    monthlySalary: rec.monthlySalary,
+    hourlyRate: rec.hourlyRate,
+    socialBase: rec.socialBase,
+    fundBase: rec.fundBase
+  };
+}
+
+// 单条记录对应的整月工资：固定月薪取月薪，累计工时按时薪 × 日均工时 × 月工作日
+function monthlyGrossOfRecord(job, rec) {
+  const cfg = job || settings;
+  if (!rec) return 0;
+  if (rec.calcMode === 'hourly') {
+    const workDays = Math.max(1, parseFloat(cfg.workDaysPerMonth) || DEFAULTS.workDaysPerMonth);
+    return Math.max(0, rec.hourlyRate) * getAvgDailyHours(cfg) * workDays;
+  }
+  return Math.max(0, rec.monthlySalary);
+}
+
+// 某月名义月工资：月内调薪时按实际工作日拆分，月初生效直接归入当月；
+// 与转正当月一样按 21.75 天折算，并以月末生效薪资封顶
+function monthBasePayOf(job, year, month) {
+  const cfg = job || settings;
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+  const startRec = salaryRecordAt(cfg, monthStart);
+  const endRec = salaryRecordAt(cfg, monthEnd);
+  const changed = salaryRecordsOf(cfg).some(r => {
+    const d = parseDateKey(r.effectiveDate);
+    return d && d > monthStart && d <= monthEnd;
+  });
+  if (!changed) return monthlyGrossOfRecord(cfg, startRec);
+  if (endRec.calcMode === 'hourly') {
+    const avgHours = getAvgDailyHours(cfg);
+    let sum = 0;
+    for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+      if (!isWorkdayByConfig(d, cfg) || !jobCoversDate(cfg, d)) continue;
+      sum += Math.max(0, salaryRecordAt(cfg, d).hourlyRate) * avgHours;
+    }
+    return sum;
+  }
+  let sum = 0;
+  for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+    if (!isWorkdayByConfig(d, cfg) || !jobCoversDate(cfg, d)) continue;
+    sum += Math.max(0, salaryRecordAt(cfg, d).monthlySalary) / STANDARD_MONTH_DAYS;
+  }
+  return Math.min(monthlyGrossOfRecord(cfg, endRec), sum);
+}
+
+// 当前字段同步为「今天生效」的记录，供设置页与历史列表展示
+function syncCurrentSalaryFields(job) {
+  const cfg = job || settings;
+  const rec = salaryRecordAt(cfg, new Date());
+  if (!rec || !rec.id) return;
+  cfg.monthlySalary = rec.monthlySalary;
+  cfg.hourlyRate = rec.hourlyRate;
+  cfg.socialBase = rec.socialBase;
+  cfg.fundBase = rec.fundBase;
+}
+
+// 单条记录时把生效日期对齐到入职日期，修正首次配置顺序不同导致日期不准
+function alignSingleSalaryRecord(job) {
+  const list = salaryRecordsOf(job);
+  if (list.length !== 1) return false;
+  const recordDate = parseDateKey(list[0].effectiveDate);
+  const today = new Date();
+  if (recordDate && recordDate > today) return false;
+  const hire = parseDateKey(job.hireDate || '');
+  if (!hire || hire > today) return false;
+  const key = fmtDateKey(hire);
+  if (list[0].effectiveDate === key) return false;
+  list[0].effectiveDate = key;
+  return true;
+}
+
+// 设置页 / 历史工作里修改当前薪资：没有记录时生成初始记录，
+// 已有记录时写入「今天起」的新记录（同日覆盖），历史月份不受影响
+function applyCurrentSalary(job, values) {
+  const cfg = job || settings;
+  const list = salaryRecordsOf(cfg);
+  const todayKey = fmtDateKey(new Date());
+  const diff = (a, b) => Math.abs((a || 0) - (b || 0)) > 0.005;
+  if (!list.length) {
+    const hire = parseDateKey(cfg.hireDate || '');
+    cfg.salaryHistory = [{
+      id: newSalaryRecordId(),
+      effectiveDate: hire ? fmtDateKey(hire) : todayKey,
+      calcMode: values.calcMode,
+      monthlySalary: Math.max(0, values.monthlySalary || 0),
+      hourlyRate: Math.max(0, values.hourlyRate || 0),
+      socialBase: Math.max(0, values.socialBase || 0),
+      fundBase: Math.max(0, values.fundBase || 0)
+    }];
+    cfg.salaryConfigured = true;
+    return true;
+  }
+  const current = salaryRecordAt(cfg, todayKey);
+  const changed = !current.id
+    || current.calcMode !== values.calcMode
+    || diff(current.monthlySalary, values.monthlySalary)
+    || diff(current.hourlyRate, values.hourlyRate)
+    || diff(current.socialBase, values.socialBase)
+    || diff(current.fundBase, values.fundBase);
+  if (!changed) return false;
+  let target = list.find(r => r.effectiveDate === todayKey);
+  if (!target) {
+    target = { id: newSalaryRecordId(), effectiveDate: todayKey };
+    list.push(target);
+  }
+  Object.assign(target, {
+    calcMode: values.calcMode,
+    monthlySalary: Math.max(0, values.monthlySalary || 0),
+    hourlyRate: Math.max(0, values.hourlyRate || 0),
+    socialBase: Math.max(0, values.socialBase || 0),
+    fundBase: Math.max(0, values.fundBase || 0)
+  });
+  normalizeSalaryHistory(cfg);
+  return true;
 }
 
 // 某段工作是否覆盖指定日期；未填入职日期的当前工作沿用旧口径（视为全年在职）
@@ -1149,8 +1362,8 @@ function updateRateTierHint() {
   hint.textContent = `累计工时每月 1 号重置${start ? `（首月从 ${start} 入职起算）` : ''}；休息日不计工时，门槛会自然顺延；门槛前按 1 倍计薪；阶梯加成计入正常工资，不计入加班费`;
 }
 
-// 收集设置页表单写入当前工作并持久化
-function persistSettings() {
+// 收集设置页表单写入当前工作并持久化；forceSalaryCommit 用于输入框失焦 / change 时立即落盘
+function persistSettings(forceSalaryCommit) {
   const job = settings;
   const num = (id, fallback) => {
     const v = parseFloat(document.getElementById(id).value);
@@ -1161,15 +1374,20 @@ function persistSettings() {
   // 计算方式：固定月薪读月薪字段，累计工时读时薪字段（同一个输入框，按模式写回）
   job.calcMode = job.calcMode === 'hourly' ? 'hourly' : 'monthly';
   const salaryInputVal = num('monthlySalary', 0);
-  if (job.calcMode === 'hourly') {
-    // 时薪下限 0.01；留空视为未设置，保留「未设置时薪」提示
-    job.hourlyRate = salaryInputVal > 0 ? Math.max(0.01, salaryInputVal) : 0;
-  } else {
-    job.monthlySalary = salaryInputVal > 0 ? Math.max(0.01, salaryInputVal) : DEFAULTS.monthlySalary;
-  }
+  // 时薪下限 0.01；留空视为未设置，保留「未设置时薪」提示
+  const nextMonthlySalary = job.calcMode === 'hourly'
+    ? Math.max(0, parseFloat(job.monthlySalary) || 0)
+    : (salaryInputVal > 0 ? Math.max(0.01, salaryInputVal) : DEFAULTS.monthlySalary);
+  const nextHourlyRate = job.calcMode === 'hourly'
+    ? (salaryInputVal > 0 ? Math.max(0.01, salaryInputVal) : 0)
+    : Math.max(0, parseFloat(job.hourlyRate) || 0);
   settings.salaryMode = settings.salaryMode || DEFAULTS.salaryMode;
-  job.socialBase = num('socialBase', 0);
-  job.fundBase = num('fundBase', 0);
+  const nextSocialBase = Math.max(0, num('socialBase', 0));
+  const nextFundBase = Math.max(0, num('fundBase', 0));
+  job.monthlySalary = nextMonthlySalary;
+  job.hourlyRate = nextHourlyRate;
+  job.socialBase = nextSocialBase;
+  job.fundBase = nextFundBase;
   job.pensionRate = num('pensionRate', DEFAULTS.pensionRate);
   job.medicalRate = num('medicalRate', DEFAULTS.medicalRate);
   job.unemploymentRate = num('unemploymentRate', DEFAULTS.unemploymentRate);
@@ -1225,6 +1443,27 @@ function persistSettings() {
   }
   settings.foreignEnabled = !!settings.foreignEnabled;
   settings.foreignCurrency = currencyOf(settings.foreignCurrency).code;
+  // 调薪记录：输入框仍在输入时先不落盘，失焦或点击其他控件后再写入，避免逐字生成记录；
+  // 没有记录时视为首次配置，已有记录时视为从今天起调薪
+  const activeEl = document.activeElement;
+  const typingSalary = !forceSalaryCommit && !!activeEl
+    && ['monthlySalary', 'socialBase', 'fundBase'].includes(activeEl.id);
+  if (!typingSalary) {
+    const aligned = alignSingleSalaryRecord(job);
+    // 首次配置时先点别的开关不应把默认月薪固化成历史，只有真正改过薪资才生成初始记录
+    const canCommit = salaryRecordsOf(job).length > 0 || salaryInputTouched;
+    if (canCommit) {
+      const salaryChanged = applyCurrentSalary(job, {
+        calcMode: job.calcMode,
+        monthlySalary: nextMonthlySalary,
+        hourlyRate: nextHourlyRate,
+        socialBase: nextSocialBase,
+        fundBase: nextFundBase
+      });
+      syncCurrentSalaryFields(job);
+      if (aligned || salaryChanged) renderSalaryRecords();
+    }
+  }
   updateShiftHint(job);
   updateCommuteHint();
   invalidateJobCaches();
@@ -1237,6 +1476,8 @@ function saveLeave() {
 
 function fillSettingsForm() {
   const job = settings;
+  // 先取「今天生效」的调薪记录同步薪资与缴费基数，再写入表单
+  syncCurrentSalaryFields(job);
   const set = (id, v) => { document.getElementById(id).value = v; };
   const companyInput = document.getElementById('companyName');
   if (companyInput) companyInput.value = job.companyName || '';
@@ -1281,6 +1522,7 @@ function fillSettingsForm() {
   // 外币：先选中币种，再按开关同步控件的可用状态
   selectForeignCurrency(settings.foreignCurrency || DEFAULTS.foreignCurrency);
   selectForeignEnabled(settings.foreignEnabled);
+  renderSalaryRecords();
 }
 
 // ============ 历史工作界面 ============
@@ -1320,10 +1562,11 @@ function renderJobHistory() {
   }
   list.innerHTML = jobs.map(job => {
     const name = job.name || '历史工作';
-    // 累计工时工作没有月薪，展示时薪，避免误导
-    const payLabel = job.calcMode === 'hourly'
-      ? `税前时薪 ¥${(parseFloat(job.hourlyRate) || 0).toFixed(2)}/小时 · 累计工时`
-      : `税前月薪 ¥${Math.round(parseFloat(job.monthlySalary) || 0).toLocaleString()}`;
+    // 展示离职时生效的薪资；累计工时工作没有月薪，展示时薪，避免误导
+    const payRec = salaryRecordAt(job, job.endDate || new Date());
+    const payLabel = payRec.calcMode === 'hourly'
+      ? `税前时薪 ¥${(parseFloat(payRec.hourlyRate) || 0).toFixed(2)}/小时 · 累计工时`
+      : `税前月薪 ¥${Math.round(parseFloat(payRec.monthlySalary) || 0).toLocaleString()}`;
     const hourly = jobHourlyPreview(job);
     return `<div class="job-item" role="button" tabindex="0" onclick="event.stopPropagation(); editHistoryJob('${job.id}')">
       <div class="job-item-main">
@@ -1336,7 +1579,209 @@ function renderJobHistory() {
   }).join('');
 }
 
-// ============ 每月补贴录入 ============
+// ============ 调薪记录界面 ============
+function salaryAmountLabel(rec) {
+  return rec.calcMode === 'hourly'
+    ? `税前时薪 ¥${(parseFloat(rec.hourlyRate) || 0).toFixed(2)}/小时`
+    : `税前月薪 ¥${Math.round(parseFloat(rec.monthlySalary) || 0).toLocaleString()}`;
+}
+
+function salaryBaseLabel(rec) {
+  const parts = [];
+  if (rec.socialBase > 0) parts.push(`社保基数 ¥${Math.round(rec.socialBase).toLocaleString()}`);
+  if (rec.fundBase > 0) parts.push(`公积金基数 ¥${Math.round(rec.fundBase).toLocaleString()}`);
+  return parts.length ? parts.join(' · ') : '缴费基数跟随当月工资';
+}
+
+function salaryRecordRowHtml(rec, target, activeId, activeLabel) {
+  const active = rec.id === activeId
+    ? `<span class="salary-record-badge">${activeLabel}</span>`
+    : '';
+  return `<div class="salary-record-row">
+    <div class="salary-record-main">
+      <div class="salary-record-head"><span>${formatDateSlash(rec.effectiveDate)} 起</span>${active}</div>
+      <div class="salary-record-amount">${salaryAmountLabel(rec)}</div>
+      <div class="salary-record-meta">${salaryBaseLabel(rec)}</div>
+    </div>
+    <button type="button" class="salary-record-edit" onclick="openSalaryRecordModal('${target}','${rec.id}')">编辑</button>
+    <button type="button" class="salary-record-del" title="删除" onclick="deleteSalaryRecord('${target}','${rec.id}')">×</button>
+  </div>`;
+}
+
+function renderSalaryRecords() {
+  const box = document.getElementById('salaryRecordList');
+  if (!box) return;
+  const list = salaryRecordsOf(settings);
+  if (!list.length) {
+    box.innerHTML = '<div class="job-empty">还没有调薪记录，修改上方薪资后会自动记录生效日期。</div>';
+    return;
+  }
+  const current = salaryRecordAt(settings, new Date());
+  box.innerHTML = list.map(r => salaryRecordRowHtml(r, 'settings', current.id, '当前')).join('');
+}
+
+function renderJobSalaryRecords() {
+  const box = document.getElementById('hjSalaryRecordList');
+  if (!box || !jobModalDraft) return;
+  const list = salaryRecordsOf(jobModalDraft);
+  if (!list.length) {
+    box.innerHTML = '<div class="job-empty">保存时会按入职日期生成初始薪资记录。</div>';
+    return;
+  }
+  const latest = list[list.length - 1];
+  box.innerHTML = list.map(r => salaryRecordRowHtml(r, 'job', latest.id, '最新')).join('');
+}
+
+// 设置页薪资 / 基数输入框回写为「今天生效」的记录
+function refreshSettingsSalaryInputs() {
+  const job = settings;
+  const input = document.getElementById('monthlySalary');
+  if (input) {
+    const v = isHourlyMode(job) ? jobHourlyInput(job) : Math.max(0, parseFloat(job.monthlySalary) || 0);
+    input.value = v > 0 ? v : '';
+  }
+  const socialInput = document.getElementById('socialBase');
+  if (socialInput) socialInput.value = job.socialBase > 0 ? job.socialBase : '';
+  const fundInput = document.getElementById('fundBase');
+  if (fundInput) fundInput.value = job.fundBase > 0 ? job.fundBase : '';
+  updateProbationHint();
+}
+
+// 历史工作草稿同步为最后一条记录，主薪资输入框视为最新一条
+function syncLatestSalaryFields(job) {
+  const list = salaryRecordsOf(job);
+  if (!list.length) return;
+  const latest = list[list.length - 1];
+  job.calcMode = latest.calcMode;
+  job.monthlySalary = latest.monthlySalary;
+  job.hourlyRate = latest.hourlyRate;
+  job.socialBase = latest.socialBase;
+  job.fundBase = latest.fundBase;
+}
+
+function fillJobModalSalaryFields(job) {
+  setJobModalSeg('hjCalcMode', 'mode', job.calcMode === 'hourly' ? 'hourly' : 'monthly');
+  syncJobModalSalaryInput();
+  const socialInput = document.getElementById('hjSocialBase');
+  if (socialInput) socialInput.value = job.socialBase > 0 ? job.socialBase : '';
+  const fundInput = document.getElementById('hjFundBase');
+  if (fundInput) fundInput.value = job.fundBase > 0 ? job.fundBase : '';
+}
+
+function openSalaryRecordModal(target, id) {
+  const isJob = target === 'job';
+  const job = isJob ? jobModalDraft : settings;
+  if (!job) return;
+  const list = salaryRecordsOf(job);
+  const rec = id ? list.find(r => r.id === id) : null;
+  salaryRecordCtx = { target: isJob ? 'job' : 'settings', id: rec ? rec.id : '' };
+  const todayKey = fmtDateKey(new Date());
+  const latest = list.length ? list[list.length - 1] : null;
+  const base = rec || (isJob ? latest : salaryRecordAt(job, todayKey)) || transientSalaryRecord(job);
+  const calcMode = (rec && rec.calcMode)
+    || (isJob ? jobModalCalcMode() : (job.calcMode === 'hourly' ? 'hourly' : 'monthly'));
+  const hourly = calcMode === 'hourly';
+  const dateInput = document.getElementById('srEffectiveDate');
+  if (dateInput) dateInput.value = formatDateSlash(rec ? rec.effectiveDate : todayKey);
+  const label = document.getElementById('srSalaryLabel');
+  if (label) label.textContent = hourly ? '调整后税前时薪 (¥/小时)' : '调整后税前月薪 (¥)';
+  const amountInput = document.getElementById('srSalary');
+  if (amountInput) {
+    const v = hourly ? (parseFloat(base.hourlyRate) || 0) : (parseFloat(base.monthlySalary) || 0);
+    amountInput.value = v > 0 ? v : '';
+    amountInput.placeholder = hourly ? '例如：30' : '例如：12000';
+  }
+  const socialInput = document.getElementById('srSocialBase');
+  if (socialInput) socialInput.value = base.socialBase > 0 ? base.socialBase : '';
+  const fundInput = document.getElementById('srFundBase');
+  if (fundInput) fundInput.value = base.fundBase > 0 ? base.fundBase : '';
+  const title = document.getElementById('salaryRecordTitle');
+  if (title) title.textContent = rec ? '编辑调薪记录' : '记录一次调薪';
+  const overlay = document.getElementById('salaryRecordModal');
+  if (overlay) overlay.classList.add('show');
+}
+
+function closeSalaryRecordModal() {
+  const overlay = document.getElementById('salaryRecordModal');
+  if (overlay) overlay.classList.remove('show');
+  salaryRecordCtx = null;
+}
+
+function saveSalaryRecordModal() {
+  const ctx = salaryRecordCtx;
+  if (!ctx) return;
+  const isJob = ctx.target === 'job';
+  const job = isJob ? jobModalDraft : settings;
+  if (!job) return;
+  const date = parseDateKey(document.getElementById('srEffectiveDate').value);
+  if (!date) { showToast('请选择生效日期'); return; }
+  const amount = Math.max(0, parseFloat(document.getElementById('srSalary').value) || 0);
+  if (!(amount > 0)) { showToast('请填写调整后的薪资'); return; }
+  const socialBase = Math.max(0, parseFloat(document.getElementById('srSocialBase').value) || 0);
+  const fundBase = Math.max(0, parseFloat(document.getElementById('srFundBase').value) || 0);
+  const calcMode = ((isJob ? jobModalCalcMode() : job.calcMode) === 'hourly') ? 'hourly' : 'monthly';
+  const hire = parseDateKey(job.hireDate || '');
+  let dateKey = fmtDateKey(date);
+  if (hire && date < hire) dateKey = fmtDateKey(hire);
+  const list = salaryRecordsOf(job);
+  let target = ctx.id ? list.find(r => r.id === ctx.id) : null;
+  if (!target) target = list.find(r => r.effectiveDate === dateKey) || null;
+  const values = {
+    calcMode,
+    monthlySalary: calcMode === 'hourly' ? Math.max(0, parseFloat(job.monthlySalary) || 0) : amount,
+    hourlyRate: calcMode === 'hourly' ? amount : Math.max(0, parseFloat(job.hourlyRate) || 0),
+    socialBase,
+    fundBase
+  };
+  if (target) {
+    // 同一天只保留一条：编辑时若与其他记录撞日，以编辑的这条为准
+    job.salaryHistory = list.filter(r => r.id === target.id || r.effectiveDate !== dateKey);
+    const kept = job.salaryHistory.find(r => r.id === target.id);
+    Object.assign(kept, values, { effectiveDate: dateKey });
+  } else {
+    job.salaryHistory = list.concat([{ id: newSalaryRecordId(), effectiveDate: dateKey, ...values }]);
+  }
+  normalizeSalaryHistory(job);
+  job.salaryConfigured = true;
+  closeSalaryRecordModal();
+  if (isJob) {
+    syncLatestSalaryFields(job);
+    fillJobModalSalaryFields(job);
+    renderJobSalaryRecords();
+  } else {
+    syncCurrentSalaryFields(settings);
+    refreshSettingsSalaryInputs();
+    renderSalaryRecords();
+    persistSettings();
+    updateAll();
+  }
+}
+
+function deleteSalaryRecord(target, id) {
+  const isJob = target === 'job';
+  const job = isJob ? jobModalDraft : settings;
+  if (!job) return;
+  const list = salaryRecordsOf(job);
+  if (list.length <= 1) {
+    showToast('至少保留一条调薪记录');
+    return;
+  }
+  if (!confirm('删除这条调薪记录？对应月份的收入会按剩余记录重新计算。')) return;
+  job.salaryHistory = list.filter(r => r.id !== id);
+  normalizeSalaryHistory(job);
+  if (isJob) {
+    syncLatestSalaryFields(job);
+    fillJobModalSalaryFields(job);
+    renderJobSalaryRecords();
+  } else {
+    syncCurrentSalaryFields(settings);
+    refreshSettingsSalaryInputs();
+    renderSalaryRecords();
+    persistSettings();
+    updateAll();
+  }
+}
+
 // 补贴只能录入已经到来的月份，不允许提前录入未来月份
 function isFutureMonth(monthKey) {
   return monthKey > currentMonthKey();
@@ -1630,6 +2075,9 @@ function fillJobHistoryModal(job) {
     const el = document.getElementById(id);
     if (el) el.value = v;
   };
+  // 已有调薪记录时，主薪资 / 基数展示最后一条记录
+  normalizeSalaryHistory(job);
+  if (salaryRecordsOf(job).length) syncLatestSalaryFields(job);
   set('hjName', job.name || '');
   set('hjHireDate', formatDateSlash(job.hireDate || ''));
   set('hjEndDate', formatDateSlash(job.endDate || ''));
@@ -1658,6 +2106,7 @@ function fillJobHistoryModal(job) {
   updateJobModalRegularDate();
   updateJobModalWorkDays();
   updateJobModalCommuteUI();
+  renderJobSalaryRecords();
 }
 
 // 从弹窗读取历史工作
@@ -1694,6 +2143,28 @@ function readJobHistoryModal() {
     : Math.max(0, num('hjCommuteMinutes', 0));
   job.socialBase = num('hjSocialBase', 0);
   job.fundBase = num('hjFundBase', 0);
+  // 调薪记录：没有记录时按入职日期生成初始记录；已有记录时主输入框视为最新一条的修正
+  if (!salaryRecordsOf(job).length) {
+    job.salaryHistory = [{
+      id: newSalaryRecordId(),
+      effectiveDate: job.hireDate || fmtDateKey(new Date()),
+      calcMode: job.calcMode,
+      monthlySalary: job.monthlySalary,
+      hourlyRate: job.hourlyRate,
+      socialBase: Math.max(0, job.socialBase || 0),
+      fundBase: Math.max(0, job.fundBase || 0)
+    }];
+  } else {
+    const records = salaryRecordsOf(job);
+    const latest = records[records.length - 1];
+    latest.calcMode = job.calcMode;
+    latest.monthlySalary = job.monthlySalary;
+    latest.hourlyRate = job.hourlyRate;
+    latest.socialBase = Math.max(0, job.socialBase || 0);
+    latest.fundBase = Math.max(0, job.fundBase || 0);
+  }
+  normalizeSalaryHistory(job);
+  alignSingleSalaryRecord(job);
   job.pensionRate = num('hjPensionRate', DEFAULTS.pensionRate);
   job.medicalRate = num('hjMedicalRate', DEFAULTS.medicalRate);
   job.unemploymentRate = num('hjUnemploymentRate', DEFAULTS.unemploymentRate);
@@ -1723,6 +2194,7 @@ function openJobHistoryModal(draft, isNew) {
 }
 
 function closeJobHistoryModal() {
+  closeSalaryRecordModal();
   const overlay = document.getElementById('jobHistoryModal');
   if (overlay) overlay.classList.remove('show');
   jobModalDraft = null;
@@ -1767,6 +2239,7 @@ function addHistoryJob() {
   draft.hireDate = '';
   draft.endDate = '';
   draft.regularDate = '';
+  draft.salaryHistory = [];
   openJobHistoryModal(draft, true);
 }
 
@@ -1801,6 +2274,9 @@ function archiveCurrentJob() {
   settings.hireDate = fmtDateKey(tomorrow);
   settings.regularDate = getRegularDateOf(settings);
   settings.companyName = '';
+  // 新工作重新开始，清空调薪记录，填入新薪资时再生成初始记录
+  settings.salaryHistory = [];
+  settings.salaryConfigured = false;
   try { localStorage.setItem('qianxwk_settings', JSON.stringify(settings)); } catch (e) { /* 写入失败不影响使用 */ }
 
   invalidateJobCaches();
@@ -1818,6 +2294,7 @@ function editHistoryJob(id) {
     ...job,
     customWorkDates: [...(job.customWorkDates || [])],
     customWorkCalendars: JSON.parse(JSON.stringify(job.customWorkCalendars || {})),
+    salaryHistory: JSON.parse(JSON.stringify(job.salaryHistory || [])),
     tieredRateTiers: (job.tieredRateTiers || []).map(t => ({ ...t }))
   }, false);
 }
@@ -1937,7 +2414,6 @@ function buildMonthlySchedule(o, job, year) {
   const cfg = job || settings;
   const now = new Date();
   year = year || now.getFullYear();
-  const grossFull = Math.max(0, o.gross || 0);
   const special = o.special || 0;
   const ratioPct = parseFloat(o.probationRatio);
   const ratio = (isNaN(ratioPct) || ratioPct <= 0 ? 100 : Math.min(100, ratioPct)) / 100;
@@ -1953,8 +2429,13 @@ function buildMonthlySchedule(o, job, year) {
   for (let m = startMonth; m < 12; m++) {
     const monthStart = new Date(year, m, 1);
     const monthEnd = new Date(year, m + 1, 0);
+    // 当月适用的薪资：月内调薪按工作日拆分，历史月份自然沿用当时的记录
+    const monthGross = monthBasePayOf(cfg, year, m);
+    const monthRec = salaryRecordAt(cfg, monthStart);
+    // 缴费基数跟随当月的调薪记录；记录里为 0 时按当月工资
+    const monthOpts = { ...o, socialBase: monthRec.socialBase, fundBase: monthRec.fundBase };
     const probation = !!regular && monthStart < regular;
-    const monthPay = probation ? grossFull * ratio : grossFull;
+    const monthPay = probation ? monthGross * ratio : monthGross;
     let basePay;
     if (regular && regular > monthStart && regular <= monthEnd) {
       // 转正当月：转正前按试用期比例、转正后按正式月薪，按实际工作日加权折算
@@ -1967,7 +2448,7 @@ function buildMonthlySchedule(o, job, year) {
         else regularDays++;
       }
       const weighted = (probationDays * ratio + regularDays) / STANDARD_MONTH_DAYS;
-      basePay = grossFull * Math.min(1, weighted);
+      basePay = monthGross * Math.min(1, weighted);
     } else if (hire && hire.getFullYear() === year && hire.getMonth() === m) {
       // 入职当月按 21.75 天折算：只计入职日到月底的工作日；五险一金仍按整月工资作基数
       let attended = 0;
@@ -1986,7 +2467,7 @@ function buildMonthlySchedule(o, job, year) {
     const allowance = allowanceTotalOfMonth(monthKey);
     const taxableAllowance = allowanceTaxableTotalOfMonth(monthKey);
     const gross = basePay + allowance;
-    const ins = calcMonthlyInsurance(gross, o, monthPay);
+    const ins = calcMonthlyInsurance(gross, monthOpts, monthPay);
     const taxable = basePay + taxableAllowance - ins.insurance - special - IIT_THRESHOLD_MONTHLY;
     cumTaxable += taxable;
     const cumTax = calcIIT(cumTaxable);
@@ -2035,22 +2516,25 @@ function jobHourlyInput(job) {
   return Math.max(0, parseFloat((job || settings).hourlyRate) || 0);
 }
 
-// 整月税前工资：固定月薪取月薪，累计工时取「时薪 × 每日实际工时 × 月工作日」折算
+// 整月税前工资：固定月薪取当月生效的记录，累计工时取「时薪 × 每日实际工时 × 月工作日」折算
 // （通勤不是工资，不参与整月工资；开启通勤折算后只影响展示的等效时薪）
-function monthlyGrossOfJob(job) {
+function monthlyGrossOfJob(job, date) {
   const cfg = job || settings;
-  if (!isHourlyMode(cfg)) return Math.max(0, parseFloat(cfg.monthlySalary) || 0);
-  const workDays = Math.max(1, parseFloat(cfg.workDaysPerMonth) || DEFAULTS.workDaysPerMonth);
-  return jobHourlyInput(cfg) * getAvgDailyHours(cfg) * workDays;
+  const d = date || new Date();
+  return monthBasePayOf(cfg, d.getFullYear(), d.getMonth());
 }
 
-function taxParamsFromJob(job) {
+function taxParamsFromJob(job, date) {
   const cfg = job || settings;
+  const rec = salaryRecordAt(cfg, date || new Date());
   const params = readTaxParams(key => {
     const v = parseFloat(cfg[key]);
     return isNaN(v) ? 0 : v;
   });
-  params.gross = monthlyGrossOfJob(cfg);
+  // 缴费基数同样取指定日期生效的记录，逐月明细里会再按当月记录校正
+  params.socialBase = rec.socialBase;
+  params.fundBase = rec.fundBase;
+  params.gross = monthlyGrossOfJob(cfg, date);
   return params;
 }
 
@@ -2083,9 +2567,8 @@ function monthlyIncomeOf(cfg, date, grossOnly) {
   const year = date.getFullYear();
   const month = date.getMonth();
   const allowance = allowanceTotalOfMonth(monthKeyOf(new Date(year, month, 1)));
-  const base = isHourlyMode(cfg)
-    ? monthlyGrossOfJob(cfg)
-    : Math.max(0, parseFloat(cfg.monthlySalary) || 0);
+  // 基准薪资取该月适用的调薪记录（月内调薪按工作日拆分）
+  const base = monthBasePayOf(cfg, year, month);
   // 税前口径：试用期折算 × 请假扣薪系数（逐月明细里的税后已达同样处理）
   const grossBase = base * salaryFactorFor(date, cfg) * leaveMonthPayFactor(cfg, year, month);
   if (grossOnly) return grossBase + allowance;
@@ -3330,7 +3813,8 @@ function getMonthlyPayForMonth(monthStart, job, grossOnly) {
 // 某段工作在指定日期的时薪：按该月满月工作日数折算，避免部分在职月份被抬高
 function jobHourlyAt(job, date, grossOnly) {
   const cfg = job || settings;
-  if (isHourlyMode(cfg)) return hourlyForJobAtDate(cfg, date, grossOnly);
+  // 计算方式也按当天生效的调薪记录判断，兼容中途从月薪切到时薪的情况
+  if (salaryRecordAt(cfg, date).calcMode === 'hourly') return hourlyForJobAtDate(cfg, date, grossOnly);
   const dailyHours = getAvgPaidDailyHours(job);
   const workDays = countWorkdaysInMonthFor(date.getFullYear(), date.getMonth(), job);
   if (!(dailyHours > 0) || !(workDays > 0)) return 0;
@@ -3338,17 +3822,18 @@ function jobHourlyAt(job, date, grossOnly) {
   return pay / (dailyHours * workDays);
 }
 
-// 累计工时模式：按配置的税前时薪计算，税后口径按等价月薪估算到手后折回时薪
+// 累计工时模式：按当天生效记录的税前时薪计算，税后口径按等价月薪估算到手后折回时薪
 function hourlyForJobAtDate(job, date, grossOnly) {
   const cfg = job || settings;
+  const rec = salaryRecordAt(cfg, date);
   const probation = isInProbationAt(date, cfg);
   const mode = grossOnly ? 'gross' : (settings.salaryMode || DEFAULTS.salaryMode);
-  const cacheKey = `${jobKeyOf(cfg)}|hourly|${date.getFullYear()}-${date.getMonth()}|${mode}|${probation ? 1 : 0}`;
+  const cacheKey = `${jobKeyOf(cfg)}|hourly|${date.getFullYear()}-${date.getMonth()}|${mode}|${probation ? 1 : 0}|${rec.id || rec.effectiveDate}`;
   if (jobPayCache.has(cacheKey)) return jobPayCache.get(cacheKey);
 
   const ratioPct = parseFloat(cfg.probationRatio);
   const ratio = (isNaN(ratioPct) || ratioPct <= 0 ? 100 : Math.min(100, ratioPct)) / 100;
-  const baseRate = jobHourlyInput(cfg) * (probation ? ratio : 1);
+  const baseRate = Math.max(0, rec.hourlyRate) * (probation ? ratio : 1);
   // 通勤并入时薪折算时：按「工作时长 / (工作时长 + 通勤)」折算真实时薪，
   // 通勤时间也按这个等效时薪计时，整日收入与不计通勤时保持一致
   const workHours = getAvgDailyHours(cfg);
@@ -3379,7 +3864,8 @@ function hourlyForJobAtDate(job, date, grossOnly) {
 
 // 某段工作在某天的日收益（时薪 × 每日计时时长）
 function jobDailyPay(job, date, grossOnly, cache) {
-  const key = `${jobKeyOf(job)}|${date.getFullYear()}-${date.getMonth()}|${grossOnly ? 1 : 0}`;
+  const rec = salaryRecordAt(job, date);
+  const key = `${jobKeyOf(job)}|${date.getFullYear()}-${date.getMonth()}|${grossOnly ? 1 : 0}|${rec.id || rec.effectiveDate}`;
   let hourly;
   if (cache && cache.has(key)) {
     hourly = cache.get(key);
@@ -3540,6 +4026,7 @@ function renderHourlyTrend() {
     settings.salaryMode,
     jobHistory.map(j => [j.id, j.endDate, ...JOB_FIELDS.map(k => j[k])]),
     settings.monthlySalary, settings.calcMode, settings.hourlyRate,
+    settings.salaryHistory, settings.socialBase, settings.fundBase,
     settings.workDayMode, settings.workDaysPerMonth,
     settings.startTime, settings.endTime, settings.lunchStart, settings.lunchEnd,
     settings.shiftRotationEnabled, settings.shiftRotationStart, settings.shiftRotationSegments,
@@ -9561,10 +10048,14 @@ maybePromptCustomWorkday(); // 自定义模式下每月首次打开时弹窗确�
 
 if (isFirstRun) switchScreen('settings');
 
-// 设置页自动保存：输入 / 选择 / 切换即时写入本地，无需保存按钮
+// 设置页自动保存：输入 / 选择 / 切换即时写入本地，无需保存按钮；
+// change 视为输入结束，强制把薪资变化落到调薪记录
 ['input', 'change', 'click'].forEach(evt => {
-  document.getElementById('screen-settings').addEventListener(evt, persistSettings);
+  document.getElementById('screen-settings').addEventListener(evt, () => persistSettings(evt === 'change'));
 });
+// 只有真正编辑过薪资输入框，首次配置才会把薪资固化为初始调薪记录
+const salaryField = document.getElementById('monthlySalary');
+if (salaryField) salaryField.addEventListener('input', () => { salaryInputTouched = true; });
 
 // 每秒定时刷新：跨天/跨月检查与界面计时更新
 setInterval(() => {
@@ -9609,6 +10100,9 @@ document.getElementById('ledgerCityModal').addEventListener('click', function(e)
 });
 document.getElementById('jobHistoryModal').addEventListener('click', function(e) {
   if (e.target === this) closeJobHistoryModal();
+});
+document.getElementById('salaryRecordModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSalaryRecordModal();
 });
 document.getElementById('shareModal').addEventListener('click', function(e) {
   if (e.target === this) closeShareModal();
@@ -9672,6 +10166,11 @@ document.addEventListener('keydown', function(e) {
     const pickerOverlay = document.getElementById('pickerModal');
     if (pickerOverlay && pickerOverlay.classList.contains('show')) {
       closePicker();
+      return;
+    }
+    const salaryOverlay = document.getElementById('salaryRecordModal');
+    if (salaryOverlay && salaryOverlay.classList.contains('show')) {
+      closeSalaryRecordModal();
       return;
     }
     closeCustomWorkdayModal();

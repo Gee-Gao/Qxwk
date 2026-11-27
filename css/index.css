@@ -2713,6 +2713,83 @@ body {
   line-height: 1.6;
   padding: 6px 2px 2px;
 }
+/* 调薪记录 */
+.salary-record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.salary-record-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #222;
+  border: 1px solid #2a2a2a;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.salary-record-main {
+  flex: 1;
+  min-width: 0;
+}
+.salary-record-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.salary-record-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0a0a0a;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.salary-record-amount {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.salary-record-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  line-height: 1.45;
+}
+.salary-record-edit {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background .15s, color .15s;
+}
+.salary-record-edit:hover { background: #3a3a3a; color: #fff; }
+.salary-record-del {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #555;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.salary-record-del:hover { background: #3a3a3a; color: #fff; }
+.modal.salary-modal {
+  max-width: 420px;
+}
 /* 历史工作录入弹窗：内部沿用设置页的卡片布局 */
 .job-modal {
   max-width: 460px;
