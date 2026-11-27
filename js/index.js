@@ -8166,7 +8166,7 @@ function getShareData() {
 }
 
 // 分享图里的分区统计卡：左侧标题、右上角说明、下方若干列
-function drawShareStatCard(ctx, x, y, w, h, title, note, cols) {
+function drawShareStatCard(ctx, x, y, w, h, title, note, cols, badge) {
   shareRoundRect(ctx, x, y, w, h, 24);
   ctx.fillStyle = '#171717';
   ctx.fill();
@@ -8178,11 +8178,20 @@ function drawShareStatCard(ctx, x, y, w, h, title, note, cols) {
   ctx.font = `600 28px ${SHARE_FONT}`;
   ctx.fillStyle = '#ddd';
   ctx.fillText(title, x + 32, y + 52);
+
+  // 工资口径徽章固定在右上角，与统计页卡片一致
+  let noteRight = x + w - 32;
+  if (badge) {
+    ctx.font = `600 24px ${SHARE_FONT}`;
+    const badgeW = ctx.measureText(badge).width + 28;
+    drawShareTaxTag(ctx, noteRight - badgeW, y + 23, badge);
+    noteRight -= badgeW + 16;
+  }
   if (note) {
     ctx.textAlign = 'right';
     ctx.font = `400 22px ${SHARE_FONT}`;
     ctx.fillStyle = '#777';
-    ctx.fillText(note, x + w - 32, y + 52);
+    ctx.fillText(note, noteRight, y + 52);
     ctx.textAlign = 'left';
   }
 
@@ -8224,18 +8233,16 @@ function buildShareAchievements() {
   return list.sort((x, y) => (y.done ? 1 : 0) - (x.done ? 1 : 0));
 }
 
-// 分享图里的口径胶囊：green=true 荧光绿、false 对照紫
-function drawShareTaxTag(ctx, x, y, text, green) {
+// 分享图里的口径胶囊：默认实心荧光绿，violet 用于对比口径的「税后」
+function drawShareTaxTag(ctx, x, y, text, tone) {
+  const violet = tone === 'violet';
   const h = 38;
   ctx.font = `600 24px ${SHARE_FONT}`;
   const w = ctx.measureText(text).width + 28;
   shareRoundRect(ctx, x, y, w, h, h / 2);
-  ctx.fillStyle = green ? 'rgba(200, 255, 0, .14)' : 'rgba(167, 139, 250, .16)';
+  ctx.fillStyle = violet ? '#a78bfa' : '#c8ff00';
   ctx.fill();
-  ctx.strokeStyle = green ? 'rgba(200, 255, 0, .5)' : 'rgba(167, 139, 250, .6)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.fillStyle = green ? '#c8ff00' : '#a78bfa';
+  ctx.fillStyle = '#0f0f0f';
   ctx.textAlign = 'center';
   ctx.fillText(text, x + w / 2, y + h / 2 + 8);
   ctx.textAlign = 'left';
@@ -8263,13 +8270,11 @@ function drawShareSalaryCard(ctx, x, y, w, h, card) {
     ctx.stroke();
   }
 
-  // 口径标注放右上角，与计时页卡片一致
+  // 口径标注放右上角，与计时页卡片一致（实心荧光绿徽章）
   if (card.tag) {
-    ctx.font = `600 22px ${SHARE_FONT}`;
-    ctx.fillStyle = card.tagColor || t.note;
-    ctx.textAlign = 'right';
-    ctx.fillText(card.tag, x + w - 30, y + h * 0.25);
-    ctx.textAlign = 'left';
+    ctx.font = `600 24px ${SHARE_FONT}`;
+    const tagW = ctx.measureText(card.tag).width + 28;
+    drawShareTaxTag(ctx, x + w - 30 - tagW, y + 18, card.tag);
   }
 
   ctx.font = `400 26px ${SHARE_FONT}`;
@@ -8342,11 +8347,11 @@ function drawShareTaxCard(ctx, x, y, w, h, tax) {
   ctx.fillStyle = '#ddd';
   ctx.fillText('本月扣缴明细', x + 32, y + 52);
 
-  ctx.textAlign = 'right';
-  ctx.font = `400 22px ${SHARE_FONT}`;
-  ctx.fillStyle = '#777';
-  ctx.fillText(tax.badge || '累计预扣法', x + w - 32, y + 52);
-  ctx.textAlign = 'left';
+  // 阶段 / 口径标注统一做成实心荧光绿徽章
+  const taxBadge = tax.badge || '累计预扣法';
+  ctx.font = `600 24px ${SHARE_FONT}`;
+  const taxBadgeW = ctx.measureText(taxBadge).width + 28;
+  drawShareTaxTag(ctx, x + w - 32 - taxBadgeW, y + 23, taxBadge);
 
   const inner = 32;
   const colGap = 48;
@@ -8561,7 +8566,7 @@ function drawShareCard() {
     if (!isCompare) {
       const labelW = ctx.measureText('今日已赚').width;
       // 单一口径下不区分对照色，徽章统一用荧光绿
-      drawShareTaxTag(ctx, pad + labelW + 16, salaryY + 10, data.taxTag, true);
+      drawShareTaxTag(ctx, pad + labelW + 16, salaryY + 10, data.taxTag);
     }
 
     const cardGap = 24;
@@ -8570,11 +8575,11 @@ function drawShareCard() {
     if (isCompare) {
       // 上方两行大字：税前绿色、税后紫色
       [
-        { tag: '税前', green: true, color: accent, value: data.preTaxEarned },
-        { tag: '税后', green: false, color: '#a78bfa', value: data.earned }
+        { tag: '税前', color: accent, value: data.preTaxEarned },
+        { tag: '税后', color: '#a78bfa', value: data.earned }
       ].forEach((row, i) => {
         const top = salaryY + 92 + i * compareRowH;
-        const tagW = drawShareTaxTag(ctx, pad, top + 34, row.tag, row.green);
+        const tagW = drawShareTaxTag(ctx, pad, top + 34, row.tag, row.tag === '税后' ? 'violet' : 'green');
         const value = row.value || '¥0.00';
         const maxW = W - pad * 2 - tagW - 20;
         let size = 84;
@@ -8606,10 +8611,10 @@ function drawShareCard() {
 
       const cardsTop = salaryY + 182;
       drawShareSalaryCard(ctx, pad, cardsTop, cardW, salaryCardH, {
-        tone: 'net', label: '本月已赚', value: data.monthEarned || '¥0.00', sub: data.monthDays
+        tone: 'net', tag: data.taxTag, label: '本月已赚', value: data.monthEarned || '¥0.00', sub: data.monthDays
       });
       drawShareSalaryCard(ctx, pad + cardW + cardGap, cardsTop, cardW, salaryCardH, {
-        tone: 'net', label: '时薪', value: data.hourly, valueColor: accent
+        tone: 'net', tag: data.taxTag, label: '时薪', value: data.hourly, valueColor: accent
       });
     }
   };
@@ -8622,14 +8627,14 @@ function drawShareCard() {
   const lifeOn = data.lifeHas;
   const statCards = {
     commute: {
-      title: '通勤', note: commuteNote, cols: [
+      title: '通勤', badge: commuteNote, cols: [
         { label: '去程', value: fmtDurationMinutes(data.commuteBefore), sub: '上班路上' },
         { label: '返程', value: fmtDurationMinutes(data.commuteAfter), sub: '下班路上' },
         { label: '每日通勤', value: fmtDurationMinutes(data.commuteTotal), sub: data.commuteMode, color: '#fff' }
       ]
     },
     overtime: {
-      title: '加班', note: isLeave ? '调休口径' : '给钱口径', cols: isLeave ? [
+      title: '加班', badge: isLeave ? '调休' : data.taxTag, cols: isLeave ? [
         { label: '换得调休', value: hoursText(data.leaveEarned), sub: '加班累计时长' },
         { label: '已休', value: hoursText(data.leaveUsed), sub: '请假页调休记录' },
         { label: '剩余调休', value: hoursText(data.leaveEarned - data.leaveUsed), sub: '换得 - 已休', color: '#fff' }
@@ -8640,7 +8645,7 @@ function drawShareCard() {
       ]
     },
     ledger: {
-      title: '记账', note: `覆盖 ${data.ledgerDays} 天`, cols: [
+      title: '记账', badge: `覆盖 ${data.ledgerDays} 天`, cols: [
         { label: '本月支出', value: data.spendMonth, sub: `日均 ${data.spendAvg}` },
         { label: '折算工作日', value: data.spendWork, sub: data.spendWork === '—' ? '未设置时薪' : '按时薪折算', color: '#fff' },
         { label: '今日支出', value: data.spendToday, sub: `本月 ${data.ledgerCount} 笔` }
@@ -8648,6 +8653,7 @@ function drawShareCard() {
     },
     life: {
       title: '生命消耗',
+      badge: data.taxTag,
       note: lifeOn
         ? `累计 ${data.lifeHours.toLocaleString()} 小时${data.lifeJobs > 1 ? ` · ${data.lifeJobs} 段工作` : ''}`
         : '未设置入职日期',
@@ -8659,7 +8665,7 @@ function drawShareCard() {
       ]
     },
     year: {
-      title: '年度概览', note: data.yearDays, cols: [
+      title: '年度概览', badge: data.taxTag, note: data.yearDays, cols: [
         { label: '年度已赚', value: data.yearEarned || '¥0.00' },
         { label: '年度进度', value: data.yearProgress || '0%' },
         { label: '剩余预计', value: data.yearRemain || '¥0.00' },
@@ -8747,7 +8753,7 @@ function drawShareCard() {
     } else if (key === 'tax') {
       drawShareTaxCard(ctx, pad, cursor, statW, taxBlockH, data.tax);
     } else if (statCards[key]) {
-      drawShareStatCard(ctx, pad, cursor, statW, statH, statCards[key].title, statCards[key].note, statCards[key].cols);
+      drawShareStatCard(ctx, pad, cursor, statW, statH, statCards[key].title, statCards[key].note, statCards[key].cols, statCards[key].badge);
     }
     cursor += sectionHeight(key);
   });
