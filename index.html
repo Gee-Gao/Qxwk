@@ -735,14 +735,6 @@
         </div>
       </div>
     </div>
-    <div class="settings-card">
-      <h3>📈 调薪记录</h3>
-      <div class="desc">涨薪 / 降薪按生效日期记录，历史月份按当时薪资与缴费基数计算，不会被最新工资抬高</div>
-      <div class="salary-record-list" id="salaryRecordList"></div>
-      <div class="btn-row">
-        <button type="button" class="btn btn-primary" onclick="openSalaryRecordModal('settings')">＋ 记录一次调薪</button>
-      </div>
-    </div>
     <div class="settings-card" id="taxCard">
       <h3>🧾 税后测算</h3>
       <div class="desc">填得越细估算越准，税后口径的时薪与统计都按这里的参数算出</div>
@@ -808,6 +800,41 @@
       </div>
     </div>
     <div class="settings-card">
+      <h3>🚌 通勤时间</h3>
+      <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
+      <div class="settings-grid">
+        <div class="field-group">
+          <label>纳入时薪计算</label>
+          <div class="seg-control" id="commuteInHourly">
+            <button type="button" class="seg-btn" data-on="on" onclick="selectCommuteInHourly(true)">开启</button>
+            <button type="button" class="seg-btn" data-on="off" onclick="selectCommuteInHourly(false)">关闭</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>计时方式</label>
+          <div class="seg-control" id="commuteInputMode">
+            <button type="button" class="seg-btn" data-mode="total" onclick="selectCommuteInputMode('total')">合计</button>
+            <button type="button" class="seg-btn" data-mode="split" onclick="selectCommuteInputMode('split')">往返</button>
+          </div>
+        </div>
+        <div class="field-group" id="commuteTotalField" style="grid-column:1/-1">
+          <label>每日通勤合计 (分钟)</label>
+          <input type="number" id="commuteMinutes" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group" id="commuteMorningField" style="display:none">
+          <label>去程 (分钟)</label>
+          <input type="number" id="commuteMorning" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group" id="commuteEveningField" style="display:none">
+          <label>返程 (分钟)</label>
+          <input type="number" id="commuteEvening" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
+        </div>
+        <div class="field-group" style="grid-column:1/-1">
+          <div class="field-hint" id="commuteHint"></div>
+        </div>
+      </div>
+    </div>
+    <div class="settings-card">
       <h3>🎁 收入补贴</h3>
       <div class="desc">按月录入餐补、交通补、房补等，作为税前收入计入应发工资并参与个税测算</div>
       <div class="ledger-month-nav">
@@ -849,38 +876,11 @@
       <div class="allowance-list" id="allowanceList"></div>
     </div>
     <div class="settings-card">
-      <h3>🚌 通勤时间</h3>
-      <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
-      <div class="settings-grid">
-        <div class="field-group">
-          <label>纳入时薪计算</label>
-          <div class="seg-control" id="commuteInHourly">
-            <button type="button" class="seg-btn" data-on="on" onclick="selectCommuteInHourly(true)">开启</button>
-            <button type="button" class="seg-btn" data-on="off" onclick="selectCommuteInHourly(false)">关闭</button>
-          </div>
-        </div>
-        <div class="field-group">
-          <label>计时方式</label>
-          <div class="seg-control" id="commuteInputMode">
-            <button type="button" class="seg-btn" data-mode="total" onclick="selectCommuteInputMode('total')">合计</button>
-            <button type="button" class="seg-btn" data-mode="split" onclick="selectCommuteInputMode('split')">往返</button>
-          </div>
-        </div>
-        <div class="field-group" id="commuteTotalField" style="grid-column:1/-1">
-          <label>每日通勤合计 (分钟)</label>
-          <input type="number" id="commuteMinutes" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
-        </div>
-        <div class="field-group" id="commuteMorningField" style="display:none">
-          <label>去程 (分钟)</label>
-          <input type="number" id="commuteMorning" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
-        </div>
-        <div class="field-group" id="commuteEveningField" style="display:none">
-          <label>返程 (分钟)</label>
-          <input type="number" id="commuteEvening" step="5" min="0" placeholder="0" oninput="updateCommuteHint()">
-        </div>
-        <div class="field-group" style="grid-column:1/-1">
-          <div class="field-hint" id="commuteHint"></div>
-        </div>
+      <h3>📈 调薪记录</h3>
+      <div class="desc">涨薪 / 降薪按生效日期记录，历史月份按当时薪资与缴费基数计算；固定月薪与累计工时的记录分开保存，互不影响</div>
+      <div class="salary-record-list" id="salaryRecordList"></div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" onclick="openSalaryRecordModal('settings')">＋ 记录一次调薪</button>
       </div>
     </div>
     <div class="settings-card">
@@ -1305,51 +1305,6 @@
       </div>
 
       <div class="settings-card job-modal-card">
-        <h3>📈 调薪记录</h3>
-        <div class="desc">按生效日期记录这段工作的薪资变化，主薪资视为最新一条，历史月份按当时记录计算</div>
-        <div class="salary-record-list" id="hjSalaryRecordList"></div>
-        <div class="btn-row">
-          <button type="button" class="btn btn-primary" onclick="openSalaryRecordModal('job')">＋ 记录一次调薪</button>
-        </div>
-      </div>
-
-      <div class="settings-card job-modal-card">
-        <h3>🚌 通勤时间</h3>
-        <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
-        <div class="settings-grid">
-          <div class="field-group">
-            <label>纳入时薪计算</label>
-            <div class="seg-control" id="hjCommuteInHourly">
-              <button type="button" class="seg-btn" data-on="on" onclick="selectJobModalCommuteInHourly(true)">开启</button>
-              <button type="button" class="seg-btn" data-on="off" onclick="selectJobModalCommuteInHourly(false)">关闭</button>
-            </div>
-          </div>
-          <div class="field-group">
-            <label>计时方式</label>
-            <div class="seg-control" id="hjCommuteMode">
-              <button type="button" class="seg-btn" data-mode="total" onclick="selectJobModalCommuteMode('total')">合计</button>
-              <button type="button" class="seg-btn" data-mode="split" onclick="selectJobModalCommuteMode('split')">往返</button>
-            </div>
-          </div>
-          <div class="field-group" id="hjCommuteTotalField" style="grid-column:1/-1">
-            <label>每日通勤合计 (分钟)</label>
-            <input type="number" id="hjCommuteMinutes" step="5" min="0" placeholder="0">
-          </div>
-          <div class="field-group" id="hjCommuteMorningField">
-            <label>去程 (分钟)</label>
-            <input type="number" id="hjCommuteMorning" step="5" min="0" placeholder="0">
-          </div>
-          <div class="field-group" id="hjCommuteEveningField">
-            <label>返程 (分钟)</label>
-            <input type="number" id="hjCommuteEvening" step="5" min="0" placeholder="0">
-          </div>
-          <div class="field-group" style="grid-column:1/-1">
-            <div class="field-hint" id="hjCommuteHint"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-card job-modal-card">
         <h3>🧾 税后测算</h3>
         <div class="desc">填得越细估算越准，默认沿用当前设置</div>
         <div class="settings-grid">
@@ -1408,6 +1363,51 @@
             <label>赡养老人（元）</label>
             <input type="number" id="hjSpecialElder" placeholder="0">
           </div>
+        </div>
+      </div>
+
+      <div class="settings-card job-modal-card">
+        <h3>🚌 通勤时间</h3>
+        <div class="desc">把上下班路上耗掉的时间也算进来，看看扣除通勤后的真实时薪</div>
+        <div class="settings-grid">
+          <div class="field-group">
+            <label>纳入时薪计算</label>
+            <div class="seg-control" id="hjCommuteInHourly">
+              <button type="button" class="seg-btn" data-on="on" onclick="selectJobModalCommuteInHourly(true)">开启</button>
+              <button type="button" class="seg-btn" data-on="off" onclick="selectJobModalCommuteInHourly(false)">关闭</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label>计时方式</label>
+            <div class="seg-control" id="hjCommuteMode">
+              <button type="button" class="seg-btn" data-mode="total" onclick="selectJobModalCommuteMode('total')">合计</button>
+              <button type="button" class="seg-btn" data-mode="split" onclick="selectJobModalCommuteMode('split')">往返</button>
+            </div>
+          </div>
+          <div class="field-group" id="hjCommuteTotalField" style="grid-column:1/-1">
+            <label>每日通勤合计 (分钟)</label>
+            <input type="number" id="hjCommuteMinutes" step="5" min="0" placeholder="0">
+          </div>
+          <div class="field-group" id="hjCommuteMorningField">
+            <label>去程 (分钟)</label>
+            <input type="number" id="hjCommuteMorning" step="5" min="0" placeholder="0">
+          </div>
+          <div class="field-group" id="hjCommuteEveningField">
+            <label>返程 (分钟)</label>
+            <input type="number" id="hjCommuteEvening" step="5" min="0" placeholder="0">
+          </div>
+          <div class="field-group" style="grid-column:1/-1">
+            <div class="field-hint" id="hjCommuteHint"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-card job-modal-card">
+        <h3>📈 调薪记录</h3>
+        <div class="desc">按生效日期记录这段工作的薪资变化；固定月薪与累计工时分别保存，主薪资视为当前计算方式的最新一条</div>
+        <div class="salary-record-list" id="hjSalaryRecordList"></div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-primary" onclick="openSalaryRecordModal('job')">＋ 记录一次调薪</button>
         </div>
       </div>
 
