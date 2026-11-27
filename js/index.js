@@ -115,6 +115,7 @@ let leaveRecordMonth = '';    // 请假页当前查看的月份（YYYY-MM）
 let leaveKind = 'personal';   // 录入的请假类型
 let leaveRecUnit = 'hour';    // 录入时长单位：hour 小时 / day 天
 let leaveRecPaid = false;     // 是否带薪
+let leaveSkipCommute = true;  // 新增请假时是否跳过当天的自动通勤记账（默认开启）
 const LEAVE_RECORD_KEY = 'qianxwk_leave_records';
 const LEAVE_KINDS = {
   personal:     { label: '事假', paid: false },
@@ -4458,6 +4459,52 @@ function leavePayLabel(record) {
   return `${record && record.paid ? '带薪' : '无薪'} ${pct}%`;
 }
 
+// 勾选了「跳过自动通勤记账」的请假日期集合
+function leaveCommuteSkipDates() {
+  const dates = new Set();
+  leaveRecords.forEach(r => {
+    if (r && r.skipCommute && typeof r.date === 'string') dates.add(r.date);
+  });
+  return dates;
+}
+
+// 请假与自动通勤的联动：删除跳过日期上由通勤模板生成的记录，取消跳过后再补回
+function syncLeaveCommuteSkips() {
+  const skipDates = leaveCommuteSkipDates();
+  const commuteIds = new Set(ledgerRecurring
+    .filter(t => t && (t.mode === 'metro' || t.mode === 'bus'))
+    .map(t => t.id));
+  let removed = false;
+  if (commuteIds.size) {
+    ledgerRecords = ledgerRecords.filter(r => {
+      if (r && commuteIds.has(r.sourceId) && skipDates.has(r.date)) {
+        removed = true;
+        return false;
+      }
+      return true;
+    });
+  }
+  if (removed) {
+    recalcAllPricing();
+    saveLedgerRecords();
+  }
+  runLedgerRecurring();
+}
+
+function selectLeaveSkipCommute(on) {
+  leaveSkipCommute = !!on;
+  document.querySelectorAll('#leaveSkipCommute .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.skip === (leaveSkipCommute ? 'on' : 'off'));
+  });
+}
+
+function selectLeaveEditSkipCommute(on) {
+  leaveEditSkipCommute = !!on;
+  document.querySelectorAll('#leSkipCommute .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.skip === (leaveEditSkipCommute ? 'on' : 'off'));
+  });
+}
+
 // 某月因请假折算掉的工资天数（1 天 = 当月一个工作日）
 function leaveDeductDaysForMonth(cfg, monthKey) {
   let days = 0;
@@ -4574,9 +4621,11 @@ function addLeaveRecord() {
     unit: leaveRecUnit,
     paid: leaveRecPaid,
     ratio: ratio,
+    skipCommute: leaveSkipCommute,
     ts: Date.now()
   });
   saveLeaveRecords();
+  if (leaveSkipCommute) syncLeaveCommuteSkips();
 
   // 记录落在其他月份时自动切过去，避免「记了却看不到」
   if (leaveRecordMonth !== date.slice(0, 7)) leaveRecordMonth = date.slice(0, 7);
@@ -4584,12 +4633,13 @@ function addLeaveRecord() {
   invalidateJobCaches();
   updateAll();
   document.getElementById('leaveAmount').value = leaveRecUnit === 'day' ? dailyHoursValue() : '';
-  showToast('已记下这笔请假');
+  showToast(leaveSkipCommute ? '已记下这笔请假，并跳过当天自动通勤' : '已记下这笔请假');
 }
 
 function deleteLeaveRecord(id) {
   leaveRecords = leaveRecords.filter(r => r.id !== id);
   saveLeaveRecords();
+  syncLeaveCommuteSkips();
   renderLeave();
   invalidateJobCaches();
   updateAll();
@@ -4599,6 +4649,7 @@ function deleteLeaveRecord(id) {
 // ===== 请假记录编辑 =====
 let leaveEditId = null;
 let leaveEditPaid = false;
+let leaveEditSkipCommute = false;
 
 function openLeaveEdit(id) {
   const record = leaveRecords.find(r => r.id === id);
@@ -4617,6 +4668,7 @@ function openLeaveEdit(id) {
 
   // 计薪比例优先取记录上保存的值，旧记录回落到类型默认值
   selectLeaveEditPaid(!!record.paid, true);
+  selectLeaveEditSkipCommute(!!record.skipCommute);
   const ratioInput = document.getElementById('lePaidRatio');
   const saved = parseFloat(record.ratio);
   ratioInput.value = leaveEditPaid
@@ -4700,7 +4752,9 @@ function saveLeaveEdit() {
   record.amount = amount;
   record.paid = leaveEditPaid;
   record.ratio = ratio;
+  record.skipCommute = leaveEditSkipCommute;
   saveLeaveRecords();
+  syncLeaveCommuteSkips();
 
   // 改到其他月份时自动切过去，避免「改了却看不到」
   if (leaveRecordMonth !== date.slice(0, 7)) leaveRecordMonth = date.slice(0, 7);
@@ -4767,7 +4821,7 @@ function renderLeave() {
       <button class="overtime-del" onclick="event.stopPropagation(); deleteLeaveRecord('${r.id}')" title="删除">×</button>
       <div>
         <div class="overtime-date">${formatDateSlash(r.date)}</div>
-        <div class="overtime-meta">${kindLabel} · ${leavePayLabel(r)}</div>
+        <div class="overtime-meta">${kindLabel} · ${leavePayLabel(r)}${r.skipCommute ? ' · 跳过通勤' : ''}</div>
       </div>
       <div class="overtime-amount">${duration}</div>
     `;
@@ -4781,6 +4835,7 @@ function initLeave() {
   if (dateInput) dateInput.value = formatDateSlash(fmtDateKey(new Date()));
   selectLeaveKind(leaveKind);
   selectLeaveRecUnit(leaveRecUnit);
+  selectLeaveSkipCommute(leaveSkipCommute);
   renderLeave();
 }
 
@@ -5853,11 +5908,13 @@ function generateMetroRecurring(template, monthKey, today) {
   const trips = template.tripsPerDay;
   const pricingId = template.pricingId;
   const startDate = template.startDate;
+  const skipDates = leaveCommuteSkipDates();
   let changed = false;
   for (let day = 1; day <= days; day++) {
     const date = monthKey + '-' + String(day).padStart(2, '0');
     if (date > today) break;
     if (date < startDate) continue;
+    if (skipDates.has(date)) continue;
     const dateObj = new Date(year, month - 1, day);
     if (template.workdayOnly && !isWorkday(dateObj)) continue;
     for (let i = 0; i < trips; i++) {
@@ -5897,11 +5954,13 @@ function generateBusRecurring(template, monthKey, today) {
   if (rate == null) return false;
   const trips = template.tripsPerDay;
   const startDate = template.startDate;
+  const skipDates = leaveCommuteSkipDates();
   let changed = false;
   for (let day = 1; day <= days; day++) {
     const date = monthKey + '-' + String(day).padStart(2, '0');
     if (date > today) break;
     if (date < startDate) continue;
+    if (skipDates.has(date)) continue;
     const dateObj = new Date(year, month - 1, day);
     if (template.workdayOnly && !isWorkday(dateObj)) continue;
     for (let i = 0; i < trips; i++) {
@@ -6329,6 +6388,12 @@ function renderLedgerStats() {
     return;
   }
   const maxRecord = records.reduce((a, b) => (Number(b.amount) || 0) > (Number(a.amount) || 0) ? b : a);
+  // 最早的一笔：同一天多笔时按记录时间取最早创建的那条
+  const earliestRecord = records.reduce((a, b) => {
+    if (!a) return b;
+    if (a.date !== b.date) return a.date < b.date ? a : b;
+    return Number(a.createdAt || 0) <= Number(b.createdAt || 0) ? a : b;
+  }, null);
   const catCounts = {};
   records.forEach(r => {
     const name = ledgerStatsCategory(r).name;
@@ -6338,6 +6403,11 @@ function renderLedgerStats() {
   const topCatIcon = (records.map(ledgerStatsCategory).find(c => c.name === topCatName) || {}).icon || '📦';
   const freeDays = daysInScope - daysWithRecords;
   topBox.innerHTML = `
+    <div class="ledger-top-row">
+      <span class="lbl">最早的一笔</span>
+      <span class="val">${escapeLedgerText(earliestRecord.icon || '📦')} ${escapeLedgerText(earliestRecord.name)} ${formatMoney(Number(earliestRecord.amount) || 0)}
+        <em>${formatDateSlash(earliestRecord.date)}</em></span>
+    </div>
     <div class="ledger-top-row">
       <span class="lbl">最贵的一笔</span>
       <span class="val">${escapeLedgerText(maxRecord.icon || '📦')} ${escapeLedgerText(maxRecord.name)} ${formatMoney(Number(maxRecord.amount) || 0)}

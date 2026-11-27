@@ -428,12 +428,19 @@
         </div>
       </div>
 
-      <div class="cost-fields" style="grid-template-columns:1fr">
+      <div class="cost-fields">
         <div class="field-group">
           <label>时长单位</label>
           <div class="seg-control" id="leaveRecUnit">
             <button type="button" class="seg-btn active" data-unit="hour" onclick="selectLeaveRecUnit('hour')">小时</button>
             <button type="button" class="seg-btn" data-unit="day" onclick="selectLeaveRecUnit('day')">天</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>跳过自动通勤记账</label>
+          <div class="seg-control" id="leaveSkipCommute">
+            <button type="button" class="seg-btn active" data-skip="on" onclick="selectLeaveSkipCommute(true)">开启</button>
+            <button type="button" class="seg-btn" data-skip="off" onclick="selectLeaveSkipCommute(false)">关闭</button>
           </div>
         </div>
       </div>
@@ -1043,12 +1050,19 @@
         </select>
       </div>
 
-      <div class="cost-fields" style="grid-template-columns:1fr">
+      <div class="cost-fields">
         <div class="field-group">
           <label>时长单位</label>
           <div class="seg-control" id="leUnit">
             <button type="button" class="seg-btn active" data-unit="hour" onclick="selectLeaveEditUnit('hour')">小时</button>
             <button type="button" class="seg-btn" data-unit="day" onclick="selectLeaveEditUnit('day')">天</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label>跳过自动通勤记账</label>
+          <div class="seg-control" id="leSkipCommute">
+            <button type="button" class="seg-btn" data-skip="on" onclick="selectLeaveEditSkipCommute(true)">开启</button>
+            <button type="button" class="seg-btn" data-skip="off" onclick="selectLeaveEditSkipCommute(false)">关闭</button>
           </div>
         </div>
       </div>
