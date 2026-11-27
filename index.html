@@ -335,12 +335,13 @@
         </div>
         <div class="cost-fields">
           <div class="field-group">
-            <label>加班日期</label>
+            <label id="overtimeDateLabel">加班日期</label>
             <input type="text" id="overtimeDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
           </div>
           <div class="field-group">
-            <label>加班时长</label>
+            <label id="overtimeSecondLabel">加班时长</label>
             <input type="number" id="overtimeAmount" min="0" step="0.5" oninput="updateOvertimePreview()">
+            <input type="text" id="overtimeEndDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD" style="display:none" onchange="updateOvertimePreview()">
           </div>
         </div>
         <div class="cost-fields" id="overtimeRateGroup" style="grid-template-columns:1fr">
@@ -447,12 +448,13 @@
 
       <div class="cost-fields">
         <div class="field-group">
-          <label>请假日期</label>
+          <label id="leaveDateLabel">请假日期</label>
           <input type="text" id="leaveDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
         </div>
         <div class="field-group">
-          <label>请假时长</label>
+          <label id="leaveSecondLabel">请假时长</label>
           <input type="number" id="leaveAmount" min="0" step="0.5">
+          <input type="text" id="leaveEndDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD" style="display:none">
         </div>
       </div>
 
@@ -1007,12 +1009,13 @@
 
       <div class="cost-fields">
         <div class="field-group">
-          <label>加班日期</label>
+          <label id="oeDateLabel">加班日期</label>
           <input type="text" id="oeDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
         </div>
         <div class="field-group">
-          <label>加班时长</label>
+          <label id="oeSecondLabel">加班时长</label>
           <input type="number" id="oeAmount" min="0" step="0.5">
+          <input type="text" id="oeEndDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD" style="display:none">
         </div>
       </div>
 
@@ -1069,12 +1072,13 @@
 
       <div class="cost-fields">
         <div class="field-group">
-          <label>请假日期</label>
+          <label id="leDateLabel">请假日期</label>
           <input type="text" id="leDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD">
         </div>
         <div class="field-group">
-          <label>请假时长</label>
+          <label id="leSecondLabel">请假时长</label>
           <input type="number" id="leAmount" min="0" step="0.5">
+          <input type="text" id="leEndDate" class="picker-input" data-picker="date" readonly placeholder="YYYY/MM/DD" style="display:none">
         </div>
       </div>
 

@@ -3933,9 +3933,46 @@ function overtimeSettleOf(record) {
   return record.settle === 'leave' ? 'leave' : 'money';
 }
 
-// 按天录入时，时长框固定显示当天的应上班小时数
-function dailyHoursValue() {
-  return String(Math.round(getDailyHours() * 10) / 10);
+// 起止日期之间包含首尾的自然日天数（不跳过休息日）
+function rangeCalendarDays(startKey, endKey) {
+  const start = parseDateKey(startKey);
+  const end = parseDateKey(endKey);
+  if (!start || !end || end < start) return 0;
+  const ms = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate())
+    - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  return Math.floor(ms / 86400000) + 1;
+}
+
+// 起止日期之间包含首尾的工作日天数（自动跳过休息日）
+function rangeWorkdays(startKey, endKey) {
+  const start = parseDateKey(startKey);
+  const end = parseDateKey(endKey);
+  if (!start || !end || end < start) return 0;
+  let count = 0;
+  const cur = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cur <= last) {
+    const day = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate());
+    const job = jobOnDate(day);
+    if (isWorkdayByConfig(day, job || settings)) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+// 日期加天数后的日期键
+function shiftDateKey(key, days) {
+  const d = parseDateKey(key);
+  if (!d) return '';
+  d.setDate(d.getDate() + days);
+  return fmtDateKey(d);
+}
+
+// 按天录入的加班：开始 / 结束日期之间的自然日天数折算成小时数
+function overtimeRangeHours() {
+  const startKey = fmtDateKey(parseDateKey(document.getElementById('overtimeDate').value) || new Date());
+  const endKey = fmtDateKey(parseDateKey(document.getElementById('overtimeEndDate').value) || new Date());
+  return rangeCalendarDays(startKey, endKey) * getDailyHours();
 }
 
 // 当前选中的加班倍率：预设档位直接取，自定义取输入框
@@ -3960,14 +3997,29 @@ function selectOvertimeRate(value) {
 }
 
 function selectOvertimeUnit(unit) {
-  overtimeUnit = unit;
+  overtimeUnit = unit === 'day' ? 'day' : 'hour';
+  const isDay = overtimeUnit === 'day';
   document.querySelectorAll('#overtimeUnit .seg-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.unit === unit);
+    b.classList.toggle('active', b.dataset.unit === overtimeUnit);
   });
-  // 按天录入时一次只记一天：自动带入应上班小时数并锁住，不可手改
+  // 按天录入：加班日期变为开始日期，时长框变为结束日期（默认都取今天）
   const amountInput = document.getElementById('overtimeAmount');
-  amountInput.disabled = unit === 'day';
-  amountInput.value = unit === 'day' ? dailyHoursValue() : '';
+  const endInput = document.getElementById('overtimeEndDate');
+  const dateLabel = document.getElementById('overtimeDateLabel');
+  const secondLabel = document.getElementById('overtimeSecondLabel');
+  if (dateLabel) dateLabel.textContent = isDay ? '开始日期' : '加班日期';
+  if (secondLabel) secondLabel.textContent = isDay ? '结束日期' : '加班时长';
+  if (amountInput) {
+    amountInput.style.display = isDay ? 'none' : '';
+    amountInput.disabled = false;
+    if (!isDay) amountInput.value = '';
+  }
+  if (endInput) {
+    endInput.style.display = isDay ? '' : 'none';
+    if (isDay && !endInput.value) endInput.value = formatDateSlash(fmtDateKey(new Date()));
+  }
+  const dateInput = document.getElementById('overtimeDate');
+  if (isDay && dateInput && !dateInput.value) dateInput.value = formatDateSlash(fmtDateKey(new Date()));
   updateOvertimePreview();
 }
 
@@ -4184,8 +4236,8 @@ function updateOvertimePreview() {
   }
   const amount = parseFloat(document.getElementById('overtimeAmount').value) || 0;
   const rate = currentOvertimeRate();
-  // 按天录入时时长框显示的是应上班小时数，折算固定按一天算
-  const hours = overtimeUnit === 'day' ? getDailyHours() : amount;
+  // 按天录入时按开始 / 结束日期之间的自然日天数折算（加班不跳过休息日）
+  const hours = overtimeUnit === 'day' ? overtimeRangeHours() : amount;
   const net = hours * getHourlyRate() * rate;
 
   // 对比口径：税前、税后都算出来并排展示
@@ -4205,8 +4257,18 @@ function updateOvertimePreview() {
 
 function addOvertime() {
   const isLeaveMode = (settings.overtimeSettle || DEFAULTS.overtimeSettle) === 'leave';
-  // 按天录入时固定记一天
-  const amount = overtimeUnit === 'day' ? 1 : parseFloat(document.getElementById('overtimeAmount').value);
+  const startKey = fmtDateKey(parseDateKey(document.getElementById('overtimeDate').value) || new Date());
+  let endDate = '';
+  let amount;
+  // 按天录入：开始 / 结束日期之间的自然日天数即为加班天数（不跳过休息日）
+  if (overtimeUnit === 'day') {
+    const endKey = fmtDateKey(parseDateKey(document.getElementById('overtimeEndDate').value) || new Date());
+    if (endKey < startKey) { showToast('结束日期不能早于开始日期'); return; }
+    amount = rangeCalendarDays(startKey, endKey);
+    endDate = endKey;
+  } else {
+    amount = parseFloat(document.getElementById('overtimeAmount').value);
+  }
   const rate = currentOvertimeRate();
   if (!amount || amount <= 0) { showToast('先填加班时长'); return; }
   // 调休模式不折算金额，不需要倍率
@@ -4216,7 +4278,8 @@ function addOvertime() {
   }
 
   overtimeRecords.unshift({
-    date: document.getElementById('overtimeDate').value || fmtDateKey(new Date()),
+    date: startKey,
+    endDate: endDate,
     amount: amount,
     unit: overtimeUnit,
     rate: rate || 1,
@@ -4226,7 +4289,7 @@ function addOvertime() {
   saveOvertime();
   renderOvertime();
 
-  document.getElementById('overtimeAmount').value = overtimeUnit === 'day' ? dailyHoursValue() : '';
+  if (overtimeUnit !== 'day') document.getElementById('overtimeAmount').value = '';
   // 预设档位保留选择，方便连着记几笔；自定义则清空输入框
   if (overtimeRateMode === 'custom') document.getElementById('overtimeRate').value = '';
   updateOvertimePreview();
@@ -4258,6 +4321,7 @@ function openOvertimeEdit(idx) {
   if (!overlay) return;
 
   document.getElementById('oeDate').value = formatDateSlash(record.date);
+  document.getElementById('oeEndDate').value = record.endDate ? formatDateSlash(record.endDate) : '';
   document.getElementById('oeAmount').value = record.amount;
   // 调休口径只累计时长，不涉及倍率
   const rateField = document.getElementById('oeRateField');
@@ -4276,26 +4340,51 @@ function closeOvertimeEdit() {
   overtimeEditIdx = null;
 }
 
+// 按单位切换编辑框的可见输入项与标签
+function applyOvertimeEditUnitUI(unit) {
+  const isDay = unit === 'day';
+  document.querySelectorAll('#oeUnit .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.unit === unit);
+  });
+  const dateLabel = document.getElementById('oeDateLabel');
+  if (dateLabel) dateLabel.textContent = isDay ? '开始日期' : '加班日期';
+  const secondLabel = document.getElementById('oeSecondLabel');
+  if (secondLabel) secondLabel.textContent = isDay ? '结束日期' : '加班时长';
+  const amountInput = document.getElementById('oeAmount');
+  const endInput = document.getElementById('oeEndDate');
+  if (amountInput) {
+    amountInput.dataset.unit = unit;
+    amountInput.step = isDay ? '1' : '0.5';
+    amountInput.style.display = isDay ? 'none' : '';
+  }
+  if (endInput) {
+    endInput.style.display = isDay ? '' : 'none';
+    if (isDay && !endInput.value) endInput.value = formatDateSlash(fmtDateKey(new Date()));
+  }
+}
+
 // keepAmount 为 true 时不按单位换算，直接沿用刚回填的数值
 function setOvertimeEditUnit(unit, keepAmount) {
   const next = unit === 'day' ? 'day' : 'hour';
-  document.querySelectorAll('#oeUnit .seg-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.unit === next);
-  });
   const input = document.getElementById('oeAmount');
   if (!input) return;
   const prev = input.dataset.unit || next;
-  input.dataset.unit = next;
-  input.step = next === 'day' ? '1' : '0.5';
-  if (keepAmount) return;
-  // 切换单位时按每日工时等额换算
-  const dateKey = fmtDateKey(parseDateKey(document.getElementById('oeDate').value) || new Date());
-  const perDay = overtimeDailyHours(dateKey);
-  const value = parseFloat(input.value) || 0;
-  if (perDay > 0) {
-    const converted = prev === 'day' ? value * perDay : value / perDay;
-    input.value = String(Math.round(converted * 10) / 10);
+  if (!keepAmount && prev !== next) {
+    const dateKey = fmtDateKey(parseDateKey(document.getElementById('oeDate').value) || new Date());
+    const perDay = overtimeDailyHours(dateKey);
+    const value = parseFloat(input.value) || 0;
+    if (next === 'day' && perDay > 0) {
+      // 小时换算成天，并据此回填结束日期（加班不跳过休息日，按自然日推算）
+      const days = Math.max(1, Math.round(value / perDay));
+      document.getElementById('oeEndDate').value = formatDateSlash(shiftDateKey(dateKey, days - 1));
+    } else if (next === 'hour' && perDay > 0) {
+      const startKey = fmtDateKey(parseDateKey(document.getElementById('oeDate').value) || new Date());
+      const endKey = fmtDateKey(parseDateKey(document.getElementById('oeEndDate').value) || new Date());
+      const days = rangeCalendarDays(startKey, endKey);
+      input.value = String(Math.round(days * perDay * 10) / 10);
+    }
   }
+  applyOvertimeEditUnitUI(next);
 }
 
 function selectOvertimeEditUnit(unit) {
@@ -4309,7 +4398,16 @@ function saveOvertimeEdit() {
 
   const date = fmtDateKey(parseDateKey(document.getElementById('oeDate').value) || new Date());
   const unit = document.getElementById('oeAmount').dataset.unit === 'day' ? 'day' : 'hour';
-  const amount = parseFloat(document.getElementById('oeAmount').value);
+  let endDate = '';
+  let amount;
+  if (unit === 'day') {
+    const endKey = fmtDateKey(parseDateKey(document.getElementById('oeEndDate').value) || new Date());
+    if (endKey < date) { showToast('结束日期不能早于开始日期'); return; }
+    amount = rangeCalendarDays(date, endKey);
+    endDate = endKey;
+  } else {
+    amount = parseFloat(document.getElementById('oeAmount').value);
+  }
   if (!amount || amount <= 0) {
     showToast(unit === 'day' ? '先填加班天数' : '先填加班时长');
     return;
@@ -4322,6 +4420,7 @@ function saveOvertimeEdit() {
   }
 
   record.date = date;
+  record.endDate = endDate;
   record.unit = unit;
   record.amount = amount;
   record.rate = rate;
@@ -4393,26 +4492,48 @@ function renderOvertime() {
     item.tabIndex = 0;
     item.onclick = () => openOvertimeEdit(row.i);
     const duration = r.unit === 'day' ? `${r.amount} 天` : `${r.amount} 小时`;
-    const meta = isLeave ? duration : `${duration} · ${r.rate} 倍`;
+    const hoursText = formatHours(overtimeHours(r));
+    let meta = isLeave ? duration : `${duration} · ${r.rate} 倍`;
+    // 按天录入且跨多天时展示起止日期
+    const dateText = r.unit === 'day' && r.endDate && r.endDate !== r.date
+      ? `${formatOvertimeDate(r.date)} ~ ${formatOvertimeDate(r.endDate)}`
+      : formatOvertimeDate(r.date);
     let amountHtml;
     let extraClass = '';
+    let stacked = false;
     if (isLeave) {
-      amountHtml = `+${formatHours(overtimeHours(r))}`;
+      // 天数为主，折算小时为辅
+      if (r.unit === 'day') {
+        amountHtml = `<span>${r.amount} 天</span><span class="stack-sub">+${hoursText}</span>`;
+        stacked = true;
+        meta = '';
+      } else {
+        amountHtml = `+${hoursText}`;
+      }
     } else if (isCompare) {
       amountHtml =
         `<div>税前 ${formatMoney(overtimeEarned(r, hourlyRateForDate(r.date, true)))}</div>` +
         `<div>税后 ${formatMoney(overtimeEarned(r))}</div>`;
       extraClass = ' compare';
+      if (r.unit === 'day') {
+        amountHtml += `<span class="stack-sub">${r.amount} 天</span>`;
+        meta = `${r.rate} 倍`;
+      }
     } else {
       amountHtml = `<span class="overtime-basis">${modeTag}</span>${formatMoney(overtimeEarned(r))}`;
+      if (r.unit === 'day') {
+        amountHtml = `<div>${amountHtml}</div><span class="stack-sub">${r.amount} 天</span>`;
+        stacked = true;
+        meta = `${r.rate} 倍`;
+      }
     }
     item.innerHTML = `
       <button class="overtime-del" onclick="event.stopPropagation(); deleteOvertime(${row.i})" title="删除">×</button>
       <div>
-        <div class="overtime-date">${formatOvertimeDate(r.date)}</div>
-        <div class="overtime-meta">${meta}</div>
+        <div class="overtime-date">${dateText}</div>
+        ${meta ? `<div class="overtime-meta">${meta}</div>` : ''}
       </div>
-      <div class="overtime-amount${extraClass}">${amountHtml}</div>
+      <div class="overtime-amount${extraClass}${stacked ? ' stacked' : ''}">${amountHtml}</div>
     `;
     list.appendChild(item);
   });
@@ -4421,6 +4542,8 @@ function renderOvertime() {
 function initOvertime() {
   const dateInput = document.getElementById('overtimeDate');
   if (dateInput) dateInput.value = formatDateSlash(fmtDateKey(new Date()));
+  const endInput = document.getElementById('overtimeEndDate');
+  if (endInput) endInput.value = formatDateSlash(fmtDateKey(new Date()));
   syncOvertimeModeUI();
   renderOvertime();
   updateOvertimePreview();
@@ -4459,11 +4582,21 @@ function leavePayLabel(record) {
   return `${record && record.paid ? '带薪' : '无薪'} ${pct}%`;
 }
 
-// 勾选了「跳过自动通勤记账」的请假日期集合
+// 勾选了「跳过自动通勤记账」的请假日期集合（按天录入时展开整个起止区间）
 function leaveCommuteSkipDates() {
   const dates = new Set();
   leaveRecords.forEach(r => {
-    if (r && r.skipCommute && typeof r.date === 'string') dates.add(r.date);
+    if (!r || !r.skipCommute || typeof r.date !== 'string') return;
+    if (r.unit === 'day' && typeof r.endDate === 'string' && r.endDate >= r.date) {
+      const cur = parseDateKey(r.date);
+      const last = parseDateKey(r.endDate);
+      while (cur && last && cur <= last) {
+        dates.add(fmtDateKey(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      return;
+    }
+    dates.add(r.date);
   });
   return dates;
 }
@@ -4565,14 +4698,28 @@ function selectLeaveKind(kind) {
 
 function selectLeaveRecUnit(unit) {
   leaveRecUnit = unit === 'day' ? 'day' : 'hour';
+  const isDay = leaveRecUnit === 'day';
   document.querySelectorAll('#leaveRecUnit .seg-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.unit === leaveRecUnit);
   });
-  // 按天录入时一次只记一天：自动带入应上班小时数并锁住，不可手改
+  // 按天录入：请假日期变为开始日期，时长框变为结束日期（默认都取今天）
   const amountInput = document.getElementById('leaveAmount');
-  if (!amountInput) return;
-  amountInput.disabled = leaveRecUnit === 'day';
-  amountInput.value = leaveRecUnit === 'day' ? dailyHoursValue() : '';
+  const endInput = document.getElementById('leaveEndDate');
+  const dateLabel = document.getElementById('leaveDateLabel');
+  const secondLabel = document.getElementById('leaveSecondLabel');
+  if (dateLabel) dateLabel.textContent = isDay ? '开始日期' : '请假日期';
+  if (secondLabel) secondLabel.textContent = isDay ? '结束日期' : '请假时长';
+  if (amountInput) {
+    amountInput.style.display = isDay ? 'none' : '';
+    amountInput.disabled = false;
+    if (!isDay) amountInput.value = '';
+  }
+  if (endInput) {
+    endInput.style.display = isDay ? '' : 'none';
+    if (isDay && !endInput.value) endInput.value = formatDateSlash(fmtDateKey(new Date()));
+  }
+  const dateInput = document.getElementById('leaveDate');
+  if (isDay && dateInput && !dateInput.value) dateInput.value = formatDateSlash(fmtDateKey(new Date()));
 }
 
 function selectLeavePaid(paid) {
@@ -4600,12 +4747,22 @@ function shiftLeaveMonth(delta) {
 }
 
 function addLeaveRecord() {
-  // 按天录入时固定记一天
-  const amount = leaveRecUnit === 'day' ? 1 : parseFloat(document.getElementById('leaveAmount').value);
-  if (!amount || amount <= 0) { showToast('先填请假时长'); return; }
-
   const rawDate = document.getElementById('leaveDate').value;
   const date = fmtDateKey(parseDateKey(rawDate) || new Date());
+  let endDate = '';
+  let amount;
+  // 按天录入：开始 / 结束日期之间的工作日天数即为请假天数（自动跳过休息日）
+  if (leaveRecUnit === 'day') {
+    const endKey = fmtDateKey(parseDateKey(document.getElementById('leaveEndDate').value) || new Date());
+    if (endKey < date) { showToast('结束日期不能早于开始日期'); return; }
+    amount = rangeWorkdays(date, endKey);
+    if (!amount) { showToast('所选日期范围内没有工作日'); return; }
+    endDate = endKey;
+  } else {
+    amount = parseFloat(document.getElementById('leaveAmount').value);
+  }
+  if (!amount || amount <= 0) { showToast('先填请假时长'); return; }
+
   // 带薪时读取手动填写的计薪比例，无薪固定为 0
   let ratio = 0;
   if (leaveRecPaid) {
@@ -4616,6 +4773,7 @@ function addLeaveRecord() {
   leaveRecords.unshift({
     id: 'lv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
     date: date,
+    endDate: endDate,
     kind: leaveKind,
     amount: amount,
     unit: leaveRecUnit,
@@ -4632,7 +4790,7 @@ function addLeaveRecord() {
   renderLeave();
   invalidateJobCaches();
   updateAll();
-  document.getElementById('leaveAmount').value = leaveRecUnit === 'day' ? dailyHoursValue() : '';
+  if (leaveRecUnit !== 'day') document.getElementById('leaveAmount').value = '';
   showToast(leaveSkipCommute ? '已记下这笔请假，并跳过当天自动通勤' : '已记下这笔请假');
 }
 
@@ -4663,6 +4821,7 @@ function openLeaveEdit(id) {
   kindSel.value = kind;
   syncCustomSelect(kindSel);
   document.getElementById('leDate').value = formatDateSlash(record.date);
+  document.getElementById('leEndDate').value = record.endDate ? formatDateSlash(record.endDate) : '';
   document.getElementById('leAmount').value = record.amount;
   setLeaveEditUnit(record.unit === 'day' ? 'day' : 'hour', true);
 
@@ -4703,25 +4862,50 @@ function onLeaveEditKindChange() {
   selectLeaveEditPaid(LEAVE_KINDS[kind] ? LEAVE_KINDS[kind].paid : false, false);
 }
 
+// 按单位切换编辑框的可见输入项与标签
+function applyLeaveEditUnitUI(unit) {
+  const isDay = unit === 'day';
+  document.querySelectorAll('#leUnit .seg-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.unit === unit);
+  });
+  const dateLabel = document.getElementById('leDateLabel');
+  if (dateLabel) dateLabel.textContent = isDay ? '开始日期' : '请假日期';
+  const secondLabel = document.getElementById('leSecondLabel');
+  if (secondLabel) secondLabel.textContent = isDay ? '结束日期' : '请假时长';
+  const amountInput = document.getElementById('leAmount');
+  const endInput = document.getElementById('leEndDate');
+  if (amountInput) {
+    amountInput.dataset.unit = unit;
+    amountInput.step = isDay ? '1' : '0.5';
+    amountInput.style.display = isDay ? 'none' : '';
+  }
+  if (endInput) {
+    endInput.style.display = isDay ? '' : 'none';
+    if (isDay && !endInput.value) endInput.value = formatDateSlash(fmtDateKey(new Date()));
+  }
+}
+
 function setLeaveEditUnit(unit, keepAmount) {
   const next = unit === 'day' ? 'day' : 'hour';
-  document.querySelectorAll('#leUnit .seg-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.unit === next);
-  });
   const input = document.getElementById('leAmount');
   if (!input) return;
   const prev = input.dataset.unit || next;
-  input.dataset.unit = next;
-  input.step = next === 'day' ? '1' : '0.5';
-  if (keepAmount) return;
-  // 切换单位时按该记录所属工作的每日工时等额换算
-  const dateKey = fmtDateKey(parseDateKey(document.getElementById('leDate').value) || new Date());
-  const perDay = leaveDailyHours(dateKey);
-  const value = parseFloat(input.value) || 0;
-  if (perDay > 0) {
-    const converted = prev === 'day' ? value * perDay : value / perDay;
-    input.value = String(Math.round(converted * 10) / 10);
+  if (!keepAmount && prev !== next) {
+    const dateKey = fmtDateKey(parseDateKey(document.getElementById('leDate').value) || new Date());
+    const perDay = leaveDailyHours(dateKey);
+    const value = parseFloat(input.value) || 0;
+    if (next === 'day' && perDay > 0) {
+      // 小时换算成天，并据此回填结束日期（之后的保存会再按工作日重新计算）
+      const days = Math.max(1, Math.round(value / perDay));
+      document.getElementById('leEndDate').value = formatDateSlash(shiftDateKey(dateKey, days - 1));
+    } else if (next === 'hour' && perDay > 0) {
+      const startKey = fmtDateKey(parseDateKey(document.getElementById('leDate').value) || new Date());
+      const endKey = fmtDateKey(parseDateKey(document.getElementById('leEndDate').value) || new Date());
+      const days = rangeWorkdays(startKey, endKey);
+      input.value = String(Math.round(days * perDay * 10) / 10);
+    }
   }
+  applyLeaveEditUnitUI(next);
 }
 
 function selectLeaveEditUnit(unit) {
@@ -4734,7 +4918,17 @@ function saveLeaveEdit() {
 
   const date = fmtDateKey(parseDateKey(document.getElementById('leDate').value) || new Date());
   const unit = document.getElementById('leAmount').dataset.unit === 'day' ? 'day' : 'hour';
-  const amount = parseFloat(document.getElementById('leAmount').value);
+  let endDate = '';
+  let amount;
+  if (unit === 'day') {
+    const endKey = fmtDateKey(parseDateKey(document.getElementById('leEndDate').value) || new Date());
+    if (endKey < date) { showToast('结束日期不能早于开始日期'); return; }
+    amount = rangeWorkdays(date, endKey);
+    if (!amount) { showToast('所选日期范围内没有工作日'); return; }
+    endDate = endKey;
+  } else {
+    amount = parseFloat(document.getElementById('leAmount').value);
+  }
   if (!amount || amount <= 0) { showToast('先填请假时长'); return; }
 
   const rawKind = document.getElementById('leKind').value;
@@ -4747,6 +4941,7 @@ function saveLeaveEdit() {
   }
 
   record.date = date;
+  record.endDate = endDate;
   record.kind = kind;
   record.unit = unit;
   record.amount = amount;
@@ -4811,7 +5006,14 @@ function renderLeave() {
   list.innerHTML = '';
   monthRecords.forEach(r => {
     const kindLabel = (LEAVE_KINDS[r.kind] || LEAVE_KINDS.personal).label;
-    const duration = r.unit === 'day' ? `${r.amount} 天` : formatHours(r.amount);
+    // 按天录入时同时展示折算后的小时数
+    const durationHtml = r.unit === 'day'
+      ? `<span>${r.amount} 天</span><span class="stack-sub">${formatHours(leaveRecordHours(r))}</span>`
+      : formatHours(r.amount);
+    // 按天录入且跨多天时展示起止日期
+    const dateText = r.unit === 'day' && r.endDate && r.endDate !== r.date
+      ? `${formatDateSlash(r.date)} ~ ${formatDateSlash(r.endDate)}`
+      : formatDateSlash(r.date);
     const item = document.createElement('div');
     item.className = 'overtime-item record-clickable';
     item.setAttribute('role', 'button');
@@ -4820,10 +5022,10 @@ function renderLeave() {
     item.innerHTML = `
       <button class="overtime-del" onclick="event.stopPropagation(); deleteLeaveRecord('${r.id}')" title="删除">×</button>
       <div>
-        <div class="overtime-date">${formatDateSlash(r.date)}</div>
+        <div class="overtime-date">${dateText}</div>
         <div class="overtime-meta">${kindLabel} · ${leavePayLabel(r)}${r.skipCommute ? ' · 跳过通勤' : ''}</div>
       </div>
-      <div class="overtime-amount">${duration}</div>
+      <div class="overtime-amount${r.unit === 'day' ? ' stacked' : ''}">${durationHtml}</div>
     `;
     list.appendChild(item);
   });
@@ -4833,6 +5035,8 @@ function initLeave() {
   if (!leaveRecordMonth) leaveRecordMonth = currentMonthKey();
   const dateInput = document.getElementById('leaveDate');
   if (dateInput) dateInput.value = formatDateSlash(fmtDateKey(new Date()));
+  const endInput = document.getElementById('leaveEndDate');
+  if (endInput) endInput.value = formatDateSlash(fmtDateKey(new Date()));
   selectLeaveKind(leaveKind);
   selectLeaveRecUnit(leaveRecUnit);
   selectLeaveSkipCommute(leaveSkipCommute);
