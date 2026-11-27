@@ -5389,7 +5389,6 @@ function renderAchievements() {
     : !!a.done;
   list.sort((x, y) => (isUnlocked(y) ? 1 : 0) - (isUnlocked(x) ? 1 : 0));
   const stored = loadAchieveLevels();
-  const levelUps = [];
   let storedChanged = false;
   let unlocked = 0;
 
@@ -5425,12 +5424,9 @@ function renderAchievements() {
           + `<div class="achieve-note">${fmtAchieveNum(a.cur)} ${a.unit} · 已满级</div>`;
       }
 
-      // 首次记录等级不播放动画，之后真正升级时才播放并提示
+      // 首次记录等级不播放动画，之后真正升级时才播放
       const known = Object.prototype.hasOwnProperty.call(stored, a.id);
-      if (known && level > stored[a.id]) {
-        levelUps.push(a.levels[level - 1].title);
-        isLevelUp = true;
-      }
+      if (known && level > stored[a.id]) isLevelUp = true;
       if (!known || stored[a.id] !== level) {
         stored[a.id] = level;
         storedChanged = true;
@@ -5463,8 +5459,6 @@ function renderAchievements() {
   }
 
   grid.innerHTML = tiles.join('');
-
-  if (levelUps.length) showToast('成就升级：' + levelUps.join('、'));
 }
 
 // 点击成就查看详情：等级链、当前进度与达成条件
