@@ -2790,6 +2790,18 @@ body {
 .modal.salary-modal {
   max-width: 420px;
 }
+/* 统一确认弹窗 */
+.modal.confirm-modal {
+  max-width: 340px;
+}
+.confirm-message {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 4px;
+}
 /* 历史工作录入弹窗：内部沿用设置页的卡片布局 */
 .job-modal {
   max-width: 460px;

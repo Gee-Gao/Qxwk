@@ -1217,7 +1217,7 @@ function syncSalaryInputForMode() {
   if (input) {
     const v = hourly ? jobHourlyInput(settings) : Math.max(0, parseFloat(settings.monthlySalary) || 0);
     input.value = v > 0 ? v : '';
-    input.placeholder = hourly ? '例如：30' : '3000';
+    input.placeholder = hourly ? '例如：30' : '例如：3000';
   }
 }
 
@@ -1757,7 +1757,7 @@ function saveSalaryRecordModal() {
   }
 }
 
-function deleteSalaryRecord(target, id) {
+async function deleteSalaryRecord(target, id) {
   const isJob = target === 'job';
   const job = isJob ? jobModalDraft : settings;
   if (!job) return;
@@ -1766,7 +1766,9 @@ function deleteSalaryRecord(target, id) {
     showToast('至少保留一条调薪记录');
     return;
   }
-  if (!confirm('删除这条调薪记录？对应月份的收入会按剩余记录重新计算。')) return;
+  if (!(await showConfirm('删除这条调薪记录？对应月份的收入会按剩余记录重新计算。', {
+    title: '删除调薪记录', okText: '删除'
+  }))) return;
   job.salaryHistory = list.filter(r => r.id !== id);
   normalizeSalaryHistory(job);
   if (isJob) {
@@ -1937,7 +1939,6 @@ function deleteAllowance(id) {
   saveAllowances();
   renderAllowance();
   updateAll();
-  showToast('补贴已删除');
 }
 
 // ============ 历史工作弹窗 ============
@@ -1992,7 +1993,7 @@ function syncJobModalSalaryInput() {
     ? (parseFloat(jobModalDraft && jobModalDraft.hourlyRate) || 0)
     : (parseFloat(jobModalDraft && jobModalDraft.monthlySalary) || 0);
   input.value = v > 0 ? v : '';
-  input.placeholder = hourly ? '例如：30' : '例如：8000';
+  input.placeholder = hourly ? '例如：30' : '例如：3000';
 }
 
 // 计算弹窗里「每月工作天数」：按离职日期（没有则入职日期）所在月份折算
@@ -2244,7 +2245,7 @@ function addHistoryJob() {
 }
 
 // 跳槽：一键把当前工作归档为历史工作，当前工作顺延到明天开始，等待填写新工作
-function archiveCurrentJob() {
+async function archiveCurrentJob() {
   const today = fmtDateKey(new Date());
   if (jobModalDraft) {
     showToast('先完成历史工作录入');
@@ -2260,7 +2261,9 @@ function archiveCurrentJob() {
     showToast('当前工作还没开始，无需归档');
     return;
   }
-  if (!confirm('把当前工作归档到历史？归档后当前工作会从明天开始，作为一段新的工作，记得重新填写新工作的月薪与入职时间。')) return;
+  if (!(await showConfirm('把当前工作归档到历史？归档后当前工作会从明天开始，作为一段新的工作，记得重新填写新工作的月薪与入职时间。', {
+    title: '归档当前工作', okText: '归档'
+  }))) return;
 
   const job = snapshotJob(settings);
   job.id = newJobId();
@@ -2299,17 +2302,18 @@ function editHistoryJob(id) {
   }, false);
 }
 
-function deleteHistoryJob(id) {
+async function deleteHistoryJob(id) {
   const job = jobHistory.find(j => j.id === id);
   if (!job) return;
-  if (!confirm(`删除历史工作「${job.name || jobPeriodLabel(job)}」？删除后相关统计会重新计算。`)) return;
+  if (!(await showConfirm(`删除历史工作「${job.name || jobPeriodLabel(job)}」？删除后相关统计会重新计算。`, {
+    title: '删除历史工作', okText: '删除'
+  }))) return;
   jobHistory = jobHistory.filter(j => j.id !== id);
   saveJobHistory();
   if (jobModalDraft && jobModalDraft.id === id) closeJobHistoryModal();
   renderJobHistory();
   invalidateJobCaches();
   updateAll();
-  showToast('已删除历史工作');
 }
 
 // ============ 计算 ============
@@ -4247,12 +4251,14 @@ function togglePaidLeave() {
 }
 
 // 清空带薪离席的全部记录（含正在进行的计时）
-function resetPaidLeave() {
+async function resetPaidLeave() {
   if (!paidLeaveActive && paidLeaveSessions.length === 0) {
     showToast('暂无可重置的记录');
     return;
   }
-  if (!confirm('确定重置带薪离席？已记录的时长和金额将全部清空。')) return;
+  if (!(await showConfirm('确定重置带薪离席？已记录的时长和金额将全部清空。', {
+    title: '重置带薪离席', okText: '重置'
+  }))) return;
 
   paidLeaveActive = false;
   paidLeaveStart = null;
@@ -4400,7 +4406,6 @@ function deleteDevice(idx) {
   devices.splice(idx, 1);
   saveDevices();
   renderDevices();
-  showToast('已删除');
 }
 
 // ============ 加班 ============
@@ -4783,11 +4788,18 @@ function addOvertime() {
   showToast('已记下这笔加班');
 }
 
-function deleteOvertime(idx) {
-  overtimeRecords.splice(idx, 1);
+async function deleteOvertime(idx) {
+  const record = overtimeRecords[idx];
+  if (!record) return;
+  const dateLabel = record.date ? `${formatDateSlash(record.date)} 的` : '这条';
+  if (!(await showConfirm(`确定删除${dateLabel}加班记录吗？`, {
+    title: '删除加班记录', okText: '删除'
+  }))) return;
+  const at = overtimeRecords.indexOf(record);
+  if (at < 0) return;
+  overtimeRecords.splice(at, 1);
   saveOvertime();
   renderOvertime();
-  showToast('已删除');
 }
 
 // ===== 加班记录编辑 =====
@@ -5281,14 +5293,20 @@ function addLeaveRecord() {
   showToast(leaveSkipCommute ? '已记下这笔请假，并跳过当天自动通勤' : '已记下这笔请假');
 }
 
-function deleteLeaveRecord(id) {
+async function deleteLeaveRecord(id) {
+  const record = leaveRecords.find(r => r.id === id);
+  if (!record) return;
+  const kindLabel = (LEAVE_KINDS[record.kind] || LEAVE_KINDS.personal).label;
+  const dateLabel = record.date ? `${formatDateSlash(record.date)} 的` : '这条';
+  if (!(await showConfirm(`确定删除${dateLabel}${kindLabel}记录吗？`, {
+    title: '删除请假记录', okText: '删除'
+  }))) return;
   leaveRecords = leaveRecords.filter(r => r.id !== id);
   saveLeaveRecords();
   syncLeaveCommuteSkips();
   renderLeave();
   invalidateJobCaches();
   updateAll();
-  showToast('已删除');
 }
 
 // ===== 请假记录编辑 =====
@@ -7415,15 +7433,16 @@ function openLedgerCityPicker() {
   openCityPicker(ledgerPricingMode, 'ledger');
 }
 
-function deleteLedgerCategory(id) {
+async function deleteLedgerCategory(id) {
   const cat = ledgerCategories.find(c => c.id === id);
   if (!cat) return;
-  if (!confirm(`确定删除自定义项目「${cat.name}」吗？删除后无法恢复，已记账的记录不受影响。`)) return;
+  if (!(await showConfirm(`确定删除自定义项目「${cat.name}」吗？删除后无法恢复，已记账的记录不受影响。`, {
+    title: '删除自定义项目', okText: '删除'
+  }))) return;
   ledgerCategories = ledgerCategories.filter(c => c.id !== id);
   saveLedgerCategories();
   if (ledgerSelectedCategory === id) ledgerSelectedCategory = 'other';
   renderLedgerCategories();
-  showToast('已删除项目：' + cat.name);
 }
 
 function selectLedgerCategory(id) {
@@ -7586,8 +7605,12 @@ function submitLedgerRecord() {
   showToast('已记账：' + formatMoney(saved ? saved.amount : record.amount));
 }
 
-function deleteLedgerRecord(id) {
+async function deleteLedgerRecord(id) {
   const record = ledgerRecords.find(r => r.id === id);
+  if (!record) return;
+  if (!(await showConfirm(`确定删除「${record.name || '这笔'}」记录吗？删除后图表与统计会重新计算。`, {
+    title: '删除记账记录', okText: '删除'
+  }))) return;
   ledgerRecords = ledgerRecords.filter(r => r.id !== id);
   // 周期模板生成的记录被删除后记入跳过名单，后续不会再次补生成
   if (record && record.sourceId) {
@@ -7604,7 +7627,6 @@ function deleteLedgerRecord(id) {
   saveLedgerRecords();
   if (ledgerEditingId === id) closeLedgerModal();
   renderLedger();
-  showToast('已删除这笔记录');
 }
 
 function updateLedgerWorkPreview() {
@@ -7710,16 +7732,17 @@ function renderLedgerRecurringList() {
   }).join('');
 }
 
-function deleteRecurringTemplate(id) {
+async function deleteRecurringTemplate(id) {
   const template = ledgerRecurring.find(t => t.id === id);
   if (!template) return;
-  if (!confirm(`确定删除周期模板「${recurringDisplayName(template)}」吗？已生成的记录会保留。`)) return;
+  if (!(await showConfirm(`确定删除周期模板「${recurringDisplayName(template)}」吗？已生成的记录会保留。`, {
+    title: '删除周期模板', okText: '删除'
+  }))) return;
   ledgerRecurring = ledgerRecurring.filter(t => t.id !== id);
   saveLedgerRecurring();
   if (recurringEditingId === id) closeRecurringForm();
   renderLedgerRecurringList();
   renderLedger();
-  showToast('已删除周期模板');
 }
 
 function openRecurringForm(id) {
@@ -9807,6 +9830,39 @@ function showToast(msg) {
   toast._timer = setTimeout(() => toast.classList.remove('show'), 2500);
 }
 
+// ============ 统一确认弹窗 ============
+// 替代浏览器原生 confirm / alert，保持与应用一致的深色样式
+let confirmResolver = null;
+
+function showConfirm(message, options) {
+  const opts = Object.assign({ title: '提示', okText: '确定', cancelText: '取消', alertOnly: false }, options || {});
+  const overlay = document.getElementById('confirmModal');
+  if (!overlay) return Promise.resolve(false);
+  // 已有弹窗未处理时先按取消收尾，避免上一个 Promise 悬挂
+  if (confirmResolver) resolveConfirm(false);
+  document.getElementById('confirmTitle').textContent = opts.title;
+  document.getElementById('confirmMessage').textContent = message;
+  document.getElementById('confirmOkBtn').textContent = opts.okText;
+  const cancelBtn = document.getElementById('confirmCancelBtn');
+  cancelBtn.textContent = opts.cancelText;
+  cancelBtn.style.display = opts.alertOnly ? 'none' : '';
+  overlay.classList.add('show');
+  return new Promise(resolve => { confirmResolver = resolve; });
+}
+
+// 只有「知道了」一个按钮的提示，用于替代原生 alert
+function showAlert(message, options) {
+  return showConfirm(message, Object.assign({ alertOnly: true, okText: '知道了' }, options || {}));
+}
+
+function resolveConfirm(ok) {
+  const overlay = document.getElementById('confirmModal');
+  if (overlay) overlay.classList.remove('show');
+  const resolve = confirmResolver;
+  confirmResolver = null;
+  if (resolve) resolve(!!ok);
+}
+
 // ============ 数据备份 ============
 function qxwkDataKeys() {
   return Object.keys(localStorage).filter(k => k.startsWith('qianxwk_'));
@@ -9856,7 +9912,7 @@ function importQxwkData(event) {
   const file = input && input.files && input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function () {
+  reader.onload = async function () {
     let payload;
     try {
       payload = JSON.parse(reader.result);
@@ -9889,14 +9945,16 @@ function importQxwkData(event) {
       showToast('备份文件中没有可导入的数据');
       return;
     }
-    if (!confirm('导入备份将覆盖当前本地数据，确定继续吗？')) return;
+    if (!(await showConfirm('导入备份将覆盖当前本地数据，确定继续吗？', {
+      title: '导入备份', okText: '继续导入'
+    }))) return;
 
     const backup = {};
     qxwkDataKeys().forEach(k => { backup[k] = localStorage.getItem(k); });
     try {
       qxwkDataKeys().forEach(k => localStorage.removeItem(k));
       entries.forEach(([k, v]) => localStorage.setItem(k, v));
-      alert('导入成功，页面将重新加载');
+      await showAlert('导入成功，页面将重新加载。', { title: '导入成功' });
       location.reload();
     } catch (e) {
       try {
@@ -10104,6 +10162,9 @@ document.getElementById('jobHistoryModal').addEventListener('click', function(e)
 document.getElementById('salaryRecordModal').addEventListener('click', function(e) {
   if (e.target === this) closeSalaryRecordModal();
 });
+document.getElementById('confirmModal').addEventListener('click', function(e) {
+  if (e.target === this) resolveConfirm(false);
+});
 document.getElementById('shareModal').addEventListener('click', function(e) {
   if (e.target === this) closeShareModal();
 });
@@ -10159,6 +10220,11 @@ document.addEventListener('touchmove', function(e) {
 // 快捷键：Esc 关闭所有弹窗并回到计时页
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
+    const confirmOverlay = document.getElementById('confirmModal');
+    if (confirmOverlay && confirmOverlay.classList.contains('show')) {
+      resolveConfirm(false);
+      return;
+    }
     if (shareViewerIsOpen()) {
       closeShareImageViewer();
       return;
